@@ -572,18 +572,6 @@ StatusCode DecoderImpl::DecodeTiles(
     RefCountedBuffer* const current_frame) {
   frame_scratch_buffer->tile_scratch_buffer_pool.Reset(
       sequence_header.color_config.bitdepth);
-  if (IsFrameParallel()) {
-    // We can parse the current frame if all the reference frames have been
-    // parsed.
-    for (int i = 0; i < kNumReferenceFrameTypes; ++i) {
-      if (!state.reference_valid[i] || state.reference_frame[i] == nullptr) {
-        continue;
-      }
-      if (!state.reference_frame[i]->WaitUntilParsed()) {
-        return kStatusUnknownError;
-      }
-    }
-  }
   if (PostFilter::DoDeblock(frame_header, settings_.post_filter_mask)) {
     if (kDeblockFilterBitMask && !frame_scratch_buffer->loop_filter_mask.Reset(
                                      frame_header.width, frame_header.height)) {
@@ -684,24 +672,6 @@ StatusCode DecoderImpl::DecodeTiles(
     LIBGAV1_DLOG(ERROR, "Failed to get the dsp table for bitdepth %d.",
                  sequence_header.color_config.bitdepth);
     return kStatusInternalError;
-  }
-  // If prev_segment_ids is a null pointer, it is treated as if it pointed to
-  // a segmentation map containing all 0s.
-  const SegmentationMap* prev_segment_ids = nullptr;
-  if (frame_header.primary_reference_frame == kPrimaryReferenceNone) {
-    frame_scratch_buffer->symbol_decoder_context.Initialize(
-        frame_header.quantizer.base_index);
-  } else {
-    const int index =
-        frame_header
-            .reference_frame_index[frame_header.primary_reference_frame];
-    const RefCountedBuffer* prev_frame = state.reference_frame[index].get();
-    frame_scratch_buffer->symbol_decoder_context = prev_frame->FrameContext();
-    if (frame_header.segmentation.enabled &&
-        prev_frame->columns4x4() == frame_header.columns4x4 &&
-        prev_frame->rows4x4() == frame_header.rows4x4) {
-      prev_segment_ids = prev_frame->segmentation_map();
-    }
   }
 
   const uint8_t tile_size_bytes = frame_header.tile_info.tile_size_bytes;
@@ -828,6 +798,39 @@ StatusCode DecoderImpl::DecodeTiles(
       frame_scratch_buffer->threaded_window_buffer.get(),
       frame_scratch_buffer->superres_line_buffer.get(),
       settings_.post_filter_mask);
+
+  if (IsFrameParallel()) {
+    // We can parse the current frame if all the reference frames have been
+    // parsed.
+    for (int i = 0; i < kNumReferenceFrameTypes; ++i) {
+      if (!state.reference_valid[i] || state.reference_frame[i] == nullptr) {
+        continue;
+      }
+      if (!state.reference_frame[i]->WaitUntilParsed()) {
+        return kStatusUnknownError;
+      }
+    }
+  }
+
+  // If prev_segment_ids is a null pointer, it is treated as if it pointed to
+  // a segmentation map containing all 0s.
+  const SegmentationMap* prev_segment_ids = nullptr;
+  if (frame_header.primary_reference_frame == kPrimaryReferenceNone) {
+    frame_scratch_buffer->symbol_decoder_context.Initialize(
+        frame_header.quantizer.base_index);
+  } else {
+    const int index =
+        frame_header
+            .reference_frame_index[frame_header.primary_reference_frame];
+    const RefCountedBuffer* prev_frame = state.reference_frame[index].get();
+    frame_scratch_buffer->symbol_decoder_context = prev_frame->FrameContext();
+    if (frame_header.segmentation.enabled &&
+        prev_frame->columns4x4() == frame_header.columns4x4 &&
+        prev_frame->rows4x4() == frame_header.rows4x4) {
+      prev_segment_ids = prev_frame->segmentation_map();
+    }
+  }
+
   // The Tile class must make use of a separate buffer to store the unfiltered
   // pixels for the intra prediction of the next superblock row. This is done
   // only when one of the following conditions are true:
