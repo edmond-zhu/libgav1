@@ -100,6 +100,13 @@ class Tile : public Allocable {
 
   // Parses the entire tile.
   bool Parse();
+  // Decodes the entire tile. Increments |superblock_row_progress[i]| after each
+  // superblock row at index |i| is decoded. If the count reaches the number of
+  // tile columns, then it notifies |superblock_row_progress_condvar[i]|.
+  // |superblock_row_progress| and |superblock_row_progress_condvar| are arrays
+  // of size equal to the number of superblock rows in the frame.
+  bool Decode(std::mutex* mutex, int* superblock_row_progress,
+              std::condition_variable* superblock_row_progress_condvar);
   // Parses and decodes the entire tile. Depending on the configuration of this
   // Tile, this function may do multithreaded decoding.
   bool ParseAndDecode(bool is_main_thread);  // 5.11.2.

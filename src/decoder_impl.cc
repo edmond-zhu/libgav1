@@ -109,15 +109,10 @@ DecoderImpl::~DecoderImpl() {
 StatusCode DecoderImpl::Init() {
   if (settings_.frame_parallel) {
 #if defined(ENABLE_FRAME_PARALLEL)
-    if (settings_.threads > 1) {
-      if (!InitializeThreadPoolsForFrameParallel(settings_.threads,
-                                                 &frame_thread_pool_)) {
-        return kStatusOutOfMemory;
-      }
-      // TODO(b/142583029): Frame parallel decoding with in-frame
-      // multi-threading is not yet implemented. Until then, we force
-      // settings_.threads to 1 when frame parallel decoding is enabled.
-      settings_.threads = 1;
+    if (settings_.threads > 1 && !InitializeThreadPoolsForFrameParallel(
+                                     settings_.threads, &frame_thread_pool_,
+                                     &frame_scratch_buffer_pool_)) {
+      return kStatusOutOfMemory;
     }
 #else
     LIBGAV1_DLOG(
@@ -684,7 +679,8 @@ StatusCode DecoderImpl::DecodeTiles(
   }
   ThreadingStrategy& threading_strategy =
       frame_scratch_buffer->threading_strategy;
-  if (!threading_strategy.Reset(frame_header, settings_.threads)) {
+  if (!IsFrameParallel() &&
+      !threading_strategy.Reset(frame_header, settings_.threads)) {
     return kStatusOutOfMemory;
   }
 
@@ -888,7 +884,12 @@ StatusCode DecoderImpl::DecodeTiles(
   }
   assert(tiles.size() == static_cast<size_t>(tile_count));
   if (IsFrameParallel()) {
-    return DecodeTilesFrameParallel(
+    if (frame_scratch_buffer->threading_strategy.thread_pool() == nullptr) {
+      return DecodeTilesFrameParallel(
+          sequence_header, frame_header, tiles, saved_symbol_decoder_context,
+          prev_segment_ids, frame_scratch_buffer, &post_filter, current_frame);
+    }
+    return DecodeTilesThreadedFrameParallel(
         sequence_header, frame_header, tiles, saved_symbol_decoder_context,
         prev_segment_ids, frame_scratch_buffer, &post_filter, current_frame);
   }
@@ -1062,6 +1063,124 @@ StatusCode DecoderImpl::DecodeTilesFrameParallel(
   current_frame->SetFrameState(kFrameStateDecoded);
   frame_scratch_buffer->tile_scratch_buffer_pool.Release(
       std::move(tile_scratch_buffer));
+  return kStatusOk;
+}
+
+StatusCode DecoderImpl::DecodeTilesThreadedFrameParallel(
+    const ObuSequenceHeader& sequence_header,
+    const ObuFrameHeader& frame_header,
+    const Vector<std::unique_ptr<Tile>>& tiles,
+    const SymbolDecoderContext& saved_symbol_decoder_context,
+    const SegmentationMap* const prev_segment_ids,
+    FrameScratchBuffer* const frame_scratch_buffer,
+    PostFilter* const post_filter, RefCountedBuffer* const current_frame) {
+  // Parse the frame.
+  ThreadPool& thread_pool =
+      *frame_scratch_buffer->threading_strategy.thread_pool();
+  std::atomic<int> tile_counter(0);
+  const int tile_count = static_cast<int>(tiles.size());
+  const int num_workers = thread_pool.num_threads();
+  BlockingCounterWithStatus parse_workers(num_workers);
+  // Submit tile parsing jobs to the thread pool.
+  for (int i = 0; i < num_workers; ++i) {
+    thread_pool.Schedule([&tiles, tile_count, &tile_counter, &parse_workers]() {
+      bool failed = false;
+      int index;
+      while ((index = tile_counter.fetch_add(1, std::memory_order_relaxed)) <
+             tile_count) {
+        if (!failed) {
+          const auto& tile_ptr = tiles[index];
+          if (!tile_ptr->Parse()) {
+            LIBGAV1_DLOG(ERROR, "Error parsing tile #%d", tile_ptr->number());
+            failed = true;
+          }
+        }
+      }
+      parse_workers.Decrement(!failed);
+    });
+  }
+
+  // TODO(vigneshv): Have the current thread participate in the parsing.
+
+  // Wait until all the parse workers are done. This ensures that all the tiles
+  // have been parsed.
+  if (!parse_workers.Wait()) {
+    return kLibgav1StatusUnknownError;
+  }
+  if (frame_header.enable_frame_end_update_cdf) {
+    frame_scratch_buffer->symbol_decoder_context = saved_symbol_decoder_context;
+  }
+  current_frame->SetFrameContext(frame_scratch_buffer->symbol_decoder_context);
+  SetCurrentFrameSegmentationMap(frame_header, prev_segment_ids, current_frame);
+  current_frame->SetFrameState(kFrameStateParsed);
+
+  // Decode the frame.
+  const int block_width4x4 = sequence_header.use_128x128_superblock ? 32 : 16;
+  const int block_width4x4_log2 =
+      sequence_header.use_128x128_superblock ? 5 : 4;
+  const int superblock_rows =
+      (frame_header.rows4x4 + block_width4x4 - 1) >> block_width4x4_log2;
+  if (!frame_scratch_buffer->superblock_row_progress.Resize(superblock_rows) ||
+      !frame_scratch_buffer->superblock_row_progress_condvar.Resize(
+          superblock_rows)) {
+    return kLibgav1StatusOutOfMemory;
+  }
+  int* const superblock_row_progress =
+      frame_scratch_buffer->superblock_row_progress.get();
+  memset(superblock_row_progress, 0,
+         superblock_rows * sizeof(superblock_row_progress[0]));
+  // Submit tile decoding jobs to the thread pool.
+  BlockingCounterWithStatus decode_workers(num_workers);
+  tile_counter = 0;
+  for (int i = 0; i < num_workers; ++i) {
+    thread_pool.Schedule([&tiles, tile_count, &tile_counter, &decode_workers,
+                          frame_scratch_buffer]() {
+      bool failed = false;
+      int index;
+      while ((index = tile_counter.fetch_add(1, std::memory_order_relaxed)) <
+             tile_count) {
+        if (!failed) {
+          const auto& tile_ptr = tiles[index];
+          if (!tile_ptr->Decode(
+                  &frame_scratch_buffer->superblock_row_mutex,
+                  frame_scratch_buffer->superblock_row_progress.get(),
+                  frame_scratch_buffer->superblock_row_progress_condvar
+                      .get())) {
+            LIBGAV1_DLOG(ERROR, "Error decoding tile #%d", tile_ptr->number());
+            failed = true;
+          }
+        }
+      }
+      decode_workers.Decrement(!failed);
+    });
+  }
+
+  // Current thread will do the post filters.
+  const int tile_columns = frame_header.tile_info.tile_columns;
+  std::condition_variable* const superblock_row_progress_condvar =
+      frame_scratch_buffer->superblock_row_progress_condvar.get();
+  for (int row4x4 = 0, index = 0; row4x4 < frame_header.rows4x4;
+       row4x4 += block_width4x4, ++index) {
+    {
+      std::unique_lock<std::mutex> lock(
+          frame_scratch_buffer->superblock_row_mutex);
+      while (superblock_row_progress[index] != tile_columns) {
+        superblock_row_progress_condvar[index].wait(lock);
+      }
+    }
+    const int progress_row = post_filter->ApplyFilteringForOneSuperBlockRow(
+        row4x4, block_width4x4,
+        row4x4 + block_width4x4 >= frame_header.rows4x4);
+    if (progress_row >= 0) {
+      current_frame->SetProgress(progress_row);
+    }
+  }
+  current_frame->SetFrameState(kFrameStateDecoded);
+  // Wait until all the decode workers are done. This ensures that all the tiles
+  // have been decoded and wrapped up.
+  if (!decode_workers.Wait()) {
+    return kLibgav1StatusUnknownError;
+  }
   return kStatusOk;
 }
 

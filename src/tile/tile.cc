@@ -663,6 +663,41 @@ bool Tile::Parse() {
   return true;
 }
 
+bool Tile::Decode(
+    std::mutex* const mutex, int* const superblock_row_progress,
+    std::condition_variable* const superblock_row_progress_condvar) {
+  const int block_width4x4 = sequence_header_.use_128x128_superblock ? 32 : 16;
+  const int block_width4x4_log2 =
+      sequence_header_.use_128x128_superblock ? 5 : 4;
+  std::unique_ptr<TileScratchBuffer> scratch_buffer =
+      tile_scratch_buffer_pool_->Get();
+  if (scratch_buffer == nullptr) {
+    LIBGAV1_DLOG(ERROR, "Failed to get scratch buffer.");
+    return false;
+  }
+  for (int row4x4 = row4x4_start_, index = row4x4_start_ >> block_width4x4_log2;
+       row4x4 < row4x4_end_; row4x4 += block_width4x4, ++index) {
+    if (!ProcessSuperBlockRow<kProcessingModeDecodeOnly, false>(
+            row4x4, scratch_buffer.get())) {
+      return false;
+    }
+    PopulateIntraPredictionBuffer(row4x4);
+    bool notify;
+    {
+      std::unique_lock<std::mutex> lock(*mutex);
+      notify = ++superblock_row_progress[index] ==
+               frame_header_.tile_info.tile_columns;
+    }
+    if (notify) {
+      // We are done decoding this superblock row. Notify the post filtering
+      // thread.
+      superblock_row_progress_condvar[index].notify_one();
+    }
+  }
+  tile_scratch_buffer_pool_->Release(std::move(scratch_buffer));
+  return true;
+}
+
 bool Tile::ThreadedParseAndDecode() {
   {
     std::lock_guard<std::mutex> lock(threading_.mutex);

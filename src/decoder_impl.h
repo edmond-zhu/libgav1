@@ -190,6 +190,14 @@ class DecoderImpl : public Allocable {
       const SegmentationMap* prev_segment_ids,
       FrameScratchBuffer* frame_scratch_buffer, PostFilter* post_filter,
       RefCountedBuffer* current_frame);
+  StatusCode DecodeTilesThreadedFrameParallel(
+      const ObuSequenceHeader& sequence_header,
+      const ObuFrameHeader& frame_header,
+      const Vector<std::unique_ptr<Tile>>& tiles,
+      const SymbolDecoderContext& saved_symbol_decoder_context,
+      const SegmentationMap* prev_segment_ids,
+      FrameScratchBuffer* frame_scratch_buffer, PostFilter* post_filter,
+      RefCountedBuffer* current_frame);
   // Sets the current frame's segmentation map for two cases. The third case
   // is handled in Tile::DecodeBlock().
   void SetCurrentFrameSegmentationMap(const ObuFrameHeader& frame_header,
@@ -236,13 +244,7 @@ class DecoderImpl : public Allocable {
   // If true, sequence_header is valid.
   bool has_sequence_header_ = false;
 
-#if defined(ENABLE_FRAME_PARALLEL)
-  // TODO(b/142583029): A copy of the DecoderSettings is made to facilitate the
-  // development of frame parallel mode behind a compile time flag.
-  DecoderSettings settings_;
-#else
   const DecoderSettings& settings_;
-#endif
 };
 
 }  // namespace libgav1

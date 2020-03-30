@@ -17,6 +17,7 @@
 #ifndef LIBGAV1_SRC_FRAME_SCRATCH_BUFFER_H_
 #define LIBGAV1_SRC_FRAME_SCRATCH_BUFFER_H_
 
+#include <condition_variable>  // NOLINT (unapproved c++11 header)
 #include <cstdint>
 #include <memory>
 #include <mutex>  // NOLINT (unapproved c++11 header)
@@ -28,6 +29,7 @@
 #include "src/threading_strategy.h"
 #include "src/tile_scratch_buffer.h"
 #include "src/utils/array_2d.h"
+#include "src/utils/compiler_attributes.h"
 #include "src/utils/constants.h"
 #include "src/utils/dynamic_buffer.h"
 #include "src/utils/memory.h"
@@ -67,6 +69,17 @@ struct FrameScratchBuffer {
   // have to change or move to DecoderImpl when frame parallel mode with
   // in-frame multi-theading is implemented.
   ThreadingStrategy threading_strategy;
+  std::mutex superblock_row_mutex;
+  // The size of this buffer is the number of superblock rows. Index i is
+  // incremented whenever a tile finishes decoding superblock row at index i. If
+  // the count reaches tile_columns, then |superblock_row_progress_condvar[i]|
+  // is notified.
+  DynamicBuffer<int> superblock_row_progress
+      LIBGAV1_GUARDED_BY(superblock_row_mutex);
+  // The size of this buffer is the number of superblock rows. Used to wait for
+  // |superblock_row_progress[i]| to reach tile_columns.
+  DynamicBuffer<std::condition_variable> superblock_row_progress_condvar
+      LIBGAV1_GUARDED_BY(superblock_row_mutex);
 };
 
 class FrameScratchBufferPool {
