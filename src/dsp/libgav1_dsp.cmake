@@ -128,6 +128,8 @@ list(APPEND libgav1_dsp_sources_sse4
             "${libgav1_source}/dsp/x86/loop_restoration_sse4.h"
             "${libgav1_source}/dsp/x86/mask_blend_sse4.cc"
             "${libgav1_source}/dsp/x86/mask_blend_sse4.h"
+            "${libgav1_source}/dsp/x86/motion_vector_search_sse4.cc"
+            "${libgav1_source}/dsp/x86/motion_vector_search_sse4.h"
             "${libgav1_source}/dsp/x86/obmc_sse4.cc"
             "${libgav1_source}/dsp/x86/obmc_sse4.h"
             "${libgav1_source}/dsp/x86/super_res_sse4.cc"

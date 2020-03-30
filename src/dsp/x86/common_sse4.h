@@ -156,6 +156,10 @@ inline void StoreHi8(void* a, const __m128i v) {
   _mm_storeh_pi(static_cast<__m64*>(a), _mm_castsi128_ps(v));
 }
 
+inline void StoreAligned16(void* a, const __m128i v) {
+  _mm_store_si128(static_cast<__m128i*>(a), v);
+}
+
 inline void StoreUnaligned16(void* a, const __m128i v) {
   _mm_storeu_si128(static_cast<__m128i*>(a), v);
 }

@@ -64,7 +64,7 @@ inline int16x8_t MvProjectionCompoundClip(
     const MotionVector* const temporal_mvs,
     const int8_t* const temporal_reference_offsets,
     const int reference_offsets[2]) {
-  const int32_t* const tmvs = reinterpret_cast<const int32_t*>(temporal_mvs);
+  const auto* const tmvs = reinterpret_cast<const int32_t*>(temporal_mvs);
   const int32x2_t temporal_mv = vld1_s32(tmvs);
   const int16x4_t tmv0 = vreinterpret_s16_s32(vdup_lane_s32(temporal_mv, 0));
   const int16x4_t tmv1 = vreinterpret_s16_s32(vdup_lane_s32(temporal_mv, 1));
@@ -79,7 +79,7 @@ inline int16x8_t MvProjectionSingleClip(
     const MotionVector* const temporal_mvs,
     const int8_t* const temporal_reference_offsets, const int reference_offset,
     int16x4_t* const lookup) {
-  const int16_t* const tmvs = reinterpret_cast<const int16_t*>(temporal_mvs);
+  const auto* const tmvs = reinterpret_cast<const int16_t*>(temporal_mvs);
   const int16x8_t temporal_mv = vld1q_s16(tmvs);
   *lookup = vld1_lane_s16(
       &kProjectionMvDivisionLookup[temporal_reference_offsets[0]], *lookup, 0);

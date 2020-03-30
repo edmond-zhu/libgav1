@@ -492,6 +492,17 @@ void TemporalScan(const Tile::Block& block, bool is_compound,
           tile.sequence_header().order_hint_shift_bits);
       reference_offsets[1] =
           Clip3(offset_1, -kMaxFrameDistance, kMaxFrameDistance);
+      // Pad so that SIMD implementations won't read uninitialized memory.
+      if ((count & 1) != 0) {
+        temporal_mvs[count].mv32 = 0;
+        temporal_reference_offsets[count] = 0;
+      }
+    } else {
+      // Pad so that SIMD implementations won't read uninitialized memory.
+      for (int i = count; i < ((count + 3) & ~3); ++i) {
+        temporal_mvs[i].mv32 = 0;
+        temporal_reference_offsets[i] = 0;
+      }
     }
     AddTemporalReferenceMvCandidate(
         tile.frame_header(), reference_offsets, temporal_mvs,
