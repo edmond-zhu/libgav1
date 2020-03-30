@@ -763,7 +763,7 @@ struct FilmGrainFuncs {
 // |motion_field| is the output which saves the projected motion field
 // information.
 using MotionFieldProjectionKernelFunc = void (*)(
-    const ReferenceFrameType* source_reference_type, const MotionVector* mv,
+    const ReferenceFrameType* source_reference_types, const MotionVector* mv,
     const uint8_t order_hint[kNumReferenceFrameTypes],
     unsigned int current_frame_order_hint, unsigned int order_hint_shift_bits,
     int reference_to_current_with_sign, int dst_sign, int y8_start, int y8_end,

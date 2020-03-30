@@ -35,9 +35,33 @@ namespace {
     (LIBGAV1_MAX_BITDEPTH >= 10 &&                           \
      !defined(LIBGAV1_Dsp10bpp_MotionFieldProjectionKernel))
 
+void CalculateReferenceFramesInfo(
+    const uint8_t order_hint[kNumReferenceFrameTypes],
+    unsigned int current_frame_order_hint, unsigned int order_hint_shift_bits,
+    int8_t reference_offsets[kNumReferenceFrameTypes],
+    bool skip_references[kNumReferenceFrameTypes],
+    int16_t projection_mv_divisions[kNumReferenceFrameTypes]) {
+  // Initialize skip_references[kReferenceFrameIntra] to simplify branch
+  // conditions in projection.
+  skip_references[kReferenceFrameIntra] = true;
+  for (int reference_type = kReferenceFrameLast;
+       reference_type <= kNumInterReferenceFrameTypes; ++reference_type) {
+    const int reference_offset =
+        GetRelativeDistance(current_frame_order_hint,
+                            order_hint[reference_type], order_hint_shift_bits);
+    reference_offsets[reference_type] = reference_offset;
+    skip_references[reference_type] =
+        reference_offset > kMaxFrameDistance || reference_offset <= 0;
+    projection_mv_divisions[reference_type] =
+        skip_references[reference_type]
+            ? 0
+            : kProjectionMvDivisionLookup[reference_offset];
+  }
+}
+
 // 7.9.2.
 void MotionFieldProjectionKernel_C(
-    const ReferenceFrameType* source_reference_type, const MotionVector* mv,
+    const ReferenceFrameType* source_reference_types, const MotionVector* mv,
     const uint8_t order_hint[kNumReferenceFrameTypes],
     unsigned int current_frame_order_hint, unsigned int order_hint_shift_bits,
     int reference_to_current_with_sign, int dst_sign, int y8_start, int y8_end,
@@ -52,23 +76,14 @@ void MotionFieldProjectionKernel_C(
       x8_end + kProjectionMvMaxHorizontalOffset, static_cast<int>(stride));
   int8_t* dst_reference_offset = motion_field->reference_offset[y8_start];
   MotionVector* dst_mv = motion_field->mv[y8_start];
-  int reference_offsets[kNumReferenceFrameTypes];
-  bool skip_reference[kNumReferenceFrameTypes];
+  int8_t reference_offsets[kNumReferenceFrameTypes];
+  bool skip_references[kNumReferenceFrameTypes];
+  int16_t projection_mv_divisions[kNumReferenceFrameTypes];
   assert(stride == motion_field->reference_offset.columns());
   assert((y8_start & 7) == 0);
-
-  // Initialize skip_reference[kReferenceFrameIntra] to simplify branch
-  // conditions in projection.
-  skip_reference[kReferenceFrameIntra] = true;
-  for (int reference_type = kReferenceFrameLast;
-       reference_type <= kNumInterReferenceFrameTypes; ++reference_type) {
-    const int reference_offset =
-        GetRelativeDistance(current_frame_order_hint,
-                            order_hint[reference_type], order_hint_shift_bits);
-    skip_reference[reference_type] =
-        reference_offset > kMaxFrameDistance || reference_offset <= 0;
-    reference_offsets[reference_type] = reference_offset;
-  }
+  CalculateReferenceFramesInfo(order_hint, current_frame_order_hint,
+                               order_hint_shift_bits, reference_offsets,
+                               skip_references, projection_mv_divisions);
 
   int y8 = y8_start;
   do {
@@ -76,11 +91,12 @@ void MotionFieldProjectionKernel_C(
     const int y8_ceiling = std::min(y8_end - y8, y8_floor + 8);
     int x8 = adjusted_x8_start;
     do {
-      if (skip_reference[source_reference_type[x8]]) continue;
-      const int reference_offset = reference_offsets[source_reference_type[x8]];
+      const int source_reference_type = source_reference_types[x8];
+      if (skip_references[source_reference_type]) continue;
       MotionVector projection_mv;
       // reference_to_current_with_sign could be 0.
-      GetMvProjection(mv[x8], reference_to_current_with_sign, reference_offset,
+      GetMvProjection(mv[x8], reference_to_current_with_sign,
+                      projection_mv_divisions[source_reference_type],
                       &projection_mv);
       // Do not update the motion vector if the block position is not valid or
       // if position_x8 is outside the current range of x8_start and x8_end.
@@ -97,9 +113,9 @@ void MotionFieldProjectionKernel_C(
       if (position_x8 < x8_floor || position_x8 >= x8_ceiling) continue;
       dst_mv[position_y8 * stride + position_x8] = mv[x8];
       dst_reference_offset[position_y8 * stride + position_x8] =
-          reference_offset;
+          reference_offsets[source_reference_type];
     } while (++x8 < adjusted_x8_end);
-    source_reference_type += stride;
+    source_reference_types += stride;
     mv += stride;
     dst_reference_offset += stride;
     dst_mv += stride;
