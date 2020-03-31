@@ -1100,11 +1100,23 @@ StatusCode DecoderImpl::DecodeTilesThreadedFrameParallel(
     });
   }
 
-  // TODO(vigneshv): Have the current thread participate in the parsing.
+  // Have the current thread participate in parsing.
+  bool failed = false;
+  int index;
+  while ((index = tile_counter.fetch_add(1, std::memory_order_relaxed)) <
+         tile_count) {
+    if (!failed) {
+      const auto& tile_ptr = tiles[index];
+      if (!tile_ptr->Parse()) {
+        LIBGAV1_DLOG(ERROR, "Error parsing tile #%d", tile_ptr->number());
+        failed = true;
+      }
+    }
+  }
 
   // Wait until all the parse workers are done. This ensures that all the tiles
   // have been parsed.
-  if (!parse_workers.Wait()) {
+  if (!parse_workers.Wait() || failed) {
     return kLibgav1StatusUnknownError;
   }
   if (frame_header.enable_frame_end_update_cdf) {
