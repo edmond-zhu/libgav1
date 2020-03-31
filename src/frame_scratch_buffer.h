@@ -49,7 +49,6 @@ struct FrameScratchBuffer {
   TemporalMotionField motion_field;
   SymbolDecoderContext symbol_decoder_context;
   std::unique_ptr<ResidualBufferPool> residual_buffer_pool;
-  Array2D<SuperBlockState> superblock_state;
   // threaded_window_buffer will be subdivided by PostFilter into windows of
   // width 512 pixels. Each row in the window is filtered by a worker thread.
   // To avoid false sharing, each 512-pixel row processed by one thread should

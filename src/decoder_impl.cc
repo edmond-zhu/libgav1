@@ -699,21 +699,6 @@ StatusCode DecoderImpl::DecodeTiles(
   }
 
   if (threading_strategy.row_thread_pool(0) != nullptr || IsFrameParallel()) {
-    const int block_width4x4_minus_one =
-        sequence_header.use_128x128_superblock ? 31 : 15;
-    const int block_width4x4_log2 =
-        sequence_header.use_128x128_superblock ? 5 : 4;
-    const int superblock_rows =
-        (frame_header.rows4x4 + block_width4x4_minus_one) >>
-        block_width4x4_log2;
-    const int superblock_columns =
-        (frame_header.columns4x4 + block_width4x4_minus_one) >>
-        block_width4x4_log2;
-    if (!frame_scratch_buffer->superblock_state.Reset(superblock_rows,
-                                                      superblock_columns)) {
-      LIBGAV1_DLOG(ERROR, "Failed to allocate super_block_state.\n");
-      return kStatusOutOfMemory;
-    }
     if (frame_scratch_buffer->residual_buffer_pool == nullptr) {
       frame_scratch_buffer->residual_buffer_pool.reset(
           new (std::nothrow) ResidualBufferPool(
