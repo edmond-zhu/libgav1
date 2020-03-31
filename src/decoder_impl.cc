@@ -61,6 +61,20 @@ int GetBottomBorderPixels(const bool do_cdef, const bool do_restoration,
   return border;
 }
 
+// Sets |*failed| to true (while holding on to |*mutex|) and notifies the first
+// |count| condition variables in |condvars|.
+void SetFailureAndNotifyAll(std::mutex* const mutex, bool* const failed,
+                            std::condition_variable* const condvars,
+                            int count) {
+  {
+    std::lock_guard<std::mutex> lock(*mutex);
+    *failed = true;
+  }
+  for (int i = 0; i < count; ++i) {
+    condvars[i].notify_one();
+  }
+}
+
 }  // namespace
 
 // static
@@ -1142,7 +1156,7 @@ StatusCode DecoderImpl::DecodeTilesThreadedFrameParallel(
   memset(superblock_row_progress, 0,
          superblock_rows * sizeof(superblock_row_progress[0]));
   // Submit tile decoding jobs to the thread pool.
-  BlockingCounterWithStatus decode_workers(num_workers);
+  BlockingCounter decode_workers(num_workers);
   tile_counter = 0;
   // Guarded by frame_scratch_buffer->superblock_row_mutex.
   bool tile_decoding_failed = false;
@@ -1162,18 +1176,14 @@ StatusCode DecoderImpl::DecodeTilesThreadedFrameParallel(
                 frame_scratch_buffer->superblock_row_progress_condvar.get())) {
           LIBGAV1_DLOG(ERROR, "Error decoding tile #%d", tile_ptr->number());
           failed = true;
-          // Notify all the condition variables that could have a waiter.
-          std::lock_guard<std::mutex> lock(
-              frame_scratch_buffer->superblock_row_mutex);
-          tile_decoding_failed = true;
-          std::condition_variable* const superblock_row_progress_condvar =
-              frame_scratch_buffer->superblock_row_progress_condvar.get();
-          for (int i = 0; i < superblock_rows; ++i) {
-            superblock_row_progress_condvar[i].notify_one();
-          }
+          SetFailureAndNotifyAll(
+              &frame_scratch_buffer->superblock_row_mutex,
+              &tile_decoding_failed,
+              frame_scratch_buffer->superblock_row_progress_condvar.get(),
+              superblock_rows);
         }
       }
-      decode_workers.Decrement(!failed);
+      decode_workers.Decrement();
     });
   }
 
@@ -1201,9 +1211,13 @@ StatusCode DecoderImpl::DecodeTilesThreadedFrameParallel(
   }
   // Wait until all the decode workers are done. This ensures that all the tiles
   // have been decoded and wrapped up.
-  if (!decode_workers.Wait()) {
-    return kLibgav1StatusUnknownError;
+  decode_workers.Wait();
+  {
+    std::lock_guard<std::mutex> lock(
+        frame_scratch_buffer->superblock_row_mutex);
+    if (tile_decoding_failed) return kLibgav1StatusUnknownError;
   }
+
   current_frame->SetFrameState(kFrameStateDecoded);
   return kStatusOk;
 }
