@@ -94,11 +94,11 @@ class LIBGAV1_PUBLIC Decoder {
   // NOTE: |EnqueueFrame()| does not copy the data. Therefore, after a
   // successful |EnqueueFrame()| call, the caller must keep the |data| buffer
   // alive until:
-  // 1) If release_input_buffer is not nullptr, then |data| buffer must be kept
-  // alive until release_input_buffer is called with the |buffer_private_data|
-  // passed into this EnqueueFrame call.
-  // 2) If release_input_buffer is nullptr, then |data| buffer must be kept
-  // alive until the corresponding DequeueFrame() call is completed.
+  // 1) If |settings_.release_input_buffer| is not nullptr, then |data| buffer
+  // must be kept alive until release_input_buffer is called with the
+  // |buffer_private_data| passed into this EnqueueFrame call.
+  // 2) If |settings_.release_input_buffer| is nullptr, then |data| buffer must
+  // be kept alive until the corresponding DequeueFrame() call is completed.
   StatusCode EnqueueFrame(const uint8_t* data, size_t size,
                           int64_t user_private_data, void* buffer_private_data);
 
