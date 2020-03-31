@@ -1136,7 +1136,11 @@ bool Tile::BlockInterPrediction(
       // reference_y_max by 2 since we only track the progress of Y planes.
       reference_y_max = LeftShift(reference_y_max, subsampling_y);
     }
-    if (!reference_frames_[reference_frame_index]->WaitUntil(reference_y_max)) {
+    if (reference_frame_progress_cache_[reference_frame_index] <
+            reference_y_max &&
+        !reference_frames_[reference_frame_index]->WaitUntil(
+            reference_y_max,
+            &reference_frame_progress_cache_[reference_frame_index])) {
       return false;
     }
   }
@@ -1275,7 +1279,11 @@ bool Tile::BlockWarpProcess(const Block& block, const Plane plane,
     // For U and V planes with subsampling, we need to multiply reference_y_max
     // by 2 since we only track the progress of Y planes.
     reference_y_max = LeftShift(reference_y_max, subsampling_y_[plane]);
-    if (!reference_frames_[reference_frame_index]->WaitUntil(reference_y_max)) {
+    if (reference_frame_progress_cache_[reference_frame_index] <
+            reference_y_max &&
+        !reference_frames_[reference_frame_index]->WaitUntil(
+            reference_y_max,
+            &reference_frame_progress_cache_[reference_frame_index])) {
       return false;
     }
   }

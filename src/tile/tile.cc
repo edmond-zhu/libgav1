@@ -454,6 +454,9 @@ Tile::Tile(int tile_number, const uint8_t* const data, size_t size,
   split_parse_and_decode_ = (thread_pool_ != nullptr &&
                              superblock_columns_ > intra_block_copy_lag_) ||
                             frame_parallel;
+  if (frame_parallel_) {
+    reference_frame_progress_cache_.fill(INT_MIN);
+  }
   memset(delta_lf_, 0, sizeof(delta_lf_));
   delta_lf_all_zero_ = true;
   const YuvBuffer& buffer = post_filter_.frame_buffer();

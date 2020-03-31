@@ -257,8 +257,14 @@ class RefCountedBuffer {
   }
 
   // Waits until the |progress_row| has been decoded (as indicated either by
-  // |progress_row_| or |frame_state_|).
-  bool WaitUntil(int progress_row) {
+  // |progress_row_| or |frame_state_|). |progress_row_cache| must not be
+  // nullptr and will be populated with the value of |progress_row_| after the
+  // wait (in a thread safe manner).
+  //
+  // Typical usage of |progress_row_cache| is as follows:
+  //  * Initialize |*progress_row_cache| to INT_MIN.
+  //  * Call WaitUntil only if |*progress_row_cache| < |progress_row|.
+  bool WaitUntil(int progress_row, int* progress_row_cache) {
     // If |progress_row| is negative, it means that the wait is on the top
     // border to be available. The top border will be available when row 0 has
     // been decoded. So we can simply wait on row 0 instead.
@@ -268,6 +274,7 @@ class RefCountedBuffer {
            !abort_) {
       progress_row_condvar_.wait(lock);
     }
+    *progress_row_cache = progress_row_;
     return !abort_;
   }
 

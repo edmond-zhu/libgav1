@@ -744,6 +744,9 @@ class Tile : public Allocable {
   // |use_intra_prediction_buffer_| is true.
   std::array<AlignedDynamicBuffer<uint8_t, kMaxAlignment>, kMaxPlanes>
       intra_prediction_buffer_;
+  // Stores the progress of the reference frames. This will be used to avoid
+  // unnecessary calls into RefCountedBuffer::WaitUntil().
+  std::array<int, kNumReferenceFrameTypes> reference_frame_progress_cache_;
 };
 
 struct Tile::Block {
