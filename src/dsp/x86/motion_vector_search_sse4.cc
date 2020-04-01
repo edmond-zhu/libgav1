@@ -127,7 +127,7 @@ inline void ForceInteger(const __m128i mv, void* const candidate_mvs) {
 
 void MvProjectionCompoundLowPrecision_SSE4_1(
     const MotionVector* temporal_mvs, const int8_t* temporal_reference_offsets,
-    const int reference_offsets[2], int count,
+    const int reference_offsets[2], const int count,
     CompoundMotionVector* candidate_mvs) {
   // |reference_offsets| non-zero check usually equals true and is ignored.
   // To facilitate the compilers, make a local copy of |reference_offsets|.
@@ -144,7 +144,7 @@ void MvProjectionCompoundLowPrecision_SSE4_1(
 
 void MvProjectionCompoundForceInteger_SSE4_1(
     const MotionVector* temporal_mvs, const int8_t* temporal_reference_offsets,
-    const int reference_offsets[2], int count,
+    const int reference_offsets[2], const int count,
     CompoundMotionVector* candidate_mvs) {
   // |reference_offsets| non-zero check usually equals true and is ignored.
   // To facilitate the compilers, make a local copy of |reference_offsets|.
@@ -161,7 +161,7 @@ void MvProjectionCompoundForceInteger_SSE4_1(
 
 void MvProjectionCompoundHighPrecision_SSE4_1(
     const MotionVector* temporal_mvs, const int8_t* temporal_reference_offsets,
-    const int reference_offsets[2], int count,
+    const int reference_offsets[2], const int count,
     CompoundMotionVector* candidate_mvs) {
   // |reference_offsets| non-zero check usually equals true and is ignored.
   // To facilitate the compilers, make a local copy of |reference_offsets|.
