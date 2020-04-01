@@ -764,8 +764,7 @@ struct FilmGrainFuncs {
 // information.
 using MotionFieldProjectionKernelFunc = void (*)(
     const ReferenceFrameType* source_reference_types, const MotionVector* mv,
-    const uint8_t order_hint[kNumReferenceFrameTypes],
-    unsigned int current_frame_order_hint, unsigned int order_hint_shift_bits,
+    const int8_t reference_offsets[kNumReferenceFrameTypes],
     int reference_to_current_with_sign, int dst_sign, int y8_start, int y8_end,
     int x8_start, int x8_end, TemporalMotionField* motion_field);
 

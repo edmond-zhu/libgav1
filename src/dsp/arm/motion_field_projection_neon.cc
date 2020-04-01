@@ -35,28 +35,17 @@ namespace dsp {
 namespace {
 
 inline void CalculateReferenceFramesInfo(
-    const uint8_t order_hint[kNumReferenceFrameTypes],
-    unsigned int current_frame_order_hint, unsigned int order_hint_shift_bits,
-    int8_t reference_offsets[kNumReferenceFrameTypes],
+    const int8_t reference_offsets[kNumReferenceFrameTypes],
     bool skip_references[kNumReferenceFrameTypes],
     int16_t projection_mv_divisions[kNumReferenceFrameTypes]) {
   // Initialize skip_references[kReferenceFrameIntra] to simplify branch
   // conditions in projection.
-  const int8x8_t current_order_hints = vdup_n_s8(current_frame_order_hint);
-  const int8x8_t order_hints = vreinterpret_s8_u8(vld1_u8(order_hint));
-  const int8x8_t diff = vsub_s8(current_order_hints, order_hints);
-  // |order_hint_shift_bits| - 24 could be -24. In this case diff is 0,
-  // and the behavior of left or right shifting -24 bits is defined for ARM NEON
-  // instructions, and the result of shifting 0 is still 0.
-  const int8x8_t left_shift_bits = vdup_n_s8(order_hint_shift_bits - 24);
-  const int8x8_t diff_shift_left = vshl_s8(diff, left_shift_bits);
-  const int8x8_t r_offsets = vshl_s8(diff_shift_left, vneg_s8(left_shift_bits));
+  const int8x8_t r_offsets = vld1_s8(reference_offsets);
   const uint8x8_t overflow = vcgt_s8(r_offsets, vdup_n_s8(kMaxFrameDistance));
   const uint8x8_t underflow = vcle_s8(r_offsets, vdup_n_s8(0));
   const int8x8_t sk = vreinterpret_s8_u8(vorr_u8(overflow, underflow));
   const int8x8_t skip_reference = vset_lane_s8(-1, sk, 0);
   const int8x8_t ref_offsets = vbic_s8(r_offsets, skip_reference);
-  vst1_s8(reference_offsets, r_offsets);
   vst1_s8(reinterpret_cast<int8_t*>(skip_references), skip_reference);
   projection_mv_divisions[0] =
       kProjectionMvDivisionLookup[vget_lane_s8(ref_offsets, 0)];
@@ -218,8 +207,7 @@ inline void CheckStore(const int8_t* skips, const int16x8_t position,
 // 7.9.2.
 void MotionFieldProjectionKernel_NEON(
     const ReferenceFrameType* source_reference_types, const MotionVector* mv,
-    const uint8_t order_hint[kNumReferenceFrameTypes],
-    unsigned int current_frame_order_hint, unsigned int order_hint_shift_bits,
+    const int8_t reference_offsets[kNumReferenceFrameTypes],
     int reference_to_current_with_sign, int dst_sign, int y8_start, int y8_end,
     int x8_start, int x8_end, TemporalMotionField* motion_field) {
   const ptrdiff_t stride = motion_field->mv.columns();
@@ -235,7 +223,6 @@ void MotionFieldProjectionKernel_NEON(
   int8_t* dst_reference_offset = motion_field->reference_offset[y8_start];
   MotionVector* dst_mv = motion_field->mv[y8_start];
   const int16x8_t d_sign = vdupq_n_s16(dst_sign);
-  int8_t reference_offsets[kNumReferenceFrameTypes];
   bool skip_references[kNumReferenceFrameTypes];
   int16_t projection_mv_divisions[kNumReferenceFrameTypes];
 
@@ -252,9 +239,8 @@ void MotionFieldProjectionKernel_NEON(
   // which means this optimization works for frame width up to 32K (each
   // position is a 8x8 block).
   assert(8 * stride <= 32768);
-  CalculateReferenceFramesInfo(order_hint, current_frame_order_hint,
-                               order_hint_shift_bits, reference_offsets,
-                               skip_references, projection_mv_divisions);
+  CalculateReferenceFramesInfo(reference_offsets, skip_references,
+                               projection_mv_divisions);
   const int8x8_t skip_reference =
       vld1_s8(reinterpret_cast<const int8_t*>(skip_references));
   const int8x8_t r_offsets = vld1_s8(reference_offsets);

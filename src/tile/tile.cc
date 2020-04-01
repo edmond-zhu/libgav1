@@ -552,9 +552,8 @@ bool Tile::Init() {
   if (frame_header_.use_ref_frame_mvs) {
     assert(sequence_header_.enable_order_hint);
     SetupMotionField(frame_header_, current_frame_, reference_frames_,
-                     sequence_header_.order_hint_shift_bits, row4x4_start_,
-                     row4x4_end_, column4x4_start_, column4x4_end_,
-                     &motion_field_);
+                     row4x4_start_, row4x4_end_, column4x4_start_,
+                     column4x4_end_, &motion_field_);
   }
   ResetLoopRestorationParams();
   return true;

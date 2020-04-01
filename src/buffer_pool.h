@@ -108,8 +108,6 @@ class RefCountedBuffer {
   bool showable_frame() const { return showable_frame_; }
   void set_showable_frame(bool value) { showable_frame_ = value; }
 
-  // This array has kNumReferenceFrameTypes elements.
-  const uint8_t* order_hint_array() const { return order_hint_.data(); }
   uint8_t order_hint(ReferenceFrameType reference_frame) const {
     return order_hint_[reference_frame];
   }
@@ -118,6 +116,9 @@ class RefCountedBuffer {
   }
   void ClearOrderHints() { order_hint_.fill(0); }
 
+  const int8_t* relative_distance_to_array() const {
+    return relative_distance_to_.data();
+  }
   int relative_distance_from(ReferenceFrameType reference_frame) const {
     return relative_distance_from_[reference_frame];
   }

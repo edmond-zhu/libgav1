@@ -759,12 +759,12 @@ void AddSample(const Tile::Block& block, int delta_row, int delta_column,
 // or -1 so that it can be XORed and subtracted directly in ApplySign() and
 // corresponding SIMD implementations.
 bool MotionFieldProjection(
-    const ObuFrameHeader& frame_header, const RefCountedBuffer& current_frame,
+    const ObuFrameHeader& frame_header,
     const std::array<RefCountedBufferPtr, kNumReferenceFrameTypes>&
         reference_frames,
-    ReferenceFrameType source, unsigned int order_hint_shift_bits,
-    int reference_to_current_with_sign, int dst_sign, int y8_start, int y8_end,
-    int x8_start, int x8_end, TemporalMotionField* const motion_field) {
+    ReferenceFrameType source, int reference_to_current_with_sign, int dst_sign,
+    int y8_start, int y8_end, int x8_start, int x8_end,
+    TemporalMotionField* const motion_field) {
   const int source_index =
       frame_header.reference_frame_index[source - kReferenceFrameLast];
   auto* const source_frame = reference_frames[source_index].get();
@@ -781,9 +781,9 @@ bool MotionFieldProjection(
   dsp.motion_field_projection_kernel(
       source_frame->motion_field_reference_frame(y8_start, 0),
       source_frame->motion_field_mv(y8_start, 0),
-      source_frame->order_hint_array(), current_frame.order_hint(source),
-      order_hint_shift_bits, reference_to_current_with_sign, dst_sign, y8_start,
-      y8_end, x8_start, x8_end, motion_field);
+      source_frame->relative_distance_to_array(),
+      reference_to_current_with_sign, dst_sign, y8_start, y8_end, x8_start,
+      x8_end, motion_field);
   return true;
 }
 
@@ -928,11 +928,9 @@ void SetupMotionField(
     const ObuFrameHeader& frame_header, const RefCountedBuffer& current_frame,
     const std::array<RefCountedBufferPtr, kNumReferenceFrameTypes>&
         reference_frames,
-    unsigned int order_hint_shift_bits, int row4x4_start, int row4x4_end,
-    int column4x4_start, int column4x4_end,
+    int row4x4_start, int row4x4_end, int column4x4_start, int column4x4_end,
     TemporalMotionField* const motion_field) {
   assert(frame_header.use_ref_frame_mvs);
-  assert(order_hint_shift_bits != 0);
   const int y8_start = DivideBy2(row4x4_start);
   const int y8_end = DivideBy2(std::min(row4x4_end, frame_header.rows4x4));
   const int x8_start = DivideBy2(column4x4_start);
@@ -947,8 +945,7 @@ void SetupMotionField(
     const int reference_offset_last =
         -current_frame.relative_distance_from(kReferenceFrameLast);
     if (std::abs(reference_offset_last) <= kMaxFrameDistance) {
-      MotionFieldProjection(frame_header, current_frame, reference_frames,
-                            kReferenceFrameLast, order_hint_shift_bits,
+      MotionFieldProjection(frame_header, reference_frames, kReferenceFrameLast,
                             reference_offset_last, -1, y8_start, y8_end,
                             x8_start, x8_end, motion_field);
     }
@@ -957,17 +954,17 @@ void SetupMotionField(
   const int reference_offset_backward =
       current_frame.relative_distance_from(kReferenceFrameBackward);
   if (reference_offset_backward > 0 &&
-      MotionFieldProjection(frame_header, current_frame, reference_frames,
-                            kReferenceFrameBackward, order_hint_shift_bits,
-                            reference_offset_backward, 0, y8_start, y8_end,
-                            x8_start, x8_end, motion_field)) {
+      MotionFieldProjection(frame_header, reference_frames,
+                            kReferenceFrameBackward, reference_offset_backward,
+                            0, y8_start, y8_end, x8_start, x8_end,
+                            motion_field)) {
     --ref_stamp;
   }
   const int reference_offset_alternate2 =
       current_frame.relative_distance_from(kReferenceFrameAlternate2);
   if (reference_offset_alternate2 > 0 &&
-      MotionFieldProjection(frame_header, current_frame, reference_frames,
-                            kReferenceFrameAlternate2, order_hint_shift_bits,
+      MotionFieldProjection(frame_header, reference_frames,
+                            kReferenceFrameAlternate2,
                             reference_offset_alternate2, 0, y8_start, y8_end,
                             x8_start, x8_end, motion_field)) {
     --ref_stamp;
@@ -976,8 +973,8 @@ void SetupMotionField(
     const int reference_offset_alternate =
         current_frame.relative_distance_from(kReferenceFrameAlternate);
     if (reference_offset_alternate > 0 &&
-        MotionFieldProjection(frame_header, current_frame, reference_frames,
-                              kReferenceFrameAlternate, order_hint_shift_bits,
+        MotionFieldProjection(frame_header, reference_frames,
+                              kReferenceFrameAlternate,
                               reference_offset_alternate, 0, y8_start, y8_end,
                               x8_start, x8_end, motion_field)) {
       --ref_stamp;
@@ -987,10 +984,9 @@ void SetupMotionField(
     const int reference_offset_last2 =
         -current_frame.relative_distance_from(kReferenceFrameLast2);
     if (std::abs(reference_offset_last2) <= kMaxFrameDistance) {
-      MotionFieldProjection(frame_header, current_frame, reference_frames,
-                            kReferenceFrameLast2, order_hint_shift_bits,
-                            reference_offset_last2, -1, y8_start, y8_end,
-                            x8_start, x8_end, motion_field);
+      MotionFieldProjection(frame_header, reference_frames,
+                            kReferenceFrameLast2, reference_offset_last2, -1,
+                            y8_start, y8_end, x8_start, x8_end, motion_field);
     }
   }
 }
