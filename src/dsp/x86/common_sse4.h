@@ -91,6 +91,14 @@ inline __m128i Load2x2(const void* src1, const void* src2) {
   return _mm_cvtsi32_si128(val1 | (val2 << 16));
 }
 
+// Load 2 uint8_t values into |lane| * 2 and |lane| * 2 + 1.
+template <int lane>
+inline __m128i Load2(const void* const buf, __m128i val) {
+  uint16_t temp;
+  memcpy(&temp, buf, 2);
+  return _mm_insert_epi16(val, temp, lane);
+}
+
 inline __m128i Load4(const void* src) {
   // With new compilers such as clang 8.0.0 we can use the new _mm_loadu_si32
   // intrinsic. Both _mm_loadu_si32(src) and the code here are compiled into a
