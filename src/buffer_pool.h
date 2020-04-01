@@ -259,7 +259,7 @@ class RefCountedBuffer {
   // Waits until the |progress_row| has been decoded (as indicated either by
   // |progress_row_| or |frame_state_|). |progress_row_cache| must not be
   // nullptr and will be populated with the value of |progress_row_| after the
-  // wait (in a thread safe manner).
+  // wait.
   //
   // Typical usage of |progress_row_cache| is as follows:
   //  * Initialize |*progress_row_cache| to INT_MIN.

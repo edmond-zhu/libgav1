@@ -103,17 +103,17 @@ class ThreadingStrategy {
 // Initializes the |frame_thread_pool| and the necessary worker threadpools (the
 // threading_strategy objects in each of the frame scratch buffer in
 // |frame_scratch_buffer_pool|) as follows:
-//  * frame_thread_count = 2 (this is fixed for now and will be dynamic
+//  * frame_threads = 2 (this is fixed for now and will be dynamic
 //    eventually).
-//  * |frame_thread_pool| is created with |frame_thread_count| threads.
+//  * |frame_thread_pool| is created with |frame_threads| threads.
 //  * divide the remaining number of threads into each frame thread and
 //    initialize a frame_scratch_buffer.threading_strategy for each frame
 //    thread.
 //  When this function is called, |frame_scratch_buffer_pool| must be empty. If
 //  this function returns true, then |frame_thread_pool| has been successfully
 //  initialized and |frame_scratch_buffer_pool| has been successfully populated
-//  with frame_threads buffers to be used by each frame thread. The total number
-//  of threads that this function creates will always be equal to
+//  with |frame_threads| buffers to be used by each frame thread. The total
+//  number of threads that this function creates will always be equal to
 //  |thread_count|.
 LIBGAV1_MUST_USE_RESULT bool InitializeThreadPoolsForFrameParallel(
     int thread_count, std::unique_ptr<ThreadPool>* frame_thread_pool,

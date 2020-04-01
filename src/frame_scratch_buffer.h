@@ -69,16 +69,15 @@ struct FrameScratchBuffer {
   // in-frame multi-theading is implemented.
   ThreadingStrategy threading_strategy;
   std::mutex superblock_row_mutex;
-  // The size of this buffer is the number of superblock rows. Index i is
-  // incremented whenever a tile finishes decoding superblock row at index i. If
-  // the count reaches tile_columns, then |superblock_row_progress_condvar[i]|
-  // is notified.
+  // The size of this buffer is the number of superblock rows.
+  // |superblock_row_progress[i]| is incremented whenever a tile finishes
+  // decoding superblock row at index i. If the count reaches tile_columns, then
+  // |superblock_row_progress_condvar[i]| is notified.
   DynamicBuffer<int> superblock_row_progress
       LIBGAV1_GUARDED_BY(superblock_row_mutex);
   // The size of this buffer is the number of superblock rows. Used to wait for
   // |superblock_row_progress[i]| to reach tile_columns.
-  DynamicBuffer<std::condition_variable> superblock_row_progress_condvar
-      LIBGAV1_GUARDED_BY(superblock_row_mutex);
+  DynamicBuffer<std::condition_variable> superblock_row_progress_condvar;
 };
 
 class FrameScratchBufferPool {
