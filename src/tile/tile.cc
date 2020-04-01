@@ -2677,12 +2677,7 @@ void Tile::StoreMotionFieldMvsIntoCurrentFrame(const Block& block) {
         // The next line is equivalent to:
         // mv_row <= kRefMvsLimit && mv_column <= kRefMvsLimit
         (mv_row | mv_column) <= kRefMvsLimit &&
-        GetRelativeDistance(
-            reference_order_hint_
-                [frame_header_.reference_frame_index[reference_frame_to_store -
-                                                     kReferenceFrameLast]],
-            frame_header_.order_hint,
-            sequence_header_.order_hint_shift_bits) < 0) {
+        current_frame_.relative_distance_from(reference_frame_to_store) < 0) {
       const int row_start8x8 = DivideBy2(row_start4x4);
       const int row_limit8x8 = DivideBy2(row_limit4x4);
       const int column_start8x8 = DivideBy2(column_start4x4);

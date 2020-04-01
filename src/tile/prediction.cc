@@ -942,14 +942,12 @@ void Tile::DistanceWeightedPrediction(void* prediction_0, void* prediction_1,
   for (int reference = 0; reference < 2; ++reference) {
     const BlockParameters& bp =
         *block_parameters_holder_.Find(candidate_row, candidate_column);
-    const unsigned int reference_hint =
-        current_frame_.order_hint(bp.reference_frame[reference]);
     // Note: distance[0] and distance[1] correspond to relative distance
     // between current frame and reference frame [1] and [0], respectively.
-    distance[1 - reference] = Clip3(
-        std::abs(GetRelativeDistance(reference_hint, frame_header_.order_hint,
-                                     sequence_header_.order_hint_shift_bits)),
-        0, kMaxFrameDistance);
+    distance[1 - reference] =
+        std::min(std::abs(current_frame_.relative_distance_from(
+                     bp.reference_frame[reference])),
+                 static_cast<int>(kMaxFrameDistance));
   }
   GetDistanceWeights(distance, weight);
 

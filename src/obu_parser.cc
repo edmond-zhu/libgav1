@@ -1192,6 +1192,12 @@ bool ObuParser::IsSkipModeAllowed() {
     const unsigned int reference_hint =
         decoder_state_
             .reference_order_hint[frame_header_.reference_frame_index[i]];
+    // TODO(linfengz): |relative_distance| equals
+    // current_frame_->relative_distance_from(
+    //     static_cast<ReferenceFrameType>(i + kReferenceFrameLast));
+    // However, the unit test ObuParserTest.SkipModeParameters() would fail.
+    // Will figure out how to initialize
+    // |current_frame_.relative_distance_from_| in the RefCountedBuffer later.
     const int relative_distance =
         GetRelativeDistance(reference_hint, frame_header_.order_hint,
                             sequence_header_.order_hint_shift_bits);
@@ -1843,6 +1849,7 @@ bool ObuParser::ParseFrameParameters() {
     decoder_state_.reference_valid.fill(false);
     decoder_state_.reference_order_hint.fill(0);
     current_frame_->ClearOrderHints();
+    current_frame_->ClearRelativeDistances();
   }
   OBU_READ_BIT_OR_FAIL;
   frame_header_.enable_cdf_update = !static_cast<bool>(scratch);
@@ -2099,9 +2106,18 @@ bool ObuParser::ParseFrameParameters() {
           decoder_state_
               .reference_order_hint[frame_header_.reference_frame_index[i]];
       current_frame_->set_order_hint(reference_frame, hint);
-      decoder_state_.reference_frame_sign_bias[reference_frame] =
+      const int relative_distance_to =
+          GetRelativeDistance(frame_header_.order_hint, hint,
+                              sequence_header_.order_hint_shift_bits);
+      const int relative_distance_from =
           GetRelativeDistance(hint, frame_header_.order_hint,
-                              sequence_header_.order_hint_shift_bits) > 0;
+                              sequence_header_.order_hint_shift_bits);
+      current_frame_->set_relative_distance_to(reference_frame,
+                                               relative_distance_to);
+      current_frame_->set_relative_distance_from(reference_frame,
+                                                 relative_distance_from);
+      decoder_state_.reference_frame_sign_bias[reference_frame] =
+          relative_distance_from > 0;
     }
   }
   if (frame_header_.enable_cdf_update &&
