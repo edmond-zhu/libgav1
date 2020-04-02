@@ -148,7 +148,7 @@ bool InitializeThreadPoolsForFrameParallel(
   int threads_per_frame = remaining_threads / frame_threads;
   assert(frame_threads <= kFrameThreads);
   std::unique_ptr<FrameScratchBuffer> frame_scratch_buffers[kFrameThreads] = {};
-  const int extra_threads_for_first_buffer = remaining_threads % frame_threads;
+  const int extra_threads = remaining_threads % frame_threads;
   // Create the tile thread pools.
   for (int i = 0; i < frame_threads && remaining_threads > 0; ++i) {
     frame_scratch_buffers[i] = frame_scratch_buffer_pool->Get();
@@ -156,20 +156,22 @@ bool InitializeThreadPoolsForFrameParallel(
       return false;
     }
     // If the number of tile threads cannot be divided equally amongst all the
-    // frame threads, simply assign the extra to the first frame thread.
-    // TODO(vigneshv): This can be improved by splitting the extra threads
-    // across frame in a round robin fashion.
+    // frame threads, assign one extra thread to the first |extra_threads| frame
+    // threads.
     const int current_frame_thread_count =
-        threads_per_frame + ((i == 0) ? extra_threads_for_first_buffer : 0);
+        threads_per_frame + static_cast<int>(i < extra_threads);
     if (!frame_scratch_buffers[i]->threading_strategy.Reset(
             current_frame_thread_count)) {
       return false;
     }
     remaining_threads -= current_frame_thread_count;
   }
-  for (auto& frame_scratch_buffer : frame_scratch_buffers) {
-    if (frame_scratch_buffer == nullptr) break;
-    frame_scratch_buffer_pool->Release(std::move(frame_scratch_buffer));
+  // We release the frame scratch buffers in reverse order so that the extra
+  // threads are allocated to buffers in the top of the stack.
+  for (int i = frame_threads - 1; i >= 0; --i) {
+    if (frame_scratch_buffers[i] != nullptr) {
+      frame_scratch_buffer_pool->Release(std::move(frame_scratch_buffers[i]));
+    }
   }
   return true;
 }
