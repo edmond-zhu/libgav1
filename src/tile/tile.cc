@@ -2647,7 +2647,10 @@ void Tile::BuildBitMaskHelper(const Block& block, int row4x4, int column4x4,
 }
 
 void Tile::StoreMotionFieldMvsIntoCurrentFrame(const Block& block) {
-  if (frame_header_.refresh_frame_flags == 0) return;
+  if (frame_header_.refresh_frame_flags == 0 ||
+      IsIntraFrame(frame_header_.frame_type)) {
+    return;
+  }
   // Iterate over odd rows/columns beginning at the first odd row/column for the
   // block. It is done this way because motion field mvs are only needed at a
   // 8x8 granularity.
