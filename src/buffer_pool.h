@@ -114,7 +114,6 @@ class RefCountedBuffer {
   void set_order_hint(ReferenceFrameType reference_frame, uint8_t order_hint) {
     order_hint_[reference_frame] = order_hint;
   }
-  void ClearOrderHints() { order_hint_.fill(0); }
 
   const int8_t* relative_distance_to_array() const {
     return relative_distance_to_.data();
@@ -132,10 +131,6 @@ class RefCountedBuffer {
   void set_relative_distance_to(ReferenceFrameType reference_frame,
                                 int8_t relative_distance) {
     relative_distance_to_[reference_frame] = relative_distance;
-  }
-  void ClearRelativeDistances() {
-    relative_distance_from_.fill(0);
-    relative_distance_to_.fill(0);
   }
 
   // Sets upscaled_width_, frame_width_, frame_height_, render_width_,
@@ -338,7 +333,8 @@ class RefCountedBuffer {
   ChromaSamplePosition chroma_sample_position_ = kChromaSamplePositionUnknown;
   bool showable_frame_ = false;
 
-  std::array<uint8_t, kNumReferenceFrameTypes> order_hint_ = {};
+  // |order_hint_| is used by inter frames only.
+  std::array<uint8_t, kNumReferenceFrameTypes> order_hint_;
   // An example when |relative_distance_from_| does not equal
   // -|relative_distance_to_|:
   // |relative_distance_from_| = GetRelativeDistance(7, 71, 25) = -64
@@ -346,10 +342,11 @@ class RefCountedBuffer {
   // This is why we need both |relative_distance_from_| and
   // |relative_distance_to_|.
   // |relative_distance_from_|: Relative distances from reference frames to this
-  // frame.
-  std::array<int8_t, kNumReferenceFrameTypes> relative_distance_from_ = {};
-  // |relative_distance_to_|: Relative distances to reference frames.
-  std::array<int8_t, kNumReferenceFrameTypes> relative_distance_to_ = {};
+  // frame. Used by inter frames only.
+  std::array<int8_t, kNumReferenceFrameTypes> relative_distance_from_;
+  // |relative_distance_to_|: Relative distances to reference frames. Used by
+  // inter frames only.
+  std::array<int8_t, kNumReferenceFrameTypes> relative_distance_to_;
 
   int32_t upscaled_width_ = 0;
   int32_t frame_width_ = 0;

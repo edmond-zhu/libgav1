@@ -1848,8 +1848,6 @@ bool ObuParser::ParseFrameParameters() {
   if (frame_header_.frame_type == kFrameKey && frame_header_.show_frame) {
     decoder_state_.reference_valid.fill(false);
     decoder_state_.reference_order_hint.fill(0);
-    current_frame_->ClearOrderHints();
-    current_frame_->ClearRelativeDistances();
   }
   OBU_READ_BIT_OR_FAIL;
   frame_header_.enable_cdf_update = !static_cast<bool>(scratch);
@@ -2099,23 +2097,33 @@ bool ObuParser::ParseFrameParameters() {
     return false;
   }
   if (!IsIntraFrame(frame_header_.frame_type)) {
-    for (int i = 0; i < kNumInterReferenceFrameTypes; ++i) {
-      const auto reference_frame =
-          static_cast<ReferenceFrameType>(kReferenceFrameLast + i);
+    // Initialize the kReferenceFrameIntra type reference frame information to
+    // simplify the frame type validation in motion field projection.
+    // Set the kReferenceFrameIntra type |order_hint_| to
+    // |frame_header_.order_hint|. This guarantees that in SIMD implementations,
+    // the other reference frame information of the kReferenceFrameIntra type
+    // could be correctly initialized using the following loop with
+    // |frame_header_.order_hint| being the |hint|.
+    current_frame_->set_order_hint(kReferenceFrameIntra,
+                                   frame_header_.order_hint);
+    current_frame_->set_relative_distance_from(kReferenceFrameIntra, 0);
+    current_frame_->set_relative_distance_to(kReferenceFrameIntra, 0);
+    for (int i = kReferenceFrameLast; i <= kNumInterReferenceFrameTypes; ++i) {
+      const auto reference_frame = static_cast<ReferenceFrameType>(i);
       const uint8_t hint =
-          decoder_state_
-              .reference_order_hint[frame_header_.reference_frame_index[i]];
+          decoder_state_.reference_order_hint
+              [frame_header_.reference_frame_index[i - kReferenceFrameLast]];
       current_frame_->set_order_hint(reference_frame, hint);
-      const int relative_distance_to =
-          GetRelativeDistance(frame_header_.order_hint, hint,
-                              sequence_header_.order_hint_shift_bits);
       const int relative_distance_from =
           GetRelativeDistance(hint, frame_header_.order_hint,
                               sequence_header_.order_hint_shift_bits);
-      current_frame_->set_relative_distance_to(reference_frame,
-                                               relative_distance_to);
+      const int relative_distance_to =
+          GetRelativeDistance(frame_header_.order_hint, hint,
+                              sequence_header_.order_hint_shift_bits);
       current_frame_->set_relative_distance_from(reference_frame,
                                                  relative_distance_from);
+      current_frame_->set_relative_distance_to(reference_frame,
+                                               relative_distance_to);
       decoder_state_.reference_frame_sign_bias[reference_frame] =
           relative_distance_from > 0;
     }

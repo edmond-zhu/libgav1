@@ -937,17 +937,19 @@ void SetupMotionField(
   const int x8_end =
       DivideBy2(std::min(column4x4_end, frame_header.columns4x4));
   const int last_index = frame_header.reference_frame_index[0];
-  const int last_alternate_order_hint =
-      reference_frames[last_index]->order_hint(kReferenceFrameAlternate);
-  const int current_gold_order_hint =
-      current_frame.order_hint(kReferenceFrameGolden);
-  if (last_alternate_order_hint != current_gold_order_hint) {
-    const int reference_offset_last =
-        -current_frame.relative_distance_from(kReferenceFrameLast);
-    if (std::abs(reference_offset_last) <= kMaxFrameDistance) {
-      MotionFieldProjection(frame_header, reference_frames, kReferenceFrameLast,
-                            reference_offset_last, -1, y8_start, y8_end,
-                            x8_start, x8_end, motion_field);
+  if (!IsIntraFrame(reference_frames[last_index]->frame_type())) {
+    const int last_alternate_order_hint =
+        reference_frames[last_index]->order_hint(kReferenceFrameAlternate);
+    const int current_gold_order_hint =
+        current_frame.order_hint(kReferenceFrameGolden);
+    if (last_alternate_order_hint != current_gold_order_hint) {
+      const int reference_offset_last =
+          -current_frame.relative_distance_from(kReferenceFrameLast);
+      if (std::abs(reference_offset_last) <= kMaxFrameDistance) {
+        MotionFieldProjection(frame_header, reference_frames,
+                              kReferenceFrameLast, reference_offset_last, -1,
+                              y8_start, y8_end, x8_start, x8_end, motion_field);
+      }
     }
   }
   int ref_stamp = 1;
