@@ -75,6 +75,23 @@ void SetFailureAndNotifyAll(std::mutex* const mutex, bool* const failed,
   }
 }
 
+// Helper class that releases the frame scratch buffer in the destructor.
+class FrameScratchBufferReleaser {
+ public:
+  FrameScratchBufferReleaser(
+      FrameScratchBufferPool* frame_scratch_buffer_pool,
+      std::unique_ptr<FrameScratchBuffer>* frame_scratch_buffer)
+      : frame_scratch_buffer_pool_(frame_scratch_buffer_pool),
+        frame_scratch_buffer_(frame_scratch_buffer) {}
+  ~FrameScratchBufferReleaser() {
+    frame_scratch_buffer_pool_->Release(std::move(*frame_scratch_buffer_));
+  }
+
+ private:
+  FrameScratchBufferPool* const frame_scratch_buffer_pool_;
+  std::unique_ptr<FrameScratchBuffer>* const frame_scratch_buffer_;
+};
+
 }  // namespace
 
 // static
@@ -339,6 +356,17 @@ StatusCode DecoderImpl::DecodeFrame(EncodedFrame* const encoded_frame) {
   const Vector<ObuTileGroup>& tile_groups = encoded_frame->tile_groups;
   RefCountedBufferPtr current_frame = std::move(encoded_frame->frame);
 
+  std::unique_ptr<FrameScratchBuffer> frame_scratch_buffer =
+      frame_scratch_buffer_pool_.Get();
+  if (frame_scratch_buffer == nullptr) {
+    LIBGAV1_DLOG(ERROR, "Error when getting FrameScratchBuffer.");
+    return kStatusOutOfMemory;
+  }
+  // |frame_scratch_buffer| will be released when this local variable goes out
+  // of scope (i.e.) on any return path in this function.
+  FrameScratchBufferReleaser frame_scratch_buffer_releaser(
+      &frame_scratch_buffer_pool_, &frame_scratch_buffer);
+
   StatusCode status;
   if (!frame_header.show_existing_frame) {
     if (tile_groups.empty()) {
@@ -348,16 +376,9 @@ StatusCode DecoderImpl::DecodeFrame(EncodedFrame* const encoded_frame) {
       // not have a reason to handle those cases, so we simply continue.
       return kStatusOk;
     }
-    std::unique_ptr<FrameScratchBuffer> frame_scratch_buffer =
-        frame_scratch_buffer_pool_.Get();
-    if (frame_scratch_buffer == nullptr) {
-      LIBGAV1_DLOG(ERROR, "Error when getting FrameScratchBuffer.");
-      return kStatusOutOfMemory;
-    }
     status = DecodeTiles(sequence_header, frame_header, tile_groups,
                          encoded_frame->state, frame_scratch_buffer.get(),
                          current_frame.get());
-    frame_scratch_buffer_pool_.Release(std::move(frame_scratch_buffer));
     if (status != kStatusOk) {
       return status;
     }
@@ -371,8 +392,9 @@ StatusCode DecoderImpl::DecodeFrame(EncodedFrame* const encoded_frame) {
     return kStatusOk;
   }
   RefCountedBufferPtr film_grain_frame;
-  status = ApplyFilmGrain(sequence_header, frame_header, current_frame,
-                          &film_grain_frame, /*thread_pool=*/nullptr);
+  status = ApplyFilmGrain(
+      sequence_header, frame_header, current_frame, &film_grain_frame,
+      frame_scratch_buffer->threading_strategy.thread_pool());
   if (status != kStatusOk) {
     return status;
   }
@@ -411,6 +433,17 @@ StatusCode DecoderImpl::DecodeTemporalUnit(const TemporalUnit& temporal_unit,
   RefCountedBufferPtr current_frame;
   RefCountedBufferPtr displayable_frame;
   StatusCode status;
+  std::unique_ptr<FrameScratchBuffer> frame_scratch_buffer =
+      frame_scratch_buffer_pool_.Get();
+  if (frame_scratch_buffer == nullptr) {
+    LIBGAV1_DLOG(ERROR, "Error when getting FrameScratchBuffer.");
+    return kStatusOutOfMemory;
+  }
+  // |frame_scratch_buffer| will be released when this local variable goes out
+  // of scope (i.e.) on any return path in this function.
+  FrameScratchBufferReleaser frame_scratch_buffer_releaser(
+      &frame_scratch_buffer_pool_, &frame_scratch_buffer);
+
   while (obu->HasData()) {
     status = obu->ParseOneFrame(&current_frame);
     if (status != kStatusOk) {
@@ -442,16 +475,9 @@ StatusCode DecoderImpl::DecodeTemporalUnit(const TemporalUnit& temporal_unit,
         // not have a reason to handle those cases, so we simply continue.
         continue;
       }
-      std::unique_ptr<FrameScratchBuffer> frame_scratch_buffer =
-          frame_scratch_buffer_pool_.Get();
-      if (frame_scratch_buffer == nullptr) {
-        LIBGAV1_DLOG(ERROR, "Error when getting FrameScratchBuffer.");
-        return kStatusOutOfMemory;
-      }
       status = DecodeTiles(obu->sequence_header(), obu->frame_header(),
                            obu->tile_groups(), state_,
                            frame_scratch_buffer.get(), current_frame.get());
-      frame_scratch_buffer_pool_.Release(std::move(frame_scratch_buffer));
       if (status != kStatusOk) {
         return status;
       }
@@ -472,17 +498,10 @@ StatusCode DecoderImpl::DecodeTemporalUnit(const TemporalUnit& temporal_unit,
       }
       displayable_frame = std::move(current_frame);
       RefCountedBufferPtr film_grain_frame;
-      std::unique_ptr<FrameScratchBuffer> frame_scratch_buffer =
-          frame_scratch_buffer_pool_.Get();
-      if (frame_scratch_buffer == nullptr) {
-        LIBGAV1_DLOG(ERROR, "Error when getting FrameScratchBuffer.");
-        return kStatusOutOfMemory;
-      }
       status = ApplyFilmGrain(
           obu->sequence_header(), obu->frame_header(), displayable_frame,
           &film_grain_frame,
           frame_scratch_buffer->threading_strategy.film_grain_thread_pool());
-      frame_scratch_buffer_pool_.Release(std::move(frame_scratch_buffer));
       if (status != kStatusOk) return status;
       displayable_frame = std::move(film_grain_frame);
     }
