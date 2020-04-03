@@ -1193,11 +1193,11 @@ bool ObuParser::IsSkipModeAllowed() {
         decoder_state_
             .reference_order_hint[frame_header_.reference_frame_index[i]];
     // TODO(linfengz): |relative_distance| equals
-    // current_frame_->relative_distance_from(
-    //     static_cast<ReferenceFrameType>(i + kReferenceFrameLast));
+    // current_frame_->reference_info()->
+    //     relative_distance_from[i + kReferenceFrameLast];
     // However, the unit test ObuParserTest.SkipModeParameters() would fail.
-    // Will figure out how to initialize
-    // |current_frame_.relative_distance_from_| in the RefCountedBuffer later.
+    // Will figure out how to initialize |current_frame_.reference_info_| in the
+    // RefCountedBuffer later.
     const int relative_distance =
         GetRelativeDistance(reference_hint, frame_header_.order_hint,
                             sequence_header_.order_hint_shift_bits);
@@ -2104,26 +2104,26 @@ bool ObuParser::ParseFrameParameters() {
     // the other reference frame information of the kReferenceFrameIntra type
     // could be correctly initialized using the following loop with
     // |frame_header_.order_hint| being the |hint|.
-    current_frame_->set_order_hint(kReferenceFrameIntra,
-                                   frame_header_.order_hint);
-    current_frame_->set_relative_distance_from(kReferenceFrameIntra, 0);
-    current_frame_->set_relative_distance_to(kReferenceFrameIntra, 0);
+    ReferenceInfo* const reference_info = current_frame_->reference_info();
+    reference_info->order_hint[kReferenceFrameIntra] = frame_header_.order_hint;
+    reference_info->relative_distance_from[kReferenceFrameIntra] = 0;
+    reference_info->relative_distance_to[kReferenceFrameIntra] = 0;
     for (int i = kReferenceFrameLast; i <= kNumInterReferenceFrameTypes; ++i) {
       const auto reference_frame = static_cast<ReferenceFrameType>(i);
       const uint8_t hint =
           decoder_state_.reference_order_hint
               [frame_header_.reference_frame_index[i - kReferenceFrameLast]];
-      current_frame_->set_order_hint(reference_frame, hint);
+      reference_info->order_hint[reference_frame] = hint;
       const int relative_distance_from =
           GetRelativeDistance(hint, frame_header_.order_hint,
                               sequence_header_.order_hint_shift_bits);
       const int relative_distance_to =
           GetRelativeDistance(frame_header_.order_hint, hint,
                               sequence_header_.order_hint_shift_bits);
-      current_frame_->set_relative_distance_from(reference_frame,
-                                                 relative_distance_from);
-      current_frame_->set_relative_distance_to(reference_frame,
-                                               relative_distance_to);
+      reference_info->relative_distance_from[reference_frame] =
+          relative_distance_from;
+      reference_info->relative_distance_to[reference_frame] =
+          relative_distance_to;
       decoder_state_.reference_frame_sign_bias[reference_frame] =
           relative_distance_from > 0;
     }

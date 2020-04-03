@@ -73,18 +73,7 @@ bool RefCountedBuffer::SetFrameDimensions(const ObuFrameHeader& frame_header) {
       !IsIntraFrame(frame_header.frame_type)) {
     const int rows4x4_half = DivideBy2(rows4x4_);
     const int columns4x4_half = DivideBy2(columns4x4_);
-    // Initialize |motion_field_reference_frame_| so that
-    // Tile::StoreMotionFieldMvsIntoCurrentFrame() can skip some updates when
-    // the updates are the same as the initialized value.
-    // Set to kReferenceFrameIntra instead of kReferenceFrameNone to simplify
-    // branch conditions in motion field projection.
-    // The following memory initialization of contiguous memory is very fast. It
-    // is not recommended to make the initialization multi-threaded, unless the
-    // memory which needs to be initialized in each thread is still contiguous.
-    if (!motion_field_reference_frame_.Reset(rows4x4_half, columns4x4_half,
-                                             /*zero_initialize=*/true) ||
-        !motion_field_mv_.Reset(rows4x4_half, columns4x4_half,
-                                /*zero_initialize=*/false)) {
+    if (!reference_info_.Reset(rows4x4_half, columns4x4_half)) {
       return false;
     }
   }

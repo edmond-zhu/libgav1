@@ -2666,6 +2666,7 @@ void Tile::StoreMotionFieldMvsIntoCurrentFrame(const Block& block) {
   // The largest reference MV component that can be saved.
   constexpr int kRefMvsLimit = (1 << 12) - 1;
   const BlockParameters& bp = *block.bp;
+  ReferenceInfo* reference_info = current_frame_.reference_info();
   for (int i = 1; i >= 0; --i) {
     const ReferenceFrameType reference_frame_to_store = bp.reference_frame[i];
     // Must make a local copy so that StoreMotionFieldMvs() knows there is no
@@ -2679,7 +2680,7 @@ void Tile::StoreMotionFieldMvsIntoCurrentFrame(const Block& block) {
         // The next line is equivalent to:
         // mv_row <= kRefMvsLimit && mv_column <= kRefMvsLimit
         (mv_row | mv_column) <= kRefMvsLimit &&
-        current_frame_.relative_distance_from(reference_frame_to_store) < 0) {
+        reference_info->relative_distance_from[reference_frame_to_store] < 0) {
       const int row_start8x8 = DivideBy2(row_start4x4);
       const int row_limit8x8 = DivideBy2(row_limit4x4);
       const int column_start8x8 = DivideBy2(column_start4x4);
@@ -2688,10 +2689,10 @@ void Tile::StoreMotionFieldMvsIntoCurrentFrame(const Block& block) {
       const int columns = column_limit8x8 - column_start8x8;
       const ptrdiff_t stride = DivideBy2(current_frame_.columns4x4());
       ReferenceFrameType* const reference_frame_row_start =
-          current_frame_.motion_field_reference_frame(row_start8x8,
-                                                      column_start8x8);
+          &reference_info
+               ->motion_field_reference_frame[row_start8x8][column_start8x8];
       MotionVector* const mv =
-          current_frame_.motion_field_mv(row_start8x8, column_start8x8);
+          &reference_info->motion_field_mv[row_start8x8][column_start8x8];
 
       // Specialize columns cases 1, 2, 4, 8 and 16. This makes memset() inlined
       // and simplifies std::fill() for these cases.

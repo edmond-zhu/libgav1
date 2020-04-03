@@ -29,9 +29,9 @@
 #include "src/gav1/frame_buffer.h"
 #include "src/internal_frame_buffer_list.h"
 #include "src/symbol_decoder_context.h"
-#include "src/utils/array_2d.h"
 #include "src/utils/compiler_attributes.h"
 #include "src/utils/constants.h"
+#include "src/utils/reference_info.h"
 #include "src/utils/segmentation.h"
 #include "src/utils/segmentation_map.h"
 #include "src/utils/types.h"
@@ -108,36 +108,11 @@ class RefCountedBuffer {
   bool showable_frame() const { return showable_frame_; }
   void set_showable_frame(bool value) { showable_frame_ = value; }
 
-  uint8_t order_hint(ReferenceFrameType reference_frame) const {
-    return order_hint_[reference_frame];
-  }
-  void set_order_hint(ReferenceFrameType reference_frame, uint8_t order_hint) {
-    order_hint_[reference_frame] = order_hint;
-  }
-
-  const int8_t* relative_distance_to_array() const {
-    return relative_distance_to_.data();
-  }
-  int relative_distance_from(ReferenceFrameType reference_frame) const {
-    return relative_distance_from_[reference_frame];
-  }
-  int relative_distance_to(ReferenceFrameType reference_frame) const {
-    return relative_distance_to_[reference_frame];
-  }
-  void set_relative_distance_from(ReferenceFrameType reference_frame,
-                                  int8_t relative_distance) {
-    relative_distance_from_[reference_frame] = relative_distance;
-  }
-  void set_relative_distance_to(ReferenceFrameType reference_frame,
-                                int8_t relative_distance) {
-    relative_distance_to_[reference_frame] = relative_distance;
-  }
-
   // Sets upscaled_width_, frame_width_, frame_height_, render_width_,
   // render_height_, rows4x4_ and columns4x4_ from the corresponding fields
-  // in frame_header. Allocates motion_field_reference_frame_,
-  // motion_field_mv_, and segmentation_map_. Returns true on success, false
-  // on failure.
+  // in frame_header. Allocates reference_info_.motion_field_reference_frame,
+  // reference_info_.motion_field_mv_, and segmentation_map_. Returns true on
+  // success, false on failure.
   bool SetFrameDimensions(const ObuFrameHeader& frame_header);
 
   int32_t upscaled_width() const { return upscaled_width_; }
@@ -149,27 +124,6 @@ class RefCountedBuffer {
   int32_t render_height() const { return render_height_; }
   int32_t rows4x4() const { return rows4x4_; }
   int32_t columns4x4() const { return columns4x4_; }
-
-  // Entry at |row|, |column| corresponds to
-  // MfRefFrames[row * 2 + 1][column * 2 + 1] in the spec.
-  ReferenceFrameType* motion_field_reference_frame(int row, int column) {
-    return &motion_field_reference_frame_[row][column];
-  }
-
-  const ReferenceFrameType* motion_field_reference_frame(int row,
-                                                         int column) const {
-    return &motion_field_reference_frame_[row][column];
-  }
-
-  // Entry at |row|, |column| corresponds to
-  // MfMvs[row * 2 + 1][column * 2 + 1] in the spec.
-  MotionVector* motion_field_mv(int row, int column) {
-    return &motion_field_mv_[row][column];
-  }
-
-  const MotionVector* motion_field_mv(int row, int column) const {
-    return &motion_field_mv_[row][column];
-  }
 
   SegmentationMap* segmentation_map() { return &segmentation_map_; }
   const SegmentationMap* segmentation_map() const { return &segmentation_map_; }
@@ -219,6 +173,9 @@ class RefCountedBuffer {
   void set_film_grain_params(const FilmGrainParams& params) {
     film_grain_params_ = params;
   }
+
+  const ReferenceInfo* reference_info() const { return &reference_info_; }
+  ReferenceInfo* reference_info() { return &reference_info_; }
 
   // This will wake up the WaitUntil*() functions and make them return false.
   void Abort() {
@@ -333,21 +290,6 @@ class RefCountedBuffer {
   ChromaSamplePosition chroma_sample_position_ = kChromaSamplePositionUnknown;
   bool showable_frame_ = false;
 
-  // |order_hint_| is used by inter frames only.
-  std::array<uint8_t, kNumReferenceFrameTypes> order_hint_;
-  // An example when |relative_distance_from_| does not equal
-  // -|relative_distance_to_|:
-  // |relative_distance_from_| = GetRelativeDistance(7, 71, 25) = -64
-  // -|relative_distance_to_| = -GetRelativeDistance(71, 7, 25) = 64
-  // This is why we need both |relative_distance_from_| and
-  // |relative_distance_to_|.
-  // |relative_distance_from_|: Relative distances from reference frames to this
-  // frame. Used by inter frames only.
-  std::array<int8_t, kNumReferenceFrameTypes> relative_distance_from_;
-  // |relative_distance_to_|: Relative distances to reference frames. Used by
-  // inter frames only.
-  std::array<int8_t, kNumReferenceFrameTypes> relative_distance_to_;
-
   int32_t upscaled_width_ = 0;
   int32_t frame_width_ = 0;
   int32_t frame_height_ = 0;
@@ -356,12 +298,6 @@ class RefCountedBuffer {
   int32_t columns4x4_ = 0;
   int32_t rows4x4_ = 0;
 
-  // Array of size (rows4x4 / 2) x (columns4x4 / 2). Entry at i, j corresponds
-  // to MfRefFrames[i * 2 + 1][j * 2 + 1] in the spec.
-  Array2D<ReferenceFrameType> motion_field_reference_frame_;
-  // Array of size (rows4x4 / 2) x (columns4x4 / 2). Entry at i, j corresponds
-  // to MfMvs[i * 2 + 1][j * 2 + 1] in the spec.
-  Array2D<MotionVector> motion_field_mv_;
   // segmentation_map_ contains a rows4x4_ by columns4x4_ 2D array.
   SegmentationMap segmentation_map_;
 
@@ -379,6 +315,7 @@ class RefCountedBuffer {
   // on feature_enabled only, we also save their values as an optimization.
   Segmentation segmentation_ = {};
   FilmGrainParams film_grain_params_ = {};
+  ReferenceInfo reference_info_;
 };
 
 // RefCountedBufferPtr contains a reference to a RefCountedBuffer.

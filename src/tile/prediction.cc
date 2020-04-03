@@ -944,10 +944,11 @@ void Tile::DistanceWeightedPrediction(void* prediction_0, void* prediction_1,
         *block_parameters_holder_.Find(candidate_row, candidate_column);
     // Note: distance[0] and distance[1] correspond to relative distance
     // between current frame and reference frame [1] and [0], respectively.
-    distance[1 - reference] =
-        std::min(std::abs(current_frame_.relative_distance_from(
-                     bp.reference_frame[reference])),
-                 static_cast<int>(kMaxFrameDistance));
+    distance[1 - reference] = std::min(
+        std::abs(static_cast<int>(
+            current_frame_.reference_info()
+                ->relative_distance_from[bp.reference_frame[reference]])),
+        static_cast<int>(kMaxFrameDistance));
   }
   GetDistanceWeights(distance, weight);
 
