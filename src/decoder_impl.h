@@ -198,6 +198,22 @@ class DecoderImpl : public Allocable {
       const SegmentationMap* prev_segment_ids,
       FrameScratchBuffer* frame_scratch_buffer, PostFilter* post_filter,
       RefCountedBuffer* current_frame);
+  // Helper function used by DecodeTilesThreadedFrameParallel. Decodes the
+  // superblock row starting at |row4x4| for tile at index |tile_index| in the
+  // list of tiles |tiles|. If the decoding is successful, then it does the
+  // following:
+  //   * Schedule the next superblock row in the current tile column for
+  //     decoding (the next superblock row may be in a different tile than the
+  //     current one).
+  //   * If an entire superblock row of the frame has been decoded, it notifies
+  //     the waiters (if there are any).
+  void DecodeSuperBlockRowInTile(const Vector<std::unique_ptr<Tile>>& tiles,
+                                 size_t tile_index, int row4x4,
+                                 int superblock_size4x4, int tile_columns,
+                                 int superblock_rows,
+                                 FrameScratchBuffer* frame_scratch_buffer,
+                                 bool* tile_decoding_failed,
+                                 BlockingCounter* pending_jobs);
   // Sets the current frame's segmentation map for two cases. The third case
   // is handled in Tile::DecodeBlock().
   void SetCurrentFrameSegmentationMap(const ObuFrameHeader& frame_header,

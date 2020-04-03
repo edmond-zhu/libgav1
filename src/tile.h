@@ -126,10 +126,14 @@ class Tile : public Allocable {
     return reference_frame_sign_bias_;
   }
 
+  bool IsRow4x4Inside(int row4x4) const {
+    return row4x4 >= row4x4_start_ && row4x4 < row4x4_end_;
+  }
+
   // 5.11.51.
   bool IsInside(int row4x4, int column4x4) const {
-    return row4x4 >= row4x4_start_ && row4x4 < row4x4_end_ &&
-           column4x4 >= column4x4_start_ && column4x4 < column4x4_end_;
+    return IsRow4x4Inside(row4x4) && column4x4 >= column4x4_start_ &&
+           column4x4 < column4x4_end_;
   }
 
   bool IsLeftInside(int column4x4) const {
