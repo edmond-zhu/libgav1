@@ -34,6 +34,15 @@ constexpr bool kDeblockFilterBitMask = false;
 #endif  // defined(ENABLE_DEBLOCK_BIT_MASK)
 
 enum {
+// Maximum number of threads that the library will ever create.
+#if defined(LIBGAV1_MAX_THREADS) && LIBGAV1_MAX_THREADS > 0
+  kMaxThreads = LIBGAV1_MAX_THREADS
+#else
+  kMaxThreads = 128
+#endif
+};  // anonymous enum
+
+enum {
   kInvalidMvValue = -32768,
   kCdfMaxProbability = 32768,
   kBlockWidthCount = 5,
@@ -148,8 +157,6 @@ enum {
   kMaxFrameDistance = 31,
   kReferenceFrameScalePrecision = 14,
   kNumWienerCoefficients = 3,
-  // Maximum number of threads that the library will ever use at any given time.
-  kMaxThreads = 32,
   kLoopFilterMaxModeDeltas = 2,
   kMaxCdefStrengths = 8,
   kCdefLargeValue = 0x4000,  // Used to indicate where CDEF is not available.
