@@ -205,11 +205,11 @@ inline void CheckStore(const int8_t* skips, const int16x8_t position,
 }
 
 // 7.9.2.
-void MotionFieldProjectionKernel_NEON(
-    const ReferenceFrameType* source_reference_types, const MotionVector* mv,
-    const int8_t reference_offsets[kNumReferenceFrameTypes],
-    int reference_to_current_with_sign, int dst_sign, int y8_start, int y8_end,
-    int x8_start, int x8_end, TemporalMotionField* motion_field) {
+void MotionFieldProjectionKernel_NEON(const ReferenceInfo& reference_info,
+                                      int reference_to_current_with_sign,
+                                      int dst_sign, int y8_start, int y8_end,
+                                      int x8_start, int x8_end,
+                                      TemporalMotionField* motion_field) {
   const ptrdiff_t stride = motion_field->mv.columns();
   // The column range has to be offset by kProjectionMvMaxHorizontalOffset since
   // coordinates in that range could end up being position_x8 because of
@@ -220,6 +220,11 @@ void MotionFieldProjectionKernel_NEON(
       x8_end + kProjectionMvMaxHorizontalOffset, static_cast<int>(stride));
   const int adjusted_x8_end8 = adjusted_x8_end & ~7;
   const int leftover = adjusted_x8_end - adjusted_x8_end8;
+  const ReferenceFrameType* source_reference_types =
+      &reference_info.motion_field_reference_frame[y8_start][0];
+  const MotionVector* mv = &reference_info.motion_field_mv[y8_start][0];
+  const int8_t* const reference_offsets =
+      reference_info.relative_distance_to.data();
   int8_t* dst_reference_offset = motion_field->reference_offset[y8_start];
   MotionVector* dst_mv = motion_field->mv[y8_start];
   const int16x8_t d_sign = vdupq_n_s16(dst_sign);

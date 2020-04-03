@@ -782,11 +782,8 @@ bool MotionFieldProjection(
   const ReferenceInfo& reference_info = *source_frame->reference_info();
   const dsp::Dsp& dsp = *dsp::GetDspTable(8);
   dsp.motion_field_projection_kernel(
-      &reference_info.motion_field_reference_frame[y8_start][0],
-      &reference_info.motion_field_mv[y8_start][0],
-      reference_info.relative_distance_to.data(),
-      reference_to_current_with_sign, dst_sign, y8_start, y8_end, x8_start,
-      x8_end, motion_field);
+      reference_info, reference_to_current_with_sign, dst_sign, y8_start,
+      y8_end, x8_start, x8_end, motion_field);
   return true;
 }
 
