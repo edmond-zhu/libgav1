@@ -796,35 +796,35 @@ using MvProjectionSingleFunc = void (*)(
     int reference_offset, int count, MotionVector* candidate_mvs);
 
 struct Dsp {
-  IntraPredictorFuncs intra_predictors;
+  AverageBlendFunc average_blend;
+  CdefDirectionFunc cdef_direction;
+  CdefFilteringFunc cdef_filter;
+  CflIntraPredictorFuncs cfl_intra_predictors;
+  CflSubsamplerFuncs cfl_subsamplers;
+  ConvolveFuncs convolve;
+  ConvolveScaleFuncs convolve_scale;
   DirectionalIntraPredictorZone1Func directional_intra_predictor_zone1;
   DirectionalIntraPredictorZone2Func directional_intra_predictor_zone2;
   DirectionalIntraPredictorZone3Func directional_intra_predictor_zone3;
+  DistanceWeightedBlendFunc distance_weighted_blend;
+  FilmGrainFuncs film_grain;
   FilterIntraPredictorFunc filter_intra_predictor;
-  CflIntraPredictorFuncs cfl_intra_predictors;
-  CflSubsamplerFuncs cfl_subsamplers;
+  InterIntraMaskBlendFuncs8bpp inter_intra_mask_blend_8bpp;
   IntraEdgeFilterFunc intra_edge_filter;
   IntraEdgeUpsamplerFunc intra_edge_upsampler;
+  IntraPredictorFuncs intra_predictors;
   InverseTransformAddFuncs inverse_transforms;
   LoopFilterFuncs loop_filters;
-  CdefDirectionFunc cdef_direction;
-  CdefFilteringFunc cdef_filter;
-  SuperResRowFunc super_res_row;
   LoopRestorationFuncs loop_restorations;
+  MaskBlendFuncs mask_blend;
   MotionFieldProjectionKernelFunc motion_field_projection_kernel;
   MvProjectionCompoundFunc mv_projection_compound[3];
   MvProjectionSingleFunc mv_projection_single[3];
-  ConvolveFuncs convolve;
-  ConvolveScaleFuncs convolve_scale;
-  WeightMaskFuncs weight_mask;
-  AverageBlendFunc average_blend;
-  DistanceWeightedBlendFunc distance_weighted_blend;
-  MaskBlendFuncs mask_blend;
-  InterIntraMaskBlendFuncs8bpp inter_intra_mask_blend_8bpp;
   ObmcBlendFuncs obmc_blend;
-  WarpFunc warp;
+  SuperResRowFunc super_res_row;
   WarpCompoundFunc warp_compound;
-  FilmGrainFuncs film_grain;
+  WarpFunc warp;
+  WeightMaskFuncs weight_mask;
 };
 
 // Initializes function pointers based on build config and runtime
