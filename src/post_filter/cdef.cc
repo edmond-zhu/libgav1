@@ -128,15 +128,17 @@ void PostFilter::PrepareCdefBlock(int block_width4x4, int block_height4x4,
     }
 
     // Copy the body.
-    for (int y = 0; y < block_height; ++y) {
+    int y = 0;
+    do {
       CopyRowForCdef(src_buffer, block_width, unit_width, is_frame_left,
                      is_frame_right, cdef_src);
       cdef_src += cdef_stride;
       src_buffer += src_stride;
-    }
+    } while (++y < block_height);
 
     // Copy the bottom 2 rows.
-    for (int y = 0; y < kCdefBorder + unit_height - block_height; ++y) {
+    y = 0;
+    do {
       if (is_frame_bottom) {
         Memset(cdef_src - kCdefBorder, kCdefLargeValue,
                unit_width + 2 * kCdefBorder);
@@ -146,7 +148,7 @@ void PostFilter::PrepareCdefBlock(int block_width4x4, int block_height4x4,
         src_buffer += src_stride;
       }
       cdef_src += cdef_stride;
-    }
+    } while (++y < kCdefBorder + unit_height - block_height);
   }
 }
 
