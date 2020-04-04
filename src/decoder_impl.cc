@@ -1338,10 +1338,7 @@ StatusCode DecoderImpl::ApplyFilmGrain(
     return kStatusOk;
   }
   if (!frame_header.show_existing_frame &&
-      frame_header.refresh_frame_flags == 0 &&
-      // TODO(vigneshv): In frame parallel mode, we never do film grain in
-      // place. Revisit this and see if this constraint need to be enforced.
-      !IsFrameParallel()) {
+      frame_header.refresh_frame_flags == 0) {
     // If show_existing_frame is true, then the current frame is a previously
     // saved reference frame. If refresh_frame_flags is nonzero, then the
     // state_.UpdateReferenceFrames() call above has saved the current frame as
