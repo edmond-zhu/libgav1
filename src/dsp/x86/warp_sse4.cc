@@ -127,10 +127,10 @@ inline void WriteVerticalFilter(const __m128i filter[8],
   sum_high = RightShiftWithRounding_S32(sum_high, kRoundBitsVertical);
   if (is_compound) {
     const __m128i sum = _mm_packs_epi32(sum_low, sum_high);
-    StoreUnaligned16(reinterpret_cast<int16_t*>(dst_row), sum);
+    StoreUnaligned16(static_cast<int16_t*>(dst_row), sum);
   } else {
     const __m128i sum = _mm_packus_epi32(sum_low, sum_high);
-    StoreLo8(reinterpret_cast<uint8_t*>(dst_row), _mm_packus_epi16(sum, sum));
+    StoreLo8(static_cast<uint8_t*>(dst_row), _mm_packus_epi16(sum, sum));
   }
 }
 
@@ -158,10 +158,10 @@ inline void WriteVerticalFilter(const __m128i filter[8],
   sum_high = RightShiftWithRounding_S32(sum_high, kRoundBitsVertical);
   if (is_compound) {
     const __m128i sum = _mm_packs_epi32(sum_low, sum_high);
-    StoreUnaligned16(reinterpret_cast<int16_t*>(dst_row), sum);
+    StoreUnaligned16(static_cast<int16_t*>(dst_row), sum);
   } else {
     const __m128i sum = _mm_packus_epi32(sum_low, sum_high);
-    StoreLo8(reinterpret_cast<uint8_t*>(dst_row), _mm_packus_epi16(sum, sum));
+    StoreLo8(static_cast<uint8_t*>(dst_row), _mm_packus_epi16(sum, sum));
   }
 }
 
