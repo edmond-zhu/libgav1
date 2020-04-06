@@ -167,6 +167,7 @@ bool InitializeThreadPoolsForFrameParallel(
     std::unique_ptr<ThreadPool>* const frame_thread_pool,
     FrameScratchBufferPool* const frame_scratch_buffer_pool) {
   assert(*frame_thread_pool == nullptr);
+  thread_count = std::min(thread_count, static_cast<int>(kMaxThreads));
   const int frame_threads =
       ComputeFrameThreadCount(thread_count, tile_count, tile_columns);
   if (frame_threads == 0) return true;
