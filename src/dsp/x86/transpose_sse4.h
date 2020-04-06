@@ -43,8 +43,8 @@ LIBGAV1_ALWAYS_INLINE __m128i Transpose4x4_U8(const __m128i* const in) {
   return _mm_unpacklo_epi16(a0, a1);
 }
 
-LIBGAV1_ALWAYS_INLINE void Transpose8x8_U8(const __m128i* const in,
-                                           __m128i* out) {
+LIBGAV1_ALWAYS_INLINE void Transpose8x8To4x16_U8(const __m128i* const in,
+                                                 __m128i* out) {
   // Unpack 8 bit elements. Goes from:
   // in[0]:  00 01 02 03 04 05 06 07
   // in[1]:  10 11 12 13 14 15 16 17

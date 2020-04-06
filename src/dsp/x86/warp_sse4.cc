@@ -68,7 +68,7 @@ inline void HorizontalFilter(const int sx4, const int16_t alpha,
     f = LoadLo8(kWarpedFilters8[offset]);
     sx += alpha;
   }
-  Transpose8x8_U8(filter, filter);
+  Transpose8x8To4x16_U8(filter, filter);
   // |filter| now contains two filters per register.
   // Staggered combinations allow us to take advantage of _mm_maddubs_epi16
   // without overflowing the sign bit. The sign bit is hit only where two taps
