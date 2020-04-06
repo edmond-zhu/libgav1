@@ -19,11 +19,10 @@
 
 #include <smmintrin.h>
 
-#include <algorithm>
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
-#include <cstdlib>
+#include <cstring>
 #include <type_traits>
 
 #include "src/dsp/constants.h"
