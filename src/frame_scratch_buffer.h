@@ -64,9 +64,6 @@ struct FrameScratchBuffer {
   // are stored are specified in |kDeblockedRowsForLoopRestoration|.
   YuvBuffer deblock_buffer;
   TileScratchBufferPool tile_scratch_buffer_pool;
-  // TODO(vigneshv): This is part of the frame scratch buffer for now. This will
-  // have to change or move to DecoderImpl when frame parallel mode with
-  // in-frame multi-theading is implemented.
   ThreadingStrategy threading_strategy;
   std::mutex superblock_row_mutex;
   // The size of this buffer is the number of superblock rows.
@@ -100,8 +97,6 @@ class FrameScratchBufferPool {
 
  private:
   std::mutex mutex_;
-  // TODO(b/142583029): The size of this stack is set to kMaxThreads. This may
-  // have to be revisited as we iterate over the frame parallel design.
   Stack<std::unique_ptr<FrameScratchBuffer>, kMaxThreads> buffers_
       LIBGAV1_GUARDED_BY(mutex_);
 };
