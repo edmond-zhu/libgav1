@@ -25,9 +25,9 @@
 #include "src/utils/types.h"
 
 namespace libgav1 {
-// Move some members in RefCountedBuffer to this structure in utils/.
-// The reason is to avoid that these members have to be passed in as parameters
-// one by one in some dsp functions.
+
+// This struct collects some members related to reference frames in one place to
+// make it easier to pass them as parameters to some dsp functions.
 struct ReferenceInfo {
   // Initialize |motion_field_reference_frame| so that
   // Tile::StoreMotionFieldMvsIntoCurrentFrame() can skip some updates when
@@ -60,6 +60,13 @@ struct ReferenceInfo {
   std::array<int8_t, kNumReferenceFrameTypes> relative_distance_from;
   // |relative_distance_to|: Relative distances to reference frames.
   std::array<int8_t, kNumReferenceFrameTypes> relative_distance_to;
+
+  // Skip motion field projection of specific types of frames if their
+  // |relative_distance_to| is negative or too large.
+  std::array<bool, kNumReferenceFrameTypes> skip_references;
+  // Lookup table to get motion field projection division multiplier of specific
+  // types of frames. Derived from kProjectionMvDivisionLookup.
+  std::array<int16_t, kNumReferenceFrameTypes> projection_divisions;
 
   // The current frame's |motion_field_reference_frame| and |motion_field_mv_|
   // are guaranteed to be allocated only when refresh_frame_flags is not 0.

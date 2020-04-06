@@ -36,25 +36,6 @@ namespace {
     (LIBGAV1_MAX_BITDEPTH >= 10 &&                           \
      !defined(LIBGAV1_Dsp10bpp_MotionFieldProjectionKernel))
 
-void CalculateReferenceFramesInfo(
-    const int8_t reference_offsets[kNumReferenceFrameTypes],
-    bool skip_references[kNumReferenceFrameTypes],
-    int16_t projection_mv_divisions[kNumReferenceFrameTypes]) {
-  // Initialize skip_references[kReferenceFrameIntra] to simplify branch
-  // conditions in projection.
-  skip_references[kReferenceFrameIntra] = true;
-  for (int reference_type = kReferenceFrameLast;
-       reference_type <= kNumInterReferenceFrameTypes; ++reference_type) {
-    const int reference_offset = reference_offsets[reference_type];
-    skip_references[reference_type] =
-        reference_offset > kMaxFrameDistance || reference_offset <= 0;
-    projection_mv_divisions[reference_type] =
-        skip_references[reference_type]
-            ? 0
-            : kProjectionMvDivisionLookup[reference_offset];
-  }
-}
-
 // 7.9.2.
 void MotionFieldProjectionKernel_C(const ReferenceInfo& reference_info,
                                    int reference_to_current_with_sign,
@@ -69,18 +50,18 @@ void MotionFieldProjectionKernel_C(const ReferenceInfo& reference_info,
       std::max(x8_start - kProjectionMvMaxHorizontalOffset, 0);
   const int adjusted_x8_end = std::min(
       x8_end + kProjectionMvMaxHorizontalOffset, static_cast<int>(stride));
+  const int8_t* const reference_offsets =
+      reference_info.relative_distance_to.data();
+  const bool* const skip_references = reference_info.skip_references.data();
+  const int16_t* const projection_divisions =
+      reference_info.projection_divisions.data();
   const ReferenceFrameType* source_reference_types =
       &reference_info.motion_field_reference_frame[y8_start][0];
   const MotionVector* mv = &reference_info.motion_field_mv[y8_start][0];
-  const int8_t* reference_offsets = reference_info.relative_distance_to.data();
   int8_t* dst_reference_offset = motion_field->reference_offset[y8_start];
   MotionVector* dst_mv = motion_field->mv[y8_start];
-  bool skip_references[kNumReferenceFrameTypes];
-  int16_t projection_mv_divisions[kNumReferenceFrameTypes];
   assert(stride == motion_field->reference_offset.columns());
   assert((y8_start & 7) == 0);
-  CalculateReferenceFramesInfo(reference_offsets, skip_references,
-                               projection_mv_divisions);
 
   int y8 = y8_start;
   do {
@@ -93,7 +74,7 @@ void MotionFieldProjectionKernel_C(const ReferenceInfo& reference_info,
       MotionVector projection_mv;
       // reference_to_current_with_sign could be 0.
       GetMvProjection(mv[x8], reference_to_current_with_sign,
-                      projection_mv_divisions[source_reference_type],
+                      projection_divisions[source_reference_type],
                       &projection_mv);
       // Do not update the motion vector if the block position is not valid or
       // if position_x8 is outside the current range of x8_start and x8_end.

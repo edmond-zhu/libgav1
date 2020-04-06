@@ -2108,6 +2108,9 @@ bool ObuParser::ParseFrameParameters() {
     reference_info->order_hint[kReferenceFrameIntra] = frame_header_.order_hint;
     reference_info->relative_distance_from[kReferenceFrameIntra] = 0;
     reference_info->relative_distance_to[kReferenceFrameIntra] = 0;
+    reference_info->skip_references[kReferenceFrameIntra] = true;
+    reference_info->projection_divisions[kReferenceFrameIntra] = 0;
+
     for (int i = kReferenceFrameLast; i <= kNumInterReferenceFrameTypes; ++i) {
       const auto reference_frame = static_cast<ReferenceFrameType>(i);
       const uint8_t hint =
@@ -2124,6 +2127,12 @@ bool ObuParser::ParseFrameParameters() {
           relative_distance_from;
       reference_info->relative_distance_to[reference_frame] =
           relative_distance_to;
+      reference_info->skip_references[reference_frame] =
+          relative_distance_to > kMaxFrameDistance || relative_distance_to <= 0;
+      reference_info->projection_divisions[reference_frame] =
+          reference_info->skip_references[reference_frame]
+              ? 0
+              : kProjectionMvDivisionLookup[relative_distance_to];
       decoder_state_.reference_frame_sign_bias[reference_frame] =
           relative_distance_from > 0;
     }
