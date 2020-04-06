@@ -129,6 +129,19 @@ class DecoderImpl : public Allocable {
  private:
   explicit DecoderImpl(const DecoderSettings* settings);
   StatusCode Init();
+  // Called when the first frame is enqueued. It does the OBU parsing for one
+  // temporal unit to retrieve the tile configuration and sets up the frame
+  // threading if frame parallel mode is allowed. It also initializes the
+  // |temporal_units_| queue based on the number of frame threads.
+  //
+  // The following are the limitations of the current implementation:
+  //  * It assumes that all frames in the video have the same tile
+  //    configuration. The frame parallel threading model will not be updated
+  //    based on tile configuration changes mid-stream.
+  //  * The above assumption holds true even when there is a new coded video
+  //    sequence (i.e.) a new sequence header.
+  StatusCode InitializeFrameThreadPoolAndTemporalUnitQueue(const uint8_t* data,
+                                                           size_t size);
   // Used only in frame parallel mode. Signals failure and waits until the
   // worker threads are aborted if |status| is a failure status. If |status| is
   // equal to kStatusOk or kStatusTryAgain, this function does not do anything.
@@ -261,6 +274,7 @@ class DecoderImpl : public Allocable {
   bool has_sequence_header_ = false;
 
   const DecoderSettings& settings_;
+  bool seen_first_frame_ = false;
 };
 
 }  // namespace libgav1

@@ -138,14 +138,44 @@ DecoderImpl::~DecoderImpl() {
 }
 
 StatusCode DecoderImpl::Init() {
+  if (!GenerateWedgeMask(&wedge_masks_)) {
+    LIBGAV1_DLOG(ERROR, "GenerateWedgeMask() failed.");
+    return kStatusOutOfMemory;
+  }
+  return kStatusOk;
+}
+
+StatusCode DecoderImpl::InitializeFrameThreadPoolAndTemporalUnitQueue(
+    const uint8_t* data, size_t size) {
   if (settings_.frame_parallel) {
 #if defined(ENABLE_FRAME_PARALLEL)
-    if (settings_.threads > 1 && !InitializeThreadPoolsForFrameParallel(
-                                     settings_.threads, &frame_thread_pool_,
-                                     &frame_scratch_buffer_pool_)) {
+    DecoderState state;
+    std::unique_ptr<ObuParser> obu(
+        new (std::nothrow) ObuParser(data, size, &buffer_pool_, &state));
+    if (obu == nullptr) {
+      LIBGAV1_DLOG(ERROR, "Failed to allocate OBU parser.");
+      return kStatusOutOfMemory;
+    }
+    RefCountedBufferPtr current_frame;
+    const StatusCode status = obu->ParseOneFrame(&current_frame);
+    if (status != kStatusOk) {
+      LIBGAV1_DLOG(ERROR, "Failed to parse OBU.");
+      return status;
+    }
+    current_frame = nullptr;
+    // We assume that the first frame that was parsed will contain the frame
+    // header. This assumption is usually true in practice. So we will simply
+    // not use frame parallel mode if this is not the case.
+    if (settings_.threads > 1 &&
+        !InitializeThreadPoolsForFrameParallel(
+            settings_.threads, obu->frame_header().tile_info.tile_count,
+            obu->frame_header().tile_info.tile_columns, &frame_thread_pool_,
+            &frame_scratch_buffer_pool_)) {
       return kStatusOutOfMemory;
     }
 #else
+    static_cast<void>(data);
+    static_cast<void>(size);
     LIBGAV1_DLOG(
         ERROR, "Frame parallel decoding is not implemented, ignoring setting.");
 #endif  // defined(ENABLE_FRAME_PARALLEL)
@@ -156,10 +186,6 @@ StatusCode DecoderImpl::Init() {
     LIBGAV1_DLOG(ERROR, "temporal_units_.Init() failed.");
     return kStatusOutOfMemory;
   }
-  if (!GenerateWedgeMask(&wedge_masks_)) {
-    LIBGAV1_DLOG(ERROR, "GenerateWedgeMask() failed.");
-    return kStatusOutOfMemory;
-  }
   return kStatusOk;
 }
 
@@ -168,6 +194,18 @@ StatusCode DecoderImpl::EnqueueFrame(const uint8_t* data, size_t size,
                                      void* buffer_private_data) {
   if (data == nullptr || size == 0) return kStatusInvalidArgument;
   if (abort_) return kStatusUnknownError;
+  if (!seen_first_frame_) {
+    seen_first_frame_ = true;
+    const StatusCode status =
+        InitializeFrameThreadPoolAndTemporalUnitQueue(data, size);
+    if (status != kStatusOk) {
+      if (settings_.release_input_buffer != nullptr) {
+        settings_.release_input_buffer(settings_.callback_private_data,
+                                       buffer_private_data);
+      }
+      return SignalFailure(status);
+    }
+  }
   if (temporal_units_.Full()) {
     return kStatusTryAgain;
   }

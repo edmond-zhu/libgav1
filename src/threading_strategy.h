@@ -103,20 +103,27 @@ class ThreadingStrategy {
 // Initializes the |frame_thread_pool| and the necessary worker threadpools (the
 // threading_strategy objects in each of the frame scratch buffer in
 // |frame_scratch_buffer_pool|) as follows:
-//  * frame_threads = 2 (this is fixed for now and will be dynamic
-//    eventually).
+//  * frame_threads = ComputeFrameThreadCount();
+//  * For more details on how frame_threads is computed, see the function
+//    comment in ComputeFrameThreadCount().
 //  * |frame_thread_pool| is created with |frame_threads| threads.
 //  * divide the remaining number of threads into each frame thread and
 //    initialize a frame_scratch_buffer.threading_strategy for each frame
 //    thread.
 //  When this function is called, |frame_scratch_buffer_pool| must be empty. If
-//  this function returns true, then |frame_thread_pool| has been successfully
-//  initialized and |frame_scratch_buffer_pool| has been successfully populated
-//  with |frame_threads| buffers to be used by each frame thread. The total
-//  number of threads that this function creates will always be equal to
-//  |thread_count|.
+//  this function returns true, it means the initialization was successful and
+//  one of the following is true:
+//    * |frame_thread_pool| has been successfully initialized and
+//      |frame_scratch_buffer_pool| has been successfully populated with
+//      |frame_threads| buffers to be used by each frame thread. The total
+//      number of threads that this function creates will always be equal to
+//      |thread_count|.
+//    * |frame_thread_pool| is nullptr. |frame_scratch_buffer_pool| is not
+//      modified. This means that frame threading will not be used and the
+//      decoder will continue to operate normally in non frame parallel mode.
 LIBGAV1_MUST_USE_RESULT bool InitializeThreadPoolsForFrameParallel(
-    int thread_count, std::unique_ptr<ThreadPool>* frame_thread_pool,
+    int thread_count, int tile_count, int tile_columns,
+    std::unique_ptr<ThreadPool>* frame_thread_pool,
     FrameScratchBufferPool* frame_scratch_buffer_pool);
 
 }  // namespace libgav1
