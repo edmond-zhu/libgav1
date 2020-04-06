@@ -207,6 +207,15 @@ __m128i SimpleHorizontalTaps2x2(const uint8_t* src, const ptrdiff_t src_stride,
   return _mm_packus_epi16(sum, sum);
 }
 
+template <int filter_index>
+__m128i HorizontalTaps8To16_2x2(const uint8_t* src, const ptrdiff_t src_stride,
+                                const __m128i* const v_tap) {
+  const __m128i sum =
+      SumHorizontalTaps2x2<filter_index>(src, src_stride, v_tap);
+
+  return RightShiftWithRounding_S16(sum, kInterRoundBitsHorizontal - 1);
+}
+
 template <int num_taps, int step, int filter_index, bool is_2d = false,
           bool is_compound = false>
 void FilterHorizontal(const uint8_t* src, const ptrdiff_t src_stride,
@@ -225,7 +234,11 @@ void FilterHorizontal(const uint8_t* src, const ptrdiff_t src_stride,
         if (is_2d || is_compound) {
           const __m128i v_sum =
               HorizontalTaps8To16<filter_index>(&src[x], v_tap);
-          StoreUnaligned16(&dest16[x], v_sum);
+          if (is_2d) {
+            StoreAligned16(&dest16[x], v_sum);
+          } else {
+            StoreUnaligned16(&dest16[x], v_sum);
+          }
         } else {
           const __m128i result =
               SimpleHorizontalTaps<filter_index>(&src[x], v_tap);
@@ -266,7 +279,12 @@ void FilterHorizontal(const uint8_t* src, const ptrdiff_t src_stride,
       int y = 0;
       do {
         if (is_2d) {
-          // TODO(slavarnway): Add 2d support
+          const __m128i sum =
+              HorizontalTaps8To16_2x2<filter_index>(src, src_stride, v_tap);
+          Store4(&dest16[0], sum);
+          dest16 += pred_stride;
+          Store4(&dest16[0], _mm_srli_si128(sum, 8));
+          dest16 += pred_stride;
         } else {
           const __m128i sum =
               SimpleHorizontalTaps2x2<filter_index>(src, src_stride, v_tap);
@@ -284,13 +302,33 @@ void FilterHorizontal(const uint8_t* src, const ptrdiff_t src_stride,
       // generates context for the vertical pass.
       if (is_2d) {
         assert(height % 2 == 1);
-        // TODO(slavarnway): Add 2d support
+        __m128i sum;
+        const __m128i input = LoadLo8(&src[2]);
+        if (filter_index == 3) {
+          // 03 04 04 05 05 06 06 07 ....
+          const __m128i v_src_43 =
+              _mm_srli_si128(_mm_unpacklo_epi8(input, input), 3);
+          sum = _mm_maddubs_epi16(v_src_43, v_tap[0]);  // k4k3
+        } else {
+          // 02 03 03 04 04 05 05 06 06 07 ....
+          const __m128i v_src_32 =
+              _mm_srli_si128(_mm_unpacklo_epi8(input, input), 1);
+          // 04 05 05 06 06 07 07 08 ...
+          const __m128i v_src_54 = _mm_srli_si128(v_src_32, 4);
+          const __m128i v_madd_32 =
+              _mm_maddubs_epi16(v_src_32, v_tap[0]);  // k3k2
+          const __m128i v_madd_54 =
+              _mm_maddubs_epi16(v_src_54, v_tap[1]);  // k5k4
+          sum = _mm_add_epi16(v_madd_54, v_madd_32);
+        }
+        sum = RightShiftWithRounding_S16(sum, kInterRoundBitsHorizontal - 1);
+        Store4(dest16, sum);
       }
     }
   }
 }
 
-template <int num_taps>
+template <int num_taps, bool is_2d_vertical = false>
 LIBGAV1_ALWAYS_INLINE void SetupTaps(const __m128i* const filter,
                                      __m128i* v_tap) {
   if (num_taps == 8) {
@@ -298,28 +336,293 @@ LIBGAV1_ALWAYS_INLINE void SetupTaps(const __m128i* const filter,
     v_tap[1] = _mm_shufflelo_epi16(*filter, 0x55);  // k3k2
     v_tap[2] = _mm_shufflelo_epi16(*filter, 0xaa);  // k5k4
     v_tap[3] = _mm_shufflelo_epi16(*filter, 0xff);  // k7k6
-    v_tap[0] = _mm_unpacklo_epi64(v_tap[0], v_tap[0]);
-    v_tap[1] = _mm_unpacklo_epi64(v_tap[1], v_tap[1]);
-    v_tap[2] = _mm_unpacklo_epi64(v_tap[2], v_tap[2]);
-    v_tap[3] = _mm_unpacklo_epi64(v_tap[3], v_tap[3]);
+    if (is_2d_vertical) {
+      v_tap[0] = _mm_cvtepi8_epi16(v_tap[0]);
+      v_tap[1] = _mm_cvtepi8_epi16(v_tap[1]);
+      v_tap[2] = _mm_cvtepi8_epi16(v_tap[2]);
+      v_tap[3] = _mm_cvtepi8_epi16(v_tap[3]);
+    } else {
+      v_tap[0] = _mm_unpacklo_epi64(v_tap[0], v_tap[0]);
+      v_tap[1] = _mm_unpacklo_epi64(v_tap[1], v_tap[1]);
+      v_tap[2] = _mm_unpacklo_epi64(v_tap[2], v_tap[2]);
+      v_tap[3] = _mm_unpacklo_epi64(v_tap[3], v_tap[3]);
+    }
   } else if (num_taps == 6) {
     const __m128i adjusted_filter = _mm_srli_si128(*filter, 1);
     v_tap[0] = _mm_shufflelo_epi16(adjusted_filter, 0x0);   // k2k1
     v_tap[1] = _mm_shufflelo_epi16(adjusted_filter, 0x55);  // k4k3
     v_tap[2] = _mm_shufflelo_epi16(adjusted_filter, 0xaa);  // k6k5
-    v_tap[0] = _mm_unpacklo_epi64(v_tap[0], v_tap[0]);
-    v_tap[1] = _mm_unpacklo_epi64(v_tap[1], v_tap[1]);
-    v_tap[2] = _mm_unpacklo_epi64(v_tap[2], v_tap[2]);
+    if (is_2d_vertical) {
+      v_tap[0] = _mm_cvtepi8_epi16(v_tap[0]);
+      v_tap[1] = _mm_cvtepi8_epi16(v_tap[1]);
+      v_tap[2] = _mm_cvtepi8_epi16(v_tap[2]);
+    } else {
+      v_tap[0] = _mm_unpacklo_epi64(v_tap[0], v_tap[0]);
+      v_tap[1] = _mm_unpacklo_epi64(v_tap[1], v_tap[1]);
+      v_tap[2] = _mm_unpacklo_epi64(v_tap[2], v_tap[2]);
+    }
   } else if (num_taps == 4) {
     v_tap[0] = _mm_shufflelo_epi16(*filter, 0x55);  // k3k2
     v_tap[1] = _mm_shufflelo_epi16(*filter, 0xaa);  // k5k4
-    v_tap[0] = _mm_unpacklo_epi64(v_tap[0], v_tap[0]);
-    v_tap[1] = _mm_unpacklo_epi64(v_tap[1], v_tap[1]);
+    if (is_2d_vertical) {
+      v_tap[0] = _mm_cvtepi8_epi16(v_tap[0]);
+      v_tap[1] = _mm_cvtepi8_epi16(v_tap[1]);
+    } else {
+      v_tap[0] = _mm_unpacklo_epi64(v_tap[0], v_tap[0]);
+      v_tap[1] = _mm_unpacklo_epi64(v_tap[1], v_tap[1]);
+    }
   } else {  // num_taps == 2
     const __m128i adjusted_filter = _mm_srli_si128(*filter, 1);
     v_tap[0] = _mm_shufflelo_epi16(adjusted_filter, 0x55);  // k4k3
-    v_tap[0] = _mm_unpacklo_epi64(v_tap[0], v_tap[0]);
+    if (is_2d_vertical) {
+      v_tap[0] = _mm_cvtepi8_epi16(v_tap[0]);
+    } else {
+      v_tap[0] = _mm_unpacklo_epi64(v_tap[0], v_tap[0]);
+    }
   }
+}
+
+template <int num_taps, bool is_compound>
+__m128i SimpleSum2DVerticalTaps(const __m128i* const src,
+                                const __m128i* const taps) {
+  __m128i sum_lo = _mm_madd_epi16(_mm_unpacklo_epi16(src[0], src[1]), taps[0]);
+  __m128i sum_hi = _mm_madd_epi16(_mm_unpackhi_epi16(src[0], src[1]), taps[0]);
+  if (num_taps >= 4) {
+    __m128i madd_lo =
+        _mm_madd_epi16(_mm_unpacklo_epi16(src[2], src[3]), taps[1]);
+    __m128i madd_hi =
+        _mm_madd_epi16(_mm_unpackhi_epi16(src[2], src[3]), taps[1]);
+    sum_lo = _mm_add_epi32(sum_lo, madd_lo);
+    sum_hi = _mm_add_epi32(sum_hi, madd_hi);
+    if (num_taps >= 6) {
+      madd_lo = _mm_madd_epi16(_mm_unpacklo_epi16(src[4], src[5]), taps[2]);
+      madd_hi = _mm_madd_epi16(_mm_unpackhi_epi16(src[4], src[5]), taps[2]);
+      sum_lo = _mm_add_epi32(sum_lo, madd_lo);
+      sum_hi = _mm_add_epi32(sum_hi, madd_hi);
+      if (num_taps == 8) {
+        madd_lo = _mm_madd_epi16(_mm_unpacklo_epi16(src[6], src[7]), taps[3]);
+        madd_hi = _mm_madd_epi16(_mm_unpackhi_epi16(src[6], src[7]), taps[3]);
+        sum_lo = _mm_add_epi32(sum_lo, madd_lo);
+        sum_hi = _mm_add_epi32(sum_hi, madd_hi);
+      }
+    }
+  }
+
+  if (is_compound) {
+    return _mm_packs_epi32(
+        RightShiftWithRounding_S32(sum_lo, kInterRoundBitsCompoundVertical - 1),
+        RightShiftWithRounding_S32(sum_hi,
+                                   kInterRoundBitsCompoundVertical - 1));
+  }
+
+  return _mm_packs_epi32(
+      RightShiftWithRounding_S32(sum_lo, kInterRoundBitsVertical - 1),
+      RightShiftWithRounding_S32(sum_hi, kInterRoundBitsVertical - 1));
+}
+
+template <int num_taps, bool is_compound = false>
+void Filter2DVertical(const uint16_t* src, void* const dst,
+                      const ptrdiff_t dst_stride, const int width,
+                      const int height, const __m128i* const taps) {
+  assert(width >= 8);
+  constexpr int next_row = num_taps - 1;
+  // The Horizontal pass uses |width| as |stride| for the intermediate buffer.
+  const ptrdiff_t src_stride = width;
+
+  auto* dst8 = static_cast<uint8_t*>(dst);
+  auto* dst16 = static_cast<uint16_t*>(dst);
+
+  int x = 0;
+  do {
+    __m128i srcs[8];
+    const uint16_t* src_x = src + x;
+    srcs[0] = LoadAligned16(src_x);
+    src_x += src_stride;
+    if (num_taps >= 4) {
+      srcs[1] = LoadAligned16(src_x);
+      src_x += src_stride;
+      srcs[2] = LoadAligned16(src_x);
+      src_x += src_stride;
+      if (num_taps >= 6) {
+        srcs[3] = LoadAligned16(src_x);
+        src_x += src_stride;
+        srcs[4] = LoadAligned16(src_x);
+        src_x += src_stride;
+        if (num_taps == 8) {
+          srcs[5] = LoadAligned16(src_x);
+          src_x += src_stride;
+          srcs[6] = LoadAligned16(src_x);
+          src_x += src_stride;
+        }
+      }
+    }
+
+    int y = 0;
+    do {
+      srcs[next_row] = LoadAligned16(src_x);
+      src_x += src_stride;
+
+      const __m128i sum =
+          SimpleSum2DVerticalTaps<num_taps, is_compound>(srcs, taps);
+      if (is_compound) {
+        StoreUnaligned16(dst16 + x + y * dst_stride, sum);
+      } else {
+        StoreLo8(dst8 + x + y * dst_stride, _mm_packus_epi16(sum, sum));
+      }
+
+      srcs[0] = srcs[1];
+      if (num_taps >= 4) {
+        srcs[1] = srcs[2];
+        srcs[2] = srcs[3];
+        if (num_taps >= 6) {
+          srcs[3] = srcs[4];
+          srcs[4] = srcs[5];
+          if (num_taps == 8) {
+            srcs[5] = srcs[6];
+            srcs[6] = srcs[7];
+          }
+        }
+      }
+    } while (++y < height);
+    x += 8;
+  } while (x < width);
+}
+
+// Take advantage of |src_stride| == |width| to process two rows at a time.
+template <int num_taps, bool is_compound = false>
+void Filter2DVertical4xH(const uint16_t* src, void* const dst,
+                         const ptrdiff_t dst_stride, const int height,
+                         const __m128i* const taps) {
+  auto* dst8 = static_cast<uint8_t*>(dst);
+  auto* dst16 = static_cast<uint16_t*>(dst);
+
+  __m128i srcs[9];
+  srcs[0] = LoadAligned16(src);
+  src += 8;
+  if (num_taps >= 4) {
+    srcs[2] = LoadAligned16(src);
+    src += 8;
+    srcs[1] = _mm_unpacklo_epi64(_mm_srli_si128(srcs[0], 8), srcs[2]);
+    if (num_taps >= 6) {
+      srcs[4] = LoadAligned16(src);
+      src += 8;
+      srcs[3] = _mm_unpacklo_epi64(_mm_srli_si128(srcs[2], 8), srcs[4]);
+      if (num_taps == 8) {
+        srcs[6] = LoadAligned16(src);
+        src += 8;
+        srcs[5] = _mm_unpacklo_epi64(_mm_srli_si128(srcs[4], 8), srcs[6]);
+      }
+    }
+  }
+
+  int y = 0;
+  do {
+    srcs[num_taps] = LoadAligned16(src);
+    src += 8;
+    srcs[num_taps - 1] = _mm_unpacklo_epi64(
+        _mm_srli_si128(srcs[num_taps - 2], 8), srcs[num_taps]);
+
+    const __m128i sum =
+        SimpleSum2DVerticalTaps<num_taps, is_compound>(srcs, taps);
+    if (is_compound) {
+      StoreUnaligned16(dst16, sum);
+      dst16 += 4 << 1;
+    } else {
+      const __m128i results = _mm_packus_epi16(sum, sum);
+      Store4(dst8, results);
+      dst8 += dst_stride;
+      Store4(dst8, _mm_srli_si128(results, 4));
+      dst8 += dst_stride;
+    }
+
+    srcs[0] = srcs[2];
+    if (num_taps >= 4) {
+      srcs[1] = srcs[3];
+      srcs[2] = srcs[4];
+      if (num_taps >= 6) {
+        srcs[3] = srcs[5];
+        srcs[4] = srcs[6];
+        if (num_taps == 8) {
+          srcs[5] = srcs[7];
+          srcs[6] = srcs[8];
+        }
+      }
+    }
+    y += 2;
+  } while (y < height);
+}
+
+// Take advantage of |src_stride| == |width| to process four rows at a time.
+template <int num_taps>
+void Filter2DVertical2xH(const uint16_t* src, void* const dst,
+                         const ptrdiff_t dst_stride, const int height,
+                         const __m128i* const taps) {
+  constexpr int next_row = (num_taps < 6) ? 4 : 8;
+
+  auto* dst8 = static_cast<uint8_t*>(dst);
+
+  __m128i srcs[9];
+  srcs[0] = LoadAligned16(src);
+  src += 8;
+  if (num_taps >= 6) {
+    srcs[4] = LoadAligned16(src);
+    src += 8;
+    srcs[1] = _mm_alignr_epi8(srcs[4], srcs[0], 4);
+    if (num_taps == 8) {
+      srcs[2] = _mm_alignr_epi8(srcs[4], srcs[0], 8);
+      srcs[3] = _mm_alignr_epi8(srcs[4], srcs[0], 12);
+    }
+  }
+
+  int y = 0;
+  do {
+    srcs[next_row] = LoadAligned16(src);
+    src += 8;
+    if (num_taps == 2) {
+      srcs[1] = _mm_alignr_epi8(srcs[4], srcs[0], 4);
+    } else if (num_taps == 4) {
+      srcs[1] = _mm_alignr_epi8(srcs[4], srcs[0], 4);
+      srcs[2] = _mm_alignr_epi8(srcs[4], srcs[0], 8);
+      srcs[3] = _mm_alignr_epi8(srcs[4], srcs[0], 12);
+    } else if (num_taps == 6) {
+      srcs[2] = _mm_alignr_epi8(srcs[4], srcs[0], 8);
+      srcs[3] = _mm_alignr_epi8(srcs[4], srcs[0], 12);
+      srcs[5] = _mm_alignr_epi8(srcs[8], srcs[4], 4);
+    } else if (num_taps == 8) {
+      srcs[5] = _mm_alignr_epi8(srcs[8], srcs[4], 4);
+      srcs[6] = _mm_alignr_epi8(srcs[8], srcs[4], 8);
+      srcs[7] = _mm_alignr_epi8(srcs[8], srcs[4], 12);
+    }
+
+    const __m128i sum =
+        SimpleSum2DVerticalTaps<num_taps, /*is_compound=*/false>(srcs, taps);
+    const __m128i results = _mm_packus_epi16(sum, sum);
+
+    Store2(dst8, results);
+    dst8 += dst_stride;
+    Store2(dst8, _mm_srli_si128(results, 2));
+    // When |height| <= 4 the taps are restricted to 2 and 4 tap variants.
+    // Therefore we don't need to check this condition when |height| > 4.
+    if (num_taps <= 4 && height == 2) return;
+    dst8 += dst_stride;
+    Store2(dst8, _mm_srli_si128(results, 4));
+    dst8 += dst_stride;
+    Store2(dst8, _mm_srli_si128(results, 6));
+    dst8 += dst_stride;
+
+    srcs[0] = srcs[4];
+    if (num_taps == 6) {
+      srcs[1] = srcs[5];
+      srcs[4] = srcs[8];
+    } else if (num_taps == 8) {
+      srcs[1] = srcs[5];
+      srcs[2] = srcs[6];
+      srcs[3] = srcs[7];
+      srcs[4] = srcs[8];
+    }
+
+    y += 4;
+  } while (y < height);
 }
 
 template <bool is_2d = false, bool is_compound = false>
@@ -357,6 +660,91 @@ LIBGAV1_ALWAYS_INLINE void DoHorizontalPass(
     SetupTaps<2>(&v_horizontal_filter, v_tap);
     FilterHorizontal<2, 8, 3, is_2d, is_compound>(
         src, src_stride, dst, dst_stride, width, height, v_tap);
+  }
+}
+
+void Convolve2D_SSE4_1(const void* const reference,
+                       const ptrdiff_t reference_stride,
+                       const int horizontal_filter_index,
+                       const int vertical_filter_index, const int subpixel_x,
+                       const int subpixel_y, const int width, const int height,
+                       void* prediction, const ptrdiff_t pred_stride) {
+  const int horiz_filter_index = GetFilterIndex(horizontal_filter_index, width);
+  const int vert_filter_index = GetFilterIndex(vertical_filter_index, height);
+  const int vertical_taps = GetNumTapsInFilter(vert_filter_index);
+
+  // The output of the horizontal filter is guaranteed to fit in 16 bits.
+  alignas(16) uint16_t
+      intermediate_result[kMaxSuperBlockSizeInPixels *
+                          (kMaxSuperBlockSizeInPixels + kSubPixelTaps - 1)];
+  const int intermediate_height = height + vertical_taps - 1;
+
+  const ptrdiff_t src_stride = reference_stride;
+  const auto* src = static_cast<const uint8_t*>(reference) -
+                    (vertical_taps / 2 - 1) * src_stride - kHorizontalOffset;
+
+  DoHorizontalPass</*is_2d=*/true>(src, src_stride, intermediate_result, width,
+                                   width, intermediate_height, subpixel_x,
+                                   horiz_filter_index);
+
+  // Vertical filter.
+  auto* dest = static_cast<uint8_t*>(prediction);
+  const ptrdiff_t dest_stride = pred_stride;
+  const int filter_id = ((subpixel_y & 1023) >> 6) & kSubPixelMask;
+  assert(filter_id != 0);
+
+  __m128i taps[4];
+  const __m128i v_filter =
+      LoadLo8(kHalfSubPixelFilters[vert_filter_index][filter_id]);
+
+  if (vertical_taps == 8) {
+    SetupTaps<8, /*is_2d_vertical=*/true>(&v_filter, taps);
+    if (width == 2) {
+      Filter2DVertical2xH<8>(intermediate_result, dest, dest_stride, height,
+                             taps);
+    } else if (width == 4) {
+      Filter2DVertical4xH<8>(intermediate_result, dest, dest_stride, height,
+                             taps);
+    } else {
+      Filter2DVertical<8>(intermediate_result, dest, dest_stride, width, height,
+                          taps);
+    }
+  } else if (vertical_taps == 6) {
+    SetupTaps<6, /*is_2d_vertical=*/true>(&v_filter, taps);
+    if (width == 2) {
+      Filter2DVertical2xH<6>(intermediate_result, dest, dest_stride, height,
+                             taps);
+    } else if (width == 4) {
+      Filter2DVertical4xH<6>(intermediate_result, dest, dest_stride, height,
+                             taps);
+    } else {
+      Filter2DVertical<6>(intermediate_result, dest, dest_stride, width, height,
+                          taps);
+    }
+  } else if (vertical_taps == 4) {
+    SetupTaps<4, /*is_2d_vertical=*/true>(&v_filter, taps);
+    if (width == 2) {
+      Filter2DVertical2xH<4>(intermediate_result, dest, dest_stride, height,
+                             taps);
+    } else if (width == 4) {
+      Filter2DVertical4xH<4>(intermediate_result, dest, dest_stride, height,
+                             taps);
+    } else {
+      Filter2DVertical<4>(intermediate_result, dest, dest_stride, width, height,
+                          taps);
+    }
+  } else {  // |vertical_taps| == 2
+    SetupTaps<2, /*is_2d_vertical=*/true>(&v_filter, taps);
+    if (width == 2) {
+      Filter2DVertical2xH<2>(intermediate_result, dest, dest_stride, height,
+                             taps);
+    } else if (width == 4) {
+      Filter2DVertical4xH<2>(intermediate_result, dest, dest_stride, height,
+                             taps);
+    } else {
+      Filter2DVertical<2>(intermediate_result, dest, dest_stride, width, height,
+                          taps);
+    }
   }
 }
 
@@ -1192,15 +1580,95 @@ void ConvolveCompoundHorizontal_SSE4_1(
       filter_index);
 }
 
+void ConvolveCompound2D_SSE4_1(
+    const void* const reference, const ptrdiff_t reference_stride,
+    const int horizontal_filter_index, const int vertical_filter_index,
+    const int subpixel_x, const int subpixel_y, const int width,
+    const int height, void* prediction, const ptrdiff_t /*pred_stride*/) {
+  // The output of the horizontal filter, i.e. the intermediate_result, is
+  // guaranteed to fit in int16_t.
+  alignas(16) uint16_t
+      intermediate_result[kMaxSuperBlockSizeInPixels *
+                          (kMaxSuperBlockSizeInPixels + kSubPixelTaps - 1)];
+
+  // Horizontal filter.
+  // Filter types used for width <= 4 are different from those for width > 4.
+  // When width > 4, the valid filter index range is always [0, 3].
+  // When width <= 4, the valid filter index range is always [4, 5].
+  // Similarly for height.
+  const int horiz_filter_index = GetFilterIndex(horizontal_filter_index, width);
+  const int vert_filter_index = GetFilterIndex(vertical_filter_index, height);
+  const int vertical_taps = GetNumTapsInFilter(vert_filter_index);
+  const int intermediate_height = height + vertical_taps - 1;
+  const ptrdiff_t src_stride = reference_stride;
+  const auto* const src = static_cast<const uint8_t*>(reference) -
+                          (vertical_taps / 2 - 1) * src_stride -
+                          kHorizontalOffset;
+
+  DoHorizontalPass</*is_2d=*/true, /*is_compound=*/true>(
+      src, src_stride, intermediate_result, width, width, intermediate_height,
+      subpixel_x, horiz_filter_index);
+
+  // Vertical filter.
+  auto* dest = static_cast<uint16_t*>(prediction);
+  const int filter_id = ((subpixel_y & 1023) >> 6) & kSubPixelMask;
+  assert(filter_id != 0);
+
+  const ptrdiff_t dest_stride = width;
+  __m128i taps[4];
+  const __m128i v_filter =
+      LoadLo8(kHalfSubPixelFilters[vert_filter_index][filter_id]);
+
+  if (vertical_taps == 8) {
+    SetupTaps<8, /*is_2d_vertical=*/true>(&v_filter, taps);
+    if (width == 4) {
+      Filter2DVertical4xH<8, /*is_compound=*/true>(intermediate_result, dest,
+                                                   dest_stride, height, taps);
+    } else {
+      Filter2DVertical<8, /*is_compound=*/true>(
+          intermediate_result, dest, dest_stride, width, height, taps);
+    }
+  } else if (vertical_taps == 6) {
+    SetupTaps<6, /*is_2d_vertical=*/true>(&v_filter, taps);
+    if (width == 4) {
+      Filter2DVertical4xH<6, /*is_compound=*/true>(intermediate_result, dest,
+                                                   dest_stride, height, taps);
+    } else {
+      Filter2DVertical<6, /*is_compound=*/true>(
+          intermediate_result, dest, dest_stride, width, height, taps);
+    }
+  } else if (vertical_taps == 4) {
+    SetupTaps<4, /*is_2d_vertical=*/true>(&v_filter, taps);
+    if (width == 4) {
+      Filter2DVertical4xH<4, /*is_compound=*/true>(intermediate_result, dest,
+                                                   dest_stride, height, taps);
+    } else {
+      Filter2DVertical<4, /*is_compound=*/true>(
+          intermediate_result, dest, dest_stride, width, height, taps);
+    }
+  } else {  // |vertical_taps| == 2
+    SetupTaps<2, /*is_2d_vertical=*/true>(&v_filter, taps);
+    if (width == 4) {
+      Filter2DVertical4xH<2, /*is_compound=*/true>(intermediate_result, dest,
+                                                   dest_stride, height, taps);
+    } else {
+      Filter2DVertical<2, /*is_compound=*/true>(
+          intermediate_result, dest, dest_stride, width, height, taps);
+    }
+  }
+}
+
 void Init8bpp() {
   Dsp* const dsp = dsp_internal::GetWritableDspTable(kBitdepth8);
   assert(dsp != nullptr);
   dsp->convolve[0][0][0][1] = ConvolveHorizontal_SSE4_1;
   dsp->convolve[0][0][1][0] = ConvolveVertical_SSE4_1;
+  dsp->convolve[0][0][1][1] = Convolve2D_SSE4_1;
 
   dsp->convolve[0][1][0][0] = ConvolveCompoundCopy_SSE4;
   dsp->convolve[0][1][0][1] = ConvolveCompoundHorizontal_SSE4_1;
   dsp->convolve[0][1][1][0] = ConvolveCompoundVertical_SSE4_1;
+  dsp->convolve[0][1][1][1] = ConvolveCompound2D_SSE4_1;
 }
 
 }  // namespace
