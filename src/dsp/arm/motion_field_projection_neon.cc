@@ -34,37 +34,6 @@ namespace libgav1 {
 namespace dsp {
 namespace {
 
-inline void CalculateReferenceFramesInfo(
-    const int8_t reference_offsets[kNumReferenceFrameTypes],
-    bool skip_references[kNumReferenceFrameTypes],
-    int16_t projection_mv_divisions[kNumReferenceFrameTypes]) {
-  // Initialize skip_references[kReferenceFrameIntra] to simplify branch
-  // conditions in projection.
-  const int8x8_t r_offsets = vld1_s8(reference_offsets);
-  const uint8x8_t overflow = vcgt_s8(r_offsets, vdup_n_s8(kMaxFrameDistance));
-  const uint8x8_t underflow = vcle_s8(r_offsets, vdup_n_s8(0));
-  const int8x8_t sk = vreinterpret_s8_u8(vorr_u8(overflow, underflow));
-  const int8x8_t skip_reference = vset_lane_s8(-1, sk, 0);
-  const int8x8_t ref_offsets = vbic_s8(r_offsets, skip_reference);
-  vst1_s8(reinterpret_cast<int8_t*>(skip_references), skip_reference);
-  projection_mv_divisions[0] =
-      kProjectionMvDivisionLookup[vget_lane_s8(ref_offsets, 0)];
-  projection_mv_divisions[1] =
-      kProjectionMvDivisionLookup[vget_lane_s8(ref_offsets, 1)];
-  projection_mv_divisions[2] =
-      kProjectionMvDivisionLookup[vget_lane_s8(ref_offsets, 2)];
-  projection_mv_divisions[3] =
-      kProjectionMvDivisionLookup[vget_lane_s8(ref_offsets, 3)];
-  projection_mv_divisions[4] =
-      kProjectionMvDivisionLookup[vget_lane_s8(ref_offsets, 4)];
-  projection_mv_divisions[5] =
-      kProjectionMvDivisionLookup[vget_lane_s8(ref_offsets, 5)];
-  projection_mv_divisions[6] =
-      kProjectionMvDivisionLookup[vget_lane_s8(ref_offsets, 6)];
-  projection_mv_divisions[7] =
-      kProjectionMvDivisionLookup[vget_lane_s8(ref_offsets, 7)];
-}
-
 inline int8x8_t Project_NEON(const int16x8_t delta, const int16x8_t dst_sign) {
   // Add 63 to negative delta so that it shifts towards zero.
   const int16x8_t delta_sign = vshrq_n_s16(delta, 15);
@@ -220,16 +189,17 @@ void MotionFieldProjectionKernel_NEON(const ReferenceInfo& reference_info,
       x8_end + kProjectionMvMaxHorizontalOffset, static_cast<int>(stride));
   const int adjusted_x8_end8 = adjusted_x8_end & ~7;
   const int leftover = adjusted_x8_end - adjusted_x8_end8;
+  const int8_t* const reference_offsets =
+      reference_info.relative_distance_to.data();
+  const bool* const skip_references = reference_info.skip_references.data();
+  const int16_t* const projection_divisions =
+      reference_info.projection_divisions.data();
   const ReferenceFrameType* source_reference_types =
       &reference_info.motion_field_reference_frame[y8_start][0];
   const MotionVector* mv = &reference_info.motion_field_mv[y8_start][0];
-  const int8_t* const reference_offsets =
-      reference_info.relative_distance_to.data();
   int8_t* dst_reference_offset = motion_field->reference_offset[y8_start];
   MotionVector* dst_mv = motion_field->mv[y8_start];
   const int16x8_t d_sign = vdupq_n_s16(dst_sign);
-  bool skip_references[kNumReferenceFrameTypes];
-  int16_t projection_mv_divisions[kNumReferenceFrameTypes];
 
   static_assert(sizeof(int8_t) == sizeof(bool), "");
   static_assert(sizeof(int8_t) == sizeof(ReferenceFrameType), "");
@@ -244,13 +214,10 @@ void MotionFieldProjectionKernel_NEON(const ReferenceInfo& reference_info,
   // which means this optimization works for frame width up to 32K (each
   // position is a 8x8 block).
   assert(8 * stride <= 32768);
-  CalculateReferenceFramesInfo(reference_offsets, skip_references,
-                               projection_mv_divisions);
   const int8x8_t skip_reference =
       vld1_s8(reinterpret_cast<const int8_t*>(skip_references));
   const int8x8_t r_offsets = vld1_s8(reference_offsets);
-  const int8x16_t table =
-      vreinterpretq_s8_s16(vld1q_s16(projection_mv_divisions));
+  const int8x16_t table = vreinterpretq_s8_s16(vld1q_s16(projection_divisions));
   int8x8x2_t division_table;
   division_table.val[0] = vget_low_s8(table);
   division_table.val[1] = vget_high_s8(table);
@@ -382,7 +349,7 @@ void MotionFieldProjectionKernel_NEON(const ReferenceInfo& reference_info,
           MotionVector projection_mv;
           // reference_to_current_with_sign could be 0.
           GetMvProjection(mv[x8], reference_to_current_with_sign,
-                          projection_mv_divisions[source_reference_type],
+                          projection_divisions[source_reference_type],
                           &projection_mv);
           // Do not update the motion vector if the block position is not valid
           // or if position_x8 is outside the current range of x8_start and
