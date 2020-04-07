@@ -668,7 +668,6 @@ bool Tile::Decode(
             row4x4, scratch_buffer.get())) {
       return false;
     }
-    PopulateIntraPredictionBuffer(row4x4);
     bool notify;
     {
       std::unique_lock<std::mutex> lock(*mutex);
