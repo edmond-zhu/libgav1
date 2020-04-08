@@ -63,8 +63,10 @@ int GetNumTapsInFilter(const int filter_index) {
   return 4;
 }
 
+constexpr int kIntermediateStride = kMaxSuperBlockSizeInPixels;
 constexpr int kSubPixelMask = (1 << kSubPixelBits) - 1;
 constexpr int kHorizontalOffset = 3;
+constexpr int kFilterIndexShift = 6;
 
 // Multiply every entry in |src[]| by the corresponding entry in |taps[]| and
 // sum. The filters in |taps[]| are pre-shifted by 1. This prevents the final
@@ -1658,6 +1660,376 @@ void ConvolveCompound2D_SSE4_1(
   }
 }
 
+// Pre-transposed filters.
+template <int filter_index>
+inline void GetHalfSubPixelFilter(__m128i* output) {
+  // Filter 0
+  alignas(
+      16) static constexpr int8_t kHalfSubPixel6TapSignedFilterColumns[6][16] =
+      {{0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0},
+       {0, -3, -5, -6, -7, -7, -8, -7, -7, -6, -6, -6, -5, -4, -2, -1},
+       {64, 63, 61, 58, 55, 51, 47, 42, 38, 33, 29, 24, 19, 14, 9, 4},
+       {0, 4, 9, 14, 19, 24, 29, 33, 38, 42, 47, 51, 55, 58, 61, 63},
+       {0, -1, -2, -4, -5, -6, -6, -6, -7, -7, -8, -7, -7, -6, -5, -3},
+       {0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1}};
+  // Filter 1
+  alignas(16) static constexpr int8_t
+      kHalfSubPixel6TapMixedSignedFilterColumns[6][16] = {
+          {0, 1, 0, 0, 0, 0, 0, -1, -1, 0, 0, 0, 0, 0, 0, 0},
+          {0, 14, 13, 11, 10, 9, 8, 8, 7, 6, 5, 4, 3, 2, 2, 1},
+          {64, 31, 31, 31, 30, 29, 28, 27, 26, 24, 23, 22, 21, 20, 18, 17},
+          {0, 17, 18, 20, 21, 22, 23, 24, 26, 27, 28, 29, 30, 31, 31, 31},
+          {0, 1, 2, 2, 3, 4, 5, 6, 7, 8, 8, 9, 10, 11, 13, 14},
+          {0, 0, 0, 0, 0, 0, 0, 0, -1, -1, 0, 0, 0, 0, 0, 1}};
+  // Filter 2
+  alignas(
+      16) static constexpr int8_t kHalfSubPixel8TapSignedFilterColumns[8][16] =
+      {{0, -1, -1, -1, -2, -2, -2, -2, -2, -1, -1, -1, -1, -1, -1, 0},
+       {0, 1, 3, 4, 5, 5, 5, 5, 6, 5, 4, 4, 3, 3, 2, 1},
+       {0, -3, -6, -9, -11, -11, -12, -12, -12, -11, -10, -9, -7, -5, -3, -1},
+       {64, 63, 62, 60, 58, 54, 50, 45, 40, 35, 30, 24, 19, 13, 8, 4},
+       {0, 4, 8, 13, 19, 24, 30, 35, 40, 45, 50, 54, 58, 60, 62, 63},
+       {0, -1, -3, -5, -7, -9, -10, -11, -12, -12, -12, -11, -11, -9, -6, -3},
+       {0, 1, 2, 3, 3, 4, 4, 5, 6, 5, 5, 5, 5, 4, 3, 1},
+       {0, 0, -1, -1, -1, -1, -1, -1, -2, -2, -2, -2, -2, -1, -1, -1}};
+  // Filter 3
+  alignas(16) static constexpr uint8_t kHalfSubPixel2TapFilterColumns[2][16] = {
+      {64, 60, 56, 52, 48, 44, 40, 36, 32, 28, 24, 20, 16, 12, 8, 4},
+      {0, 4, 8, 12, 16, 20, 24, 28, 32, 36, 40, 44, 48, 52, 56, 60}};
+  // Filter 4
+  alignas(
+      16) static constexpr int8_t kHalfSubPixel4TapSignedFilterColumns[4][16] =
+      {{0, -2, -4, -5, -6, -6, -7, -6, -6, -5, -5, -5, -4, -3, -2, -1},
+       {64, 63, 61, 58, 55, 51, 47, 42, 38, 33, 29, 24, 19, 14, 9, 4},
+       {0, 4, 9, 14, 19, 24, 29, 33, 38, 42, 47, 51, 55, 58, 61, 63},
+       {0, -1, -2, -3, -4, -5, -5, -5, -6, -6, -7, -6, -6, -5, -4, -2}};
+  // Filter 5
+  alignas(
+      16) static constexpr uint8_t kSubPixel4TapPositiveFilterColumns[4][16] = {
+      {0, 15, 13, 11, 10, 9, 8, 7, 6, 6, 5, 4, 3, 2, 2, 1},
+      {64, 31, 31, 31, 30, 29, 28, 27, 26, 24, 23, 22, 21, 20, 18, 17},
+      {0, 17, 18, 20, 21, 22, 23, 24, 26, 27, 28, 29, 30, 31, 31, 31},
+      {0, 1, 2, 2, 3, 4, 5, 6, 6, 7, 8, 9, 10, 11, 13, 15}};
+  switch (filter_index) {
+    case 0:
+      output[0] = LoadAligned16(kHalfSubPixel6TapSignedFilterColumns[0]);
+      output[1] = LoadAligned16(kHalfSubPixel6TapSignedFilterColumns[1]);
+      output[2] = LoadAligned16(kHalfSubPixel6TapSignedFilterColumns[2]);
+      output[3] = LoadAligned16(kHalfSubPixel6TapSignedFilterColumns[3]);
+      output[4] = LoadAligned16(kHalfSubPixel6TapSignedFilterColumns[4]);
+      output[5] = LoadAligned16(kHalfSubPixel6TapSignedFilterColumns[5]);
+      break;
+    case 1:
+      // The term "mixed" refers to the fact that the outer taps have a mix of
+      // negative and positive values.
+      output[0] = LoadAligned16(kHalfSubPixel6TapMixedSignedFilterColumns[0]);
+      output[1] = LoadAligned16(kHalfSubPixel6TapMixedSignedFilterColumns[1]);
+      output[2] = LoadAligned16(kHalfSubPixel6TapMixedSignedFilterColumns[2]);
+      output[3] = LoadAligned16(kHalfSubPixel6TapMixedSignedFilterColumns[3]);
+      output[4] = LoadAligned16(kHalfSubPixel6TapMixedSignedFilterColumns[4]);
+      output[5] = LoadAligned16(kHalfSubPixel6TapMixedSignedFilterColumns[5]);
+      break;
+    case 2:
+      output[0] = LoadAligned16(kHalfSubPixel8TapSignedFilterColumns[0]);
+      output[1] = LoadAligned16(kHalfSubPixel8TapSignedFilterColumns[1]);
+      output[2] = LoadAligned16(kHalfSubPixel8TapSignedFilterColumns[2]);
+      output[3] = LoadAligned16(kHalfSubPixel8TapSignedFilterColumns[3]);
+      output[4] = LoadAligned16(kHalfSubPixel8TapSignedFilterColumns[4]);
+      output[5] = LoadAligned16(kHalfSubPixel8TapSignedFilterColumns[5]);
+      output[6] = LoadAligned16(kHalfSubPixel8TapSignedFilterColumns[6]);
+      output[7] = LoadAligned16(kHalfSubPixel8TapSignedFilterColumns[7]);
+      break;
+    case 3:
+      output[0] = LoadAligned16(kHalfSubPixel2TapFilterColumns[0]);
+      output[1] = LoadAligned16(kHalfSubPixel2TapFilterColumns[1]);
+      break;
+    case 4:
+      output[0] = LoadAligned16(kHalfSubPixel4TapSignedFilterColumns[0]);
+      output[1] = LoadAligned16(kHalfSubPixel4TapSignedFilterColumns[1]);
+      output[2] = LoadAligned16(kHalfSubPixel4TapSignedFilterColumns[2]);
+      output[3] = LoadAligned16(kHalfSubPixel4TapSignedFilterColumns[3]);
+      break;
+    default:
+      assert(filter_index == 5);
+      output[0] = LoadAligned16(kSubPixel4TapPositiveFilterColumns[0]);
+      output[1] = LoadAligned16(kSubPixel4TapPositiveFilterColumns[1]);
+      output[2] = LoadAligned16(kSubPixel4TapPositiveFilterColumns[2]);
+      output[3] = LoadAligned16(kSubPixel4TapPositiveFilterColumns[3]);
+      break;
+  }
+}
+
+// There are many opportunities for overreading in scaled convolve, because
+// the range of starting points for filter windows is anywhere from 0 to 16
+// for 8 destination pixels, and the window sizes range from 2 to 8. To
+// accommodate this range concisely, we use |grade_x| to mean the most steps
+// in src that can be traversed in a single |step_x| increment, i.e. 1 or 2.
+// More importantly, |grade_x| answers the question "how many vector loads are
+// needed to cover the source values?"
+// When |grade_x| == 1, the maximum number of source values needed is 8 separate
+// starting positions plus 7 more to cover taps, all fitting into 16 bytes.
+// When |grade_x| > 1, we are guaranteed to exceed 8 whole steps in src for
+// every 8 |step_x| increments, on top of 8 possible taps. The first load covers
+// the starting sources for each kernel, while the final load covers the taps.
+// Since the offset value of src_x cannot exceed 8 and |num_taps| does not
+// exceed 4 when width <= 4, |grade_x| is set to 1 regardless of the value of
+// |step_x|.
+template <int num_taps, int grade_x>
+inline void PrepareSourceVectors(const uint8_t* src, const __m128i src_indices,
+                                 __m128i source[num_taps >> 1]) {
+  const __m128i src_vals = LoadUnaligned16(src);
+  source[0] = _mm_shuffle_epi8(src_vals, src_indices);
+  if (grade_x == 1) {
+    if (num_taps > 2) {
+      source[1] = _mm_shuffle_epi8(_mm_srli_si128(src_vals, 2), src_indices);
+    }
+    if (num_taps > 4) {
+      source[2] = _mm_shuffle_epi8(_mm_srli_si128(src_vals, 4), src_indices);
+    }
+    if (num_taps > 6) {
+      source[3] = _mm_shuffle_epi8(_mm_srli_si128(src_vals, 6), src_indices);
+    }
+  } else {
+    assert(grade_x > 1);
+    assert(num_taps != 4);
+    // grade_x > 1 also means width >= 8 && num_taps != 4
+    const __m128i src_vals_ext = LoadLo8(src + 16);
+    if (num_taps > 2) {
+      source[1] = _mm_shuffle_epi8(_mm_alignr_epi8(src_vals_ext, src_vals, 2),
+                                   src_indices);
+      source[2] = _mm_shuffle_epi8(_mm_alignr_epi8(src_vals_ext, src_vals, 4),
+                                   src_indices);
+    }
+    if (num_taps > 6) {
+      source[3] = _mm_shuffle_epi8(_mm_alignr_epi8(src_vals_ext, src_vals, 6),
+                                   src_indices);
+    }
+  }
+}
+
+template <int num_taps>
+inline void PrepareHorizontalTaps(const __m128i subpel_indices,
+                                  const __m128i* filter_taps,
+                                  __m128i* out_taps) {
+  const __m128i scale_index_offsets =
+      _mm_srli_epi16(subpel_indices, kFilterIndexShift);
+  const __m128i filter_index_mask = _mm_set1_epi8(kSubPixelMask);
+  const __m128i filter_indices =
+      _mm_and_si128(_mm_packus_epi16(scale_index_offsets, scale_index_offsets),
+                    filter_index_mask);
+  // Line up taps for maddubs_epi16.
+  // The unpack is also assumed to be lighter than shift+alignr.
+  for (int k = 0; k < (num_taps >> 1); ++k) {
+    const __m128i taps0 = _mm_shuffle_epi8(filter_taps[2 * k], filter_indices);
+    const __m128i taps1 =
+        _mm_shuffle_epi8(filter_taps[2 * k + 1], filter_indices);
+    out_taps[k] = _mm_unpacklo_epi8(taps0, taps1);
+  }
+}
+
+inline __m128i HorizontalScaleIndices(const __m128i subpel_indices) {
+  const __m128i src_indices16 =
+      _mm_srli_epi16(subpel_indices, kScaleSubPixelBits);
+  const __m128i src_indices = _mm_packus_epi16(src_indices16, src_indices16);
+  return _mm_unpacklo_epi8(src_indices,
+                           _mm_add_epi8(src_indices, _mm_set1_epi8(1)));
+}
+
+template <int grade_x, int filter_index, int num_taps>
+inline void ConvolveHorizontalScale(const uint8_t* src, ptrdiff_t src_stride,
+                                    int width, int subpixel_x, int step_x,
+                                    int intermediate_height,
+                                    int16_t* intermediate) {
+  // Account for the 0-taps that precede the 2 nonzero taps.
+  const int kernel_offset = (8 - num_taps) >> 1;
+  const int ref_x = subpixel_x >> kScaleSubPixelBits;
+  const int step_x8 = step_x << 3;
+  __m128i filter_taps[num_taps];
+  GetHalfSubPixelFilter<filter_index>(filter_taps);
+  const __m128i index_steps =
+      _mm_mullo_epi16(_mm_set_epi16(7, 6, 5, 4, 3, 2, 1, 0),
+                      _mm_set1_epi16(static_cast<int16_t>(step_x)));
+
+  __m128i taps[num_taps >> 1];
+  __m128i source[num_taps >> 1];
+  int p = subpixel_x;
+  // Case when width <= 4 is possible.
+  if (filter_index >= 3) {
+    if (filter_index > 3 || width <= 4) {
+      const uint8_t* src_x =
+          &src[(p >> kScaleSubPixelBits) - ref_x + kernel_offset];
+      // Only add steps to the 10-bit truncated p to avoid overflow.
+      const __m128i p_fraction = _mm_set1_epi16(p & 1023);
+      const __m128i subpel_indices = _mm_add_epi16(index_steps, p_fraction);
+      PrepareHorizontalTaps<num_taps>(subpel_indices, filter_taps, taps);
+      const __m128i packed_indices = HorizontalScaleIndices(subpel_indices);
+
+      int y = intermediate_height;
+      do {
+        // Load and line up source values with the taps. Width 4 means no need
+        // to load extended source.
+        PrepareSourceVectors<num_taps, /*grade_x=*/1>(src_x, packed_indices,
+                                                      source);
+
+        StoreLo8(intermediate, RightShiftWithRounding_S16(
+                                   SumOnePassTaps<filter_index>(source, taps),
+                                   kInterRoundBitsHorizontal - 1));
+        src_x += src_stride;
+        intermediate += kIntermediateStride;
+      } while (--y != 0);
+      return;
+    }
+  }
+
+  // |width| >= 8
+  int x = 0;
+  do {
+    const uint8_t* src_x =
+        &src[(p >> kScaleSubPixelBits) - ref_x + kernel_offset];
+    int16_t* intermediate_x = intermediate + x;
+    // Only add steps to the 10-bit truncated p to avoid overflow.
+    const __m128i p_fraction = _mm_set1_epi16(p & 1023);
+    const __m128i subpel_indices = _mm_add_epi16(index_steps, p_fraction);
+    PrepareHorizontalTaps<num_taps>(subpel_indices, filter_taps, taps);
+    const __m128i packed_indices = HorizontalScaleIndices(subpel_indices);
+
+    int y = intermediate_height;
+    do {
+      // For each x, a lane of src_k[k] contains src_x[k].
+      PrepareSourceVectors<num_taps, grade_x>(src_x, packed_indices, source);
+
+      // Shift by one less because the taps are halved.
+      StoreAligned16(
+          intermediate_x,
+          RightShiftWithRounding_S16(SumOnePassTaps<filter_index>(source, taps),
+                                     kInterRoundBitsHorizontal - 1));
+      src_x += src_stride;
+      intermediate_x += kIntermediateStride;
+    } while (--y != 0);
+    x += 8;
+    p += step_x8;
+  } while (x < width);
+}
+
+template <bool is_compound>
+#if LIBGAV1_MSAN
+__attribute__((no_sanitize_memory)) void ConvolveScale2D_SSE4_1(
+#else
+void ConvolveScale2D_SSE4_1(
+#endif
+    const void* const reference, const ptrdiff_t reference_stride,
+    const int horizontal_filter_index, const int vertical_filter_index,
+    const int subpixel_x, const int subpixel_y, const int step_x,
+    const int step_y, const int width, const int height, void* prediction,
+    const ptrdiff_t pred_stride) {
+  const int horiz_filter_index = GetFilterIndex(horizontal_filter_index, width);
+  const int vert_filter_index = GetFilterIndex(vertical_filter_index, height);
+  assert(step_x <= 2048);
+  // The output of the horizontal filter, i.e. the intermediate_result, is
+  // guaranteed to fit in int16_t.
+  alignas(16) int16_t intermediate_result[kMaxSuperBlockSizeInPixels *
+                                          (2 * kMaxSuperBlockSizeInPixels + 8)];
+  const int intermediate_height =
+      (((height - 1) * step_y + (1 << kScaleSubPixelBits) - 1) >>
+       kScaleSubPixelBits) +
+      kSubPixelTaps;
+
+  // Horizontal filter.
+  // Filter types used for width <= 4 are different from those for width > 4.
+  // When width > 4, the valid filter index range is always [0, 3].
+  // When width <= 4, the valid filter index range is always [3, 5].
+  // Similarly for height.
+  int16_t* intermediate = intermediate_result;
+  const auto* src = static_cast<const uint8_t*>(reference);
+  const ptrdiff_t src_stride = reference_stride;
+  const int max_pixel_value = (1 << 8) - 1;
+  switch (horiz_filter_index) {
+    // TODO(b/133523802): Replace grade_x thresholds with more accurate 1170 in
+    // both arm and x86.
+    case 0:
+      if (step_x > 1024) {
+        ConvolveHorizontalScale<2, 0, 6>(src, src_stride, width, subpixel_x,
+                                         step_x, intermediate_height,
+                                         intermediate);
+      } else {
+        ConvolveHorizontalScale<1, 0, 6>(src, src_stride, width, subpixel_x,
+                                         step_x, intermediate_height,
+                                         intermediate);
+      }
+      break;
+    case 1:
+      if (step_x > 1024) {
+        ConvolveHorizontalScale<2, 1, 6>(src, src_stride, width, subpixel_x,
+                                         step_x, intermediate_height,
+                                         intermediate);
+
+      } else {
+        ConvolveHorizontalScale<1, 1, 6>(src, src_stride, width, subpixel_x,
+                                         step_x, intermediate_height,
+                                         intermediate);
+      }
+      break;
+    case 2:
+      if (step_x > 1024) {
+        ConvolveHorizontalScale<2, 2, 8>(src, src_stride, width, subpixel_x,
+                                         step_x, intermediate_height,
+                                         intermediate);
+      } else {
+        ConvolveHorizontalScale<1, 2, 8>(src, src_stride, width, subpixel_x,
+                                         step_x, intermediate_height,
+                                         intermediate);
+      }
+      break;
+    case 3:
+      if (step_x > 1024) {
+        ConvolveHorizontalScale<2, 3, 2>(src, src_stride, width, subpixel_x,
+                                         step_x, intermediate_height,
+                                         intermediate);
+      } else {
+        ConvolveHorizontalScale<1, 3, 2>(src, src_stride, width, subpixel_x,
+                                         step_x, intermediate_height,
+                                         intermediate);
+      }
+      break;
+    case 4:
+      assert(width <= 4);
+      ConvolveHorizontalScale<1, 4, 4>(src, src_stride, width, subpixel_x,
+                                       step_x, intermediate_height,
+                                       intermediate);
+      break;
+    default:
+      assert(horiz_filter_index == 5);
+      assert(width <= 4);
+      ConvolveHorizontalScale<1, 5, 4>(src, src_stride, width, subpixel_x,
+                                       step_x, intermediate_height,
+                                       intermediate);
+  }
+  // Vertical filter.
+  intermediate = intermediate_result;
+  const ptrdiff_t dest_stride = pred_stride;
+  int p = subpixel_y & 1023;
+  auto* dest = static_cast<uint8_t*>(prediction);
+  int y = height;
+  do {
+    const int filter_id = (p >> 6) & kSubPixelMask;
+    int x = 0;
+    do {
+      int sum = 0;
+      for (int k = 0; k < kSubPixelTaps; ++k) {
+        sum +=
+            kHalfSubPixelFilters[vert_filter_index][filter_id][k] *
+            intermediate[((p >> kScaleSubPixelBits) + k) * kIntermediateStride +
+                         x];
+      }
+      dest[x] = Clip3(RightShiftWithRounding(sum, kInterRoundBitsVertical - 1),
+                      0, max_pixel_value);
+    } while (++x < width);
+
+    dest += dest_stride;
+    p += step_y;
+  } while (--y != 0);
+}
+
 void Init8bpp() {
   Dsp* const dsp = dsp_internal::GetWritableDspTable(kBitdepth8);
   assert(dsp != nullptr);
@@ -1669,6 +2041,8 @@ void Init8bpp() {
   dsp->convolve[0][1][0][1] = ConvolveCompoundHorizontal_SSE4_1;
   dsp->convolve[0][1][1][0] = ConvolveCompoundVertical_SSE4_1;
   dsp->convolve[0][1][1][1] = ConvolveCompound2D_SSE4_1;
+
+  dsp->convolve_scale[0] = ConvolveScale2D_SSE4_1<false>;
 }
 
 }  // namespace
