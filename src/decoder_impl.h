@@ -18,7 +18,6 @@
 #define LIBGAV1_SRC_DECODER_IMPL_H_
 
 #include <array>
-#include <atomic>
 #include <condition_variable>  // NOLINT (unapproved c++11 header)
 #include <cstddef>
 #include <cstdint>
@@ -243,6 +242,11 @@ class DecoderImpl : public Allocable {
   bool IsNewSequenceHeader(const ObuParser& obu);
   bool IsFrameParallel() const { return frame_thread_pool_ != nullptr; }
 
+  bool HasFailure() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return failure_status_ != kStatusOk;
+  }
+
   Queue<TemporalUnit> temporal_units_;
   DecoderState state_;
 
@@ -267,7 +271,7 @@ class DecoderImpl : public Allocable {
   // aborting whatever they are doing. This variable is used to accomplish that.
   // If |failure_status_| is not kStatusOk, then the two functions will try to
   // abort as early as they can.
-  std::atomic<StatusCode> failure_status_{kStatusOk};
+  StatusCode failure_status_ = kStatusOk LIBGAV1_GUARDED_BY(mutex_);
 
   ObuSequenceHeader sequence_header_ = {};
   // If true, sequence_header is valid.
