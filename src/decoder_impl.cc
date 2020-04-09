@@ -354,7 +354,6 @@ StatusCode DecoderImpl::ParseAndSchedule() {
     std::lock_guard<std::mutex> lock(mutex_);
     temporal_unit.has_displayable_frame = false;
     temporal_unit.decoded = true;
-    decoded_condvar_.notify_one();
     return kStatusOk;
   }
   for (auto& frame : temporal_unit.frames) {

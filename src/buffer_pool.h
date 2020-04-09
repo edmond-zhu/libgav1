@@ -189,8 +189,10 @@ class RefCountedBuffer {
   }
 
   void SetFrameState(FrameState frame_state) {
-    std::lock_guard<std::mutex> lock(mutex_);
-    frame_state_ = frame_state;
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      frame_state_ = frame_state;
+    }
     if (frame_state == kFrameStateParsed) {
       parsed_condvar_.notify_all();
     } else if (frame_state == kFrameStateDecoded) {
@@ -202,9 +204,11 @@ class RefCountedBuffer {
   // Sets the progress of this frame to |progress_row| and notifies any threads
   // that may be waiting on rows <= |progress_row|.
   void SetProgress(int progress_row) {
-    std::lock_guard<std::mutex> lock(mutex_);
-    if (progress_row_ >= progress_row) return;
-    progress_row_ = progress_row;
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      if (progress_row_ >= progress_row) return;
+      progress_row_ = progress_row;
+    }
     progress_row_condvar_.notify_all();
   }
 
