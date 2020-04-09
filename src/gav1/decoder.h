@@ -107,9 +107,12 @@ class LIBGAV1_PUBLIC Decoder {
   // compressed frame. If there are no displayable frames available, sets
   // |*out_ptr| to nullptr. Returns an error status if there is an error.
   //
-  // In frame parallel mode, if |settings_.blocking_dequeue| is true, then this
-  // call will block until an enqueued frame has been decoded. Otherwise, it
-  // will return kStatusTryAgain if an enqueued frame is not yet decoded.
+  // If |settings_.blocking_dequeue| is false and the decoder is operating in
+  // frame parallel mode (|settings_.frame_parallel| is true and the video
+  // stream passes the decoder's heuristics for enabling frame parallel mode),
+  // then this call will return kStatusTryAgain if an enqueued frame is not yet
+  // decoded (it is a non blocking call in this case). In all other cases, this
+  // call will block until an enqueued frame has been decoded.
   StatusCode DequeueFrame(const DecoderBuffer** out_ptr);
 
   // Signals the end of stream.

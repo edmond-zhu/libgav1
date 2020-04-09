@@ -148,7 +148,6 @@ StatusCode DecoderImpl::Init() {
 StatusCode DecoderImpl::InitializeFrameThreadPoolAndTemporalUnitQueue(
     const uint8_t* data, size_t size) {
   if (settings_.frame_parallel) {
-#if defined(ENABLE_FRAME_PARALLEL)
     DecoderState state;
     std::unique_ptr<ObuParser> obu(
         new (std::nothrow) ObuParser(data, size, &buffer_pool_, &state));
@@ -173,12 +172,6 @@ StatusCode DecoderImpl::InitializeFrameThreadPoolAndTemporalUnitQueue(
             &frame_scratch_buffer_pool_)) {
       return kStatusOutOfMemory;
     }
-#else
-    static_cast<void>(data);
-    static_cast<void>(size);
-    LIBGAV1_DLOG(
-        ERROR, "Frame parallel decoding is not implemented, ignoring setting.");
-#endif  // defined(ENABLE_FRAME_PARALLEL)
   }
   const int max_allowed_frames = GetMaxAllowedFrames();
   assert(max_allowed_frames > 0);
@@ -892,7 +885,7 @@ StatusCode DecoderImpl::DecodeTiles(
   // The Tile class must make use of a separate buffer to store the unfiltered
   // pixels for the intra prediction of the next superblock row. This is done
   // only when one of the following conditions are true:
-  //   * frame_parallel is true.
+  //   * IsFrameParallel() is true.
   //   * settings_.threads == 1.
   // In the non-frame-parallel multi-threaded case, we do not run the post
   // filters in the decode loop. So this buffer need not be used.
