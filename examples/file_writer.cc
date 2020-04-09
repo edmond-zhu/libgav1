@@ -85,7 +85,7 @@ std::string GetY4mColorSpaceString(
 FileWriter::~FileWriter() { fclose(file_); }
 
 std::unique_ptr<FileWriter> FileWriter::Open(
-    absl::string_view file_name, FileType file_type,
+    const std::string& file_name, FileType file_type,
     const Y4mParameters* const y4m_parameters) {
   if (file_name.empty() ||
       (file_type == kFileTypeY4m && y4m_parameters == nullptr) ||
@@ -94,13 +94,12 @@ std::unique_ptr<FileWriter> FileWriter::Open(
     return nullptr;
   }
 
-  const std::string fopen_file_name = std::string(file_name);
   FILE* raw_file_ptr;
 
   if (file_name == "-") {
     raw_file_ptr = SetBinaryMode(stdout);
   } else {
-    raw_file_ptr = fopen(fopen_file_name.c_str(), "wb");
+    raw_file_ptr = fopen(file_name.c_str(), "wb");
   }
 
   if (raw_file_ptr == nullptr) {
