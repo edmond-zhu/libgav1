@@ -17,6 +17,7 @@
 #include <algorithm>
 #include <array>
 #include <cassert>
+#include <climits>
 #include <cstdlib>
 #include <cstring>
 #include <memory>

@@ -19,6 +19,7 @@
 
 #include <array>
 #include <cassert>
+#include <climits>
 #include <condition_variable>  // NOLINT (unapproved c++11 header)
 #include <cstdint>
 #include <cstring>
@@ -250,7 +251,11 @@ class RefCountedBuffer {
            !abort_) {
       progress_row_condvar_.wait(lock);
     }
-    *progress_row_cache = progress_row_;
+    // Once |frame_state_| reaches kFrameStateDecoded, |progress_row_| may no
+    // longer be updated. So we set |*progress_row_cache| to INT_MAX in that
+    // case.
+    *progress_row_cache =
+        (frame_state_ != kFrameStateDecoded) ? progress_row_ : INT_MAX;
     return !abort_;
   }
 
