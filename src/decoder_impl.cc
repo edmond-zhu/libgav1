@@ -193,7 +193,7 @@ StatusCode DecoderImpl::EnqueueFrame(const uint8_t* data, size_t size,
                                      int64_t user_private_data,
                                      void* buffer_private_data) {
   if (data == nullptr || size == 0) return kStatusInvalidArgument;
-  if (abort_) return kStatusUnknownError;
+  if (failure_status_ != kStatusOk) return kStatusUnknownError;
   if (!seen_first_frame_) {
     seen_first_frame_ = true;
     const StatusCode status =
@@ -217,7 +217,6 @@ StatusCode DecoderImpl::EnqueueFrame(const uint8_t* data, size_t size,
 
 StatusCode DecoderImpl::SignalFailure(StatusCode status) {
   if (status == kStatusOk || status == kStatusTryAgain) return status;
-  abort_ = true;
   failure_status_ = status;
   // Make sure all waiting threads exit.
   buffer_pool_.Abort();
@@ -263,14 +262,16 @@ StatusCode DecoderImpl::DequeueFrame(const DecoderBuffer** out_ptr) {
   }
   if (settings_.blocking_dequeue) {
     std::unique_lock<std::mutex> lock(mutex_);
-    while (!temporal_unit.decoded && !abort_) {
+    while (!temporal_unit.decoded && failure_status_ == kStatusOk) {
       decoded_condvar_.wait(lock);
     }
   } else {
     std::lock_guard<std::mutex> lock(mutex_);
-    if (!temporal_unit.decoded && !abort_) return kStatusTryAgain;
+    if (!temporal_unit.decoded && failure_status_ == kStatusOk) {
+      return kStatusTryAgain;
+    }
   }
-  if (abort_) {
+  if (failure_status_ != kStatusOk) {
     return SignalFailure(failure_status_);
   }
   if (settings_.release_input_buffer != nullptr) {
@@ -359,27 +360,27 @@ StatusCode DecoderImpl::ParseAndSchedule() {
   for (auto& frame : temporal_unit.frames) {
     EncodedFrame* const encoded_frame = &frame;
     frame_thread_pool_->Schedule([this, encoded_frame]() {
-      if (abort_) return;
+      if (failure_status_ != kStatusOk) return;
       const StatusCode status = DecodeFrame(encoded_frame);
-      if (abort_) return;
+      if (failure_status_ != kStatusOk) return;
       encoded_frame->state = {};
       encoded_frame->frame = nullptr;
       TemporalUnit& temporal_unit = encoded_frame->temporal_unit;
       std::lock_guard<std::mutex> lock(mutex_);
       // temporal_unit's status defaults to kStatusOk. So we need to set it only
-      // on error. If |abort_| is true at this point, it means that there has
-      // already been a failure. So we don't care about this subsequent failure.
-      // We will simply return the error code of the first failure.
+      // on error. If |failure_status_| is not kStatusOk at this point, it means
+      // that there has already been a failure. So we don't care about this
+      // subsequent failure.  We will simply return the error code of the first
+      // failure.
       if (status != kStatusOk) {
         temporal_unit.status = status;
-        if (!abort_) {
-          abort_ = true;
+        if (failure_status_ == kStatusOk) {
           failure_status_ = status;
         }
       }
       temporal_unit.decoded =
           ++temporal_unit.decoded_count == temporal_unit.frames.size();
-      if (temporal_unit.decoded || abort_) {
+      if (temporal_unit.decoded || failure_status_ != kStatusOk) {
         decoded_condvar_.notify_one();
       }
     });

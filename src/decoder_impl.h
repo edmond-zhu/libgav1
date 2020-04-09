@@ -265,8 +265,8 @@ class DecoderImpl : public Allocable {
   //  2) DecodeTiles()
   // Both of these functions have to respond to the other one failing by
   // aborting whatever they are doing. This variable is used to accomplish that.
-  std::atomic<bool> abort_{false};
-  // Stores the failure status if |abort_| is true.
+  // If |failure_status_| is not kStatusOk, then the two functions will try to
+  // abort as early as they can.
   std::atomic<StatusCode> failure_status_{kStatusOk};
 
   ObuSequenceHeader sequence_header_ = {};
