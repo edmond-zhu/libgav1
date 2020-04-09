@@ -26,7 +26,6 @@
 #endif
 
 #include "absl/memory/memory.h"
-#include "absl/strings/str_format.h"
 #include "examples/logging.h"
 
 namespace libgav1 {
@@ -72,9 +71,8 @@ std::string GetY4mColorSpaceString(
   if (y4m_parameters.bitdepth > 8) {
     const bool monochrome =
         y4m_parameters.image_format == kImageFormatMonochrome400;
-    color_space_string =
-        absl::StrFormat("%s%s%d", color_space_string, monochrome ? "" : "p",
-                        y4m_parameters.bitdepth);
+    if (!monochrome) color_space_string += "p";
+    color_space_string += std::to_string(y4m_parameters.bitdepth);
   }
 
   return color_space_string;
@@ -172,11 +170,13 @@ bool FileWriter::WriteFrame(const DecoderBuffer& frame_buffer) {
 //
 // More info here: https://wiki.multimedia.cx/index.php/YUV4MPEG2
 bool FileWriter::WriteY4mFileHeader(const Y4mParameters& y4m_parameters) {
-  std::string y4m_header = absl::StrFormat(
-      "YUV4MPEG2 W%zu H%zu F%zu:%zu Ip C%s\n", y4m_parameters.width,
-      y4m_parameters.height, y4m_parameters.frame_rate_numerator,
-      y4m_parameters.frame_rate_denominator,
-      GetY4mColorSpaceString(y4m_parameters));
+  std::string y4m_header = "YUV4MPEG2";
+  y4m_header += " W" + std::to_string(y4m_parameters.width);
+  y4m_header += " H" + std::to_string(y4m_parameters.height);
+  y4m_header += " F" + std::to_string(y4m_parameters.frame_rate_numerator) +
+                ":" + std::to_string(y4m_parameters.frame_rate_denominator);
+  y4m_header += " Ip C" + GetY4mColorSpaceString(y4m_parameters);
+  y4m_header += "\n";
   return fwrite(y4m_header.c_str(), 1, y4m_header.length(), file_) ==
          y4m_header.length();
 }
