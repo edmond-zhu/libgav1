@@ -66,6 +66,10 @@ void ConvolveInit_SSE4_1();
 #define LIBGAV1_Dsp8bpp_ConvolveScale2D LIBGAV1_CPU_SSE4_1
 #endif
 
+#ifndef LIBGAV1_Dsp8bpp_ConvolveCompoundScale2D
+#define LIBGAV1_Dsp8bpp_ConvolveCompoundScale2D LIBGAV1_CPU_SSE4_1
+#endif
+
 #endif  // LIBGAV1_ENABLE_SSE4_1
 
 #endif  // LIBGAV1_SRC_DSP_X86_CONVOLVE_SSE4_H_
