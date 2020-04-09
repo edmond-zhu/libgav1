@@ -25,7 +25,6 @@
 #include <io.h>
 #endif
 
-#include "absl/memory/memory.h"
 #include "examples/logging.h"
 
 namespace libgav1 {
@@ -105,7 +104,7 @@ std::unique_ptr<FileWriter> FileWriter::Open(
     return nullptr;
   }
 
-  auto file = absl::WrapUnique(new (std::nothrow) FileWriter(raw_file_ptr));
+  std::unique_ptr<FileWriter> file(new (std::nothrow) FileWriter(raw_file_ptr));
   if (file == nullptr) {
     LIBGAV1_EXAMPLES_LOG_ERROR("Out of memory");
     fclose(raw_file_ptr);
