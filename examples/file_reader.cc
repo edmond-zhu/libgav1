@@ -26,7 +26,6 @@
 #include <io.h>
 #endif
 
-#include "absl/memory/memory.h"
 #include "examples/file_reader_constants.h"
 #include "examples/file_reader_factory.h"
 #include "examples/file_reader_interface.h"
@@ -70,7 +69,7 @@ std::unique_ptr<FileReaderInterface> FileReader::Open(
     return nullptr;
   }
 
-  auto file = absl::WrapUnique(
+  std::unique_ptr<FileReader> file(
       new (std::nothrow) FileReader(raw_file_ptr, owns_file, error_tolerant));
   if (file == nullptr) {
     LIBGAV1_EXAMPLES_LOG_ERROR("Out of memory");
