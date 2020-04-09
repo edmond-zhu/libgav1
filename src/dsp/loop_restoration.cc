@@ -26,15 +26,6 @@
 
 namespace libgav1 {
 namespace dsp {
-namespace {
-
-// Precision of a division table (mtable)
-constexpr int kSgrProjScaleBits = 20;
-constexpr int kSgrProjReciprocalBits = 12;
-// Core self-guided restoration precision bits.
-constexpr int kSgrProjSgrBits = 8;
-// Precision bits of generated values higher than source before projection.
-constexpr int kSgrProjRestoreBits = 4;
 
 // Section 7.17.3.
 // a2: range [1, 256].
@@ -44,7 +35,7 @@ constexpr int kSgrProjRestoreBits = 4;
 //   a2 = 1;
 // else
 //   a2 = ((z << kSgrProjSgrBits) + (z >> 1)) / (z + 1);
-constexpr int kXByXPlus1[256] = {
+const int kXByXPlus1[256] = {
     1,   128, 171, 192, 205, 213, 219, 224, 228, 230, 233, 235, 236, 238, 239,
     240, 241, 242, 243, 243, 244, 244, 245, 245, 246, 246, 247, 247, 247, 247,
     248, 248, 248, 248, 249, 249, 249, 249, 249, 250, 250, 250, 250, 250, 250,
@@ -63,6 +54,8 @@ constexpr int kXByXPlus1[256] = {
     255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
     255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
     256};
+
+namespace {
 
 constexpr int kOneByX[25] = {
     4096, 2048, 1365, 1024, 819, 683, 585, 512, 455, 410, 372, 341, 315,

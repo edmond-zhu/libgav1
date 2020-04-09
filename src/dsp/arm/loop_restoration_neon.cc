@@ -660,11 +660,6 @@ void WienerFilter_NEON(const void* const source, void* const dest,
 
 // SGR
 
-constexpr int kSgrProjScaleBits = 20;
-constexpr int kSgrProjRestoreBits = 4;
-constexpr int kSgrProjSgrBits = 8;
-constexpr int kSgrProjReciprocalBits = 12;
-
 // a2 = ((z << kSgrProjSgrBits) + (z >> 1)) / (z + 1);
 // sgr_ma2 = 256 - a2
 constexpr uint8_t kSgrMa2Lookup[256] = {

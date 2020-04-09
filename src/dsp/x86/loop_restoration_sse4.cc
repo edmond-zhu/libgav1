@@ -36,14 +36,6 @@ namespace dsp {
 namespace low_bitdepth {
 namespace {
 
-// Precision of a division table (mtable)
-constexpr int kSgrProjScaleBits = 20;
-constexpr int kSgrProjReciprocalBits = 12;
-// Core self-guided restoration precision bits.
-constexpr int kSgrProjSgrBits = 8;
-// Precision bits of generated values higher than source before projection.
-constexpr int kSgrProjRestoreBits = 4;
-
 // Note: range of wiener filter coefficients.
 // Wiener filter coefficients are symmetric, and their sum is 1 (128).
 // The range of each coefficient:
@@ -210,34 +202,6 @@ void WienerFilter_SSE4_1(const void* source, void* const dest,
     wiener_buffer += buffer_stride;
   } while (++y < height);
 }
-
-// Section 7.17.3.
-// a2: range [1, 256].
-// if (z >= 255)
-//   a2 = 256;
-// else if (z == 0)
-//   a2 = 1;
-// else
-//   a2 = ((z << kSgrProjSgrBits) + (z >> 1)) / (z + 1);
-constexpr int kXByXPlus1[256] = {
-    1,   128, 171, 192, 205, 213, 219, 224, 228, 230, 233, 235, 236, 238, 239,
-    240, 241, 242, 243, 243, 244, 244, 245, 245, 246, 246, 247, 247, 247, 247,
-    248, 248, 248, 248, 249, 249, 249, 249, 249, 250, 250, 250, 250, 250, 250,
-    250, 251, 251, 251, 251, 251, 251, 251, 251, 251, 251, 252, 252, 252, 252,
-    252, 252, 252, 252, 252, 252, 252, 252, 252, 252, 252, 252, 252, 253, 253,
-    253, 253, 253, 253, 253, 253, 253, 253, 253, 253, 253, 253, 253, 253, 253,
-    253, 253, 253, 253, 253, 253, 253, 253, 253, 253, 253, 253, 254, 254, 254,
-    254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254,
-    254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254,
-    254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254,
-    254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254,
-    254, 254, 254, 254, 254, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
-    255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
-    255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
-    255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
-    255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
-    255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
-    256};
 
 inline __m128i HorizontalAddVerticalSumsRadius1(const uint32_t* vert_sums) {
   // Horizontally add vertical sums to get total box sum.
