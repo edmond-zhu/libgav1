@@ -21,10 +21,10 @@
 #include <cstdint>
 #include <cstdio>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "absl/base/attributes.h"
-#include "absl/strings/string_view.h"
 #include "examples/file_reader_interface.h"
 
 namespace libgav1 {
@@ -42,7 +42,7 @@ class FileReader : public FileReaderInterface {
   // ReadTemporalUnit() may return truncated data.
   // Returns nullptr when the file does not exist, cannot be read, or is not an
   // IVF file.
-  static std::unique_ptr<FileReaderInterface> Open(absl::string_view file_name,
+  static std::unique_ptr<FileReaderInterface> Open(const std::string& file_name,
                                                    bool error_tolerant = false);
 
   FileReader() = delete;

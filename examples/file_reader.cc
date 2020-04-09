@@ -53,10 +53,9 @@ FileReader::~FileReader() {
 }
 
 std::unique_ptr<FileReaderInterface> FileReader::Open(
-    absl::string_view file_name, const bool error_tolerant) {
+    const std::string& file_name, const bool error_tolerant) {
   if (file_name.empty()) return nullptr;
 
-  const std::string fopen_file_name = std::string(file_name);
   FILE* raw_file_ptr;
 
   bool owns_file = true;
@@ -64,7 +63,7 @@ std::unique_ptr<FileReaderInterface> FileReader::Open(
     raw_file_ptr = SetBinaryMode(stdin);
     owns_file = false;  // stdin is owned by the Standard C Library.
   } else {
-    raw_file_ptr = fopen(fopen_file_name.c_str(), "rb");
+    raw_file_ptr = fopen(file_name.c_str(), "rb");
   }
 
   if (raw_file_ptr == nullptr) {
