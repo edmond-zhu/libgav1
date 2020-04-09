@@ -23,7 +23,6 @@
 #include <memory>
 #include <string>
 
-#include "absl/base/attributes.h"
 #include "gav1/decoder_buffer.h"
 
 namespace libgav1 {
@@ -86,7 +85,8 @@ class FileWriter {
 
   // Writes the frame data in |frame_buffer| to |file_|. Returns true after
   // successful write of |frame_buffer| data.
-  ABSL_MUST_USE_RESULT bool WriteFrame(const DecoderBuffer& frame_buffer);
+  /*LIBGAV1_MUST_USE_RESULT*/ bool WriteFrame(
+      const DecoderBuffer& frame_buffer);
 
  private:
   explicit FileWriter(FILE* file) : file_(file) {}
