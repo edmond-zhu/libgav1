@@ -40,8 +40,17 @@ struct ReferenceInfo {
   LIBGAV1_MUST_USE_RESULT bool Reset(int rows, int columns) {
     return motion_field_reference_frame.Reset(rows, columns,
                                               /*zero_initialize=*/true) &&
-           motion_field_mv.Reset(rows, columns,
-                                 /*zero_initialize=*/false);
+           motion_field_mv.Reset(
+               rows, columns,
+#if LIBGAV1_MSAN
+               // It is set in Tile::StoreMotionFieldMvsIntoCurrentFrame() only
+               // for qualified blocks. In MotionFieldProjectionKernel() dsp
+               // optimizations, it is read no matter it was set or not.
+               /*zero_initialize=*/true
+#else
+               /*zero_initialize=*/false
+#endif
+           );
   }
 
   // All members are used by inter frames only.
