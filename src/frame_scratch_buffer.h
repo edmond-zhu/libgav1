@@ -75,6 +75,8 @@ struct FrameScratchBuffer {
   // The size of this buffer is the number of superblock rows. Used to wait for
   // |superblock_row_progress[i]| to reach tile_columns.
   DynamicBuffer<std::condition_variable> superblock_row_progress_condvar;
+  // Used to signal tile decoding failure in the combined multithreading mode.
+  bool tile_decoding_failed LIBGAV1_GUARDED_BY(superblock_row_mutex);
 };
 
 class FrameScratchBufferPool {

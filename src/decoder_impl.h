@@ -224,7 +224,6 @@ class DecoderImpl : public Allocable {
                                  int superblock_size4x4, int tile_columns,
                                  int superblock_rows,
                                  FrameScratchBuffer* frame_scratch_buffer,
-                                 bool* tile_decoding_failed,
                                  BlockingCounter* pending_jobs);
   // Sets the current frame's segmentation map for two cases. The third case
   // is handled in Tile::DecodeBlock().
