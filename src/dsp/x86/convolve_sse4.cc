@@ -2079,10 +2079,7 @@ inline void ConvolveVerticalScale(
 
   // |width_class| >= 8
   __m128i filter_taps[num_taps >> 1];
-  y = 0;
-  do {  // y < height
-    dest_y = static_cast<uint8_t*>(dest) + y * dest_stride;
-    dest16_y = static_cast<uint16_t*>(dest) + y * dest_stride;
+  do {  // y > 0
     src_y = src + (p >> kScaleSubPixelBits) * src_stride;
     const int filter_id = (p >> 6) & kSubPixelMask;
     const int8_t* filter =
@@ -2106,7 +2103,9 @@ inline void ConvolveVerticalScale(
       src_y += 8;
     } while (x < width);
     p += step_y;
-  } while (++y < height);
+    dest_y += dest_stride;
+    dest16_y += dest_stride;
+  } while (--y != 0);
 }
 
 template <bool is_compound>
