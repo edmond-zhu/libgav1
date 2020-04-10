@@ -2146,11 +2146,22 @@ void ConvolveScale2D_SSE4_1(
   const auto* src = static_cast<const uint8_t*>(reference);
   const int vert_kernel_offset = (8 - num_vert_taps) / 2;
   src += vert_kernel_offset * src_stride;
+
+  // Derive the maximum value of |step_x| at which all source values fit in one
+  // 16-byte load. Final index is src_x + |num_taps| - 1 < 16
+  // step_x*7 is the final base sub-pixel index for the shuffle mask for filter
+  // inputs in each iteration on large blocks. When step_x is large, we need a
+  // second register and alignr in order to gather all filter inputs.
+  // |num_taps| - 1 is the offset for the shuffle of inputs to the final tap.
+  const int num_horiz_taps = GetNumTapsInFilter(horiz_filter_index);
+  const int kernel_start_ceiling = 16 - num_horiz_taps;
+  // This truncated quotient |grade_x_threshold| selects |step_x| such that:
+  // (step_x * 7) >> kScaleSubPixelBits < single load limit
+  const int grade_x_threshold =
+      (kernel_start_ceiling << kScaleSubPixelBits) / 7;
   switch (horiz_filter_index) {
-    // TODO(b/133523802): Replace grade_x thresholds with more accurate 1170 in
-    // both arm and x86.
     case 0:
-      if (step_x > 1024) {
+      if (step_x > grade_x_threshold) {
         ConvolveHorizontalScale<2, 0, 6>(src, src_stride, width, subpixel_x,
                                          step_x, intermediate_height,
                                          intermediate);
@@ -2161,7 +2172,7 @@ void ConvolveScale2D_SSE4_1(
       }
       break;
     case 1:
-      if (step_x > 1024) {
+      if (step_x > grade_x_threshold) {
         ConvolveHorizontalScale<2, 1, 6>(src, src_stride, width, subpixel_x,
                                          step_x, intermediate_height,
                                          intermediate);
@@ -2173,7 +2184,7 @@ void ConvolveScale2D_SSE4_1(
       }
       break;
     case 2:
-      if (step_x > 1024) {
+      if (step_x > grade_x_threshold) {
         ConvolveHorizontalScale<2, 2, 8>(src, src_stride, width, subpixel_x,
                                          step_x, intermediate_height,
                                          intermediate);
@@ -2184,7 +2195,7 @@ void ConvolveScale2D_SSE4_1(
       }
       break;
     case 3:
-      if (step_x > 1024) {
+      if (step_x > grade_x_threshold) {
         ConvolveHorizontalScale<2, 3, 2>(src, src_stride, width, subpixel_x,
                                          step_x, intermediate_height,
                                          intermediate);
@@ -2213,7 +2224,7 @@ void ConvolveScale2D_SSE4_1(
   switch (vert_filter_index) {
     case 0:
     case 1:
-      if (width == 2) {
+      if (!is_compound && width == 2) {
         ConvolveVerticalScale<6, 2, is_compound>(
             intermediate, width, subpixel_y, vert_filter_index, step_y, height,
             prediction, pred_stride);
@@ -2228,7 +2239,7 @@ void ConvolveScale2D_SSE4_1(
       }
       break;
     case 2:
-      if (width == 2) {
+      if (!is_compound && width == 2) {
         ConvolveVerticalScale<8, 2, is_compound>(
             intermediate, width, subpixel_y, vert_filter_index, step_y, height,
             prediction, pred_stride);
@@ -2243,7 +2254,7 @@ void ConvolveScale2D_SSE4_1(
       }
       break;
     case 3:
-      if (width == 2) {
+      if (!is_compound && width == 2) {
         ConvolveVerticalScale<2, 2, is_compound>(
             intermediate, width, subpixel_y, vert_filter_index, step_y, height,
             prediction, pred_stride);
@@ -2259,7 +2270,7 @@ void ConvolveScale2D_SSE4_1(
       break;
     default:
       assert(vert_filter_index == 4 || vert_filter_index == 5);
-      if (width == 2) {
+      if (!is_compound && width == 2) {
         ConvolveVerticalScale<4, 2, is_compound>(
             intermediate, width, subpixel_y, vert_filter_index, step_y, height,
             prediction, pred_stride);
