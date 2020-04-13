@@ -2109,16 +2109,14 @@ inline void ConvolveVerticalScale(
 }
 
 template <bool is_compound>
-#if LIBGAV1_MSAN
-__attribute__((no_sanitize_memory)) void ConvolveScale2D_SSE4_1(
-#else
-void ConvolveScale2D_SSE4_1(
-#endif
-    const void* const reference, const ptrdiff_t reference_stride,
-    const int horizontal_filter_index, const int vertical_filter_index,
-    const int subpixel_x, const int subpixel_y, const int step_x,
-    const int step_y, const int width, const int height, void* prediction,
-    const ptrdiff_t pred_stride) {
+void ConvolveScale2D_SSE4_1(const void* const reference,
+                            const ptrdiff_t reference_stride,
+                            const int horizontal_filter_index,
+                            const int vertical_filter_index,
+                            const int subpixel_x, const int subpixel_y,
+                            const int step_x, const int step_y, const int width,
+                            const int height, void* prediction,
+                            const ptrdiff_t pred_stride) {
   const int horiz_filter_index = GetFilterIndex(horizontal_filter_index, width);
   const int vert_filter_index = GetFilterIndex(vertical_filter_index, height);
   assert(step_x <= 2048);
