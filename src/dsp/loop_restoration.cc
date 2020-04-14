@@ -115,7 +115,6 @@ template <int bitdepth, typename Pixel>
 struct LoopRestorationFuncs_C {
   LoopRestorationFuncs_C() = delete;
 
-  // |stride| for SelfGuidedFilter and WienerFilter is given in bytes.
   static void SelfGuidedFilter(const void* source, void* dest,
                                const RestorationUnitInfo& restoration_info,
                                ptrdiff_t source_stride, ptrdiff_t dest_stride,
@@ -125,7 +124,6 @@ struct LoopRestorationFuncs_C {
                            const RestorationUnitInfo& restoration_info,
                            ptrdiff_t source_stride, ptrdiff_t dest_stride,
                            int width, int height, RestorationBuffer* buffer);
-  // |stride| for box filter processing is in Pixels.
   static void BoxFilterPreProcess(const RestorationUnitInfo& restoration_info,
                                   const uint16_t* integral_image,
                                   const uint32_t* square_integral_image,
@@ -233,9 +231,6 @@ void LoopRestorationFuncs_C<bitdepth, Pixel>::WienerFilter(
       CountZeroCoefficients(filter_horizontal);
   const int number_zero_coefficients_vertical =
       CountZeroCoefficients(filter_vertical);
-
-  source_stride /= sizeof(Pixel);
-  dest_stride /= sizeof(Pixel);
 
   // horizontal filtering.
   const auto* src = static_cast<const Pixel*>(source);
@@ -645,8 +640,6 @@ void LoopRestorationFuncs_C<bitdepth, Pixel>::SelfGuidedFilter(
       buffer->box_filter_process_output[1]};
   const auto* src = static_cast<const Pixel*>(source);
   auto* dst = static_cast<Pixel*>(dest);
-  source_stride /= sizeof(Pixel);
-  dest_stride /= sizeof(Pixel);
   LoopRestorationFuncs_C<bitdepth, Pixel>::BoxFilterProcess(
       restoration_info, src, source_stride, width, height, buffer);
   for (int y = 0; y < height; ++y) {

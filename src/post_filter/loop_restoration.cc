@@ -95,10 +95,9 @@ void PostFilter::ApplyLoopRestorationForOneUnit(
                    &(*loop_restored_window)[row][column],
                    restoration_info_->loop_restoration_info(
                        static_cast<Plane>(plane), unit_id),
-                   block_buffer_stride,
-                   loop_restored_window->columns() * pixel_size_,
-                   current_process_unit_width, current_process_unit_height,
-                   &restoration_buffer);
+                   kRestorationProcessingUnitSizeWithBorders,
+                   loop_restored_window->columns(), current_process_unit_width,
+                   current_process_unit_height, &restoration_buffer);
 }
 
 template <typename Pixel>

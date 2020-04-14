@@ -361,7 +361,8 @@ using SuperResRowFunc = void (*)(const void* source, const int upscaled_width,
 // |source| is the input frame buffer, which is deblocked and cdef filtered.
 // |dest| is the output.
 // |restoration_info| contains loop restoration information, such as filter
-// type, strength. |source| and |dest| share the same stride given in bytes.
+// type, strength.
+// |source_stride| and |dest_stride| are given in pixels.
 // |buffer| contains buffers required for self guided filter and wiener filter.
 // They must be initialized before calling.
 using LoopRestorationFunc = void (*)(
