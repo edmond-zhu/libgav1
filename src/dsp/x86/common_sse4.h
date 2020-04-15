@@ -17,6 +17,7 @@
 #ifndef LIBGAV1_SRC_DSP_X86_COMMON_SSE4_H_
 #define LIBGAV1_SRC_DSP_X86_COMMON_SSE4_H_
 
+#include "src/utils/compiler_attributes.h"
 #include "src/utils/cpu.h"
 
 #if LIBGAV1_ENABLE_SSE4_1
@@ -141,6 +142,41 @@ inline __m128i LoadUnaligned16(const void* a) {
 inline __m128i LoadAligned16(const void* a) {
   assert((reinterpret_cast<uintptr_t>(a) & 0xf) == 0);
   return _mm_load_si128(static_cast<const __m128i*>(a));
+}
+
+//------------------------------------------------------------------------------
+// Load functions to avoid MemorySanitizer's use-of-uninitialized-value warning.
+
+inline __m128i MaskOverreads(const __m128i source,
+                             const int over_read_in_bytes) {
+  __m128i dst = source;
+#if LIBGAV1_MSAN
+  if (over_read_in_bytes > 0) {
+    __m128i mask = _mm_set1_epi8(-1);
+    for (int i = 0; i < over_read_in_bytes; ++i) {
+      mask = _mm_srli_si128(mask, 1);
+    }
+    dst = _mm_and_si128(dst, mask);
+  }
+#else
+  static_cast<void>(over_read_in_bytes);
+#endif
+  return dst;
+}
+
+inline __m128i LoadLo8Msan(const void* const source,
+                           const int over_read_in_bytes) {
+  return MaskOverreads(LoadLo8(source), over_read_in_bytes + 8);
+}
+
+inline __m128i LoadAligned16Msan(const void* const source,
+                                 const int over_read_in_bytes) {
+  return MaskOverreads(LoadAligned16(source), over_read_in_bytes);
+}
+
+inline __m128i LoadUnaligned16Msan(const void* const source,
+                                   const int over_read_in_bytes) {
+  return MaskOverreads(LoadUnaligned16(source), over_read_in_bytes);
 }
 
 //------------------------------------------------------------------------------
