@@ -394,8 +394,8 @@ class PostFilter {
   // pixels with a large value. This achieves the required behavior defined in
   // section 5.11.52 of the spec.
   template <typename Pixel>
-  void PrepareCdefBlock(int block_width4x4, int block_height4x4, int row_64x64,
-                        int column_64x64, uint16_t* cdef_source,
+  void PrepareCdefBlock(int block_width4x4, int block_height4x4, int row4x4,
+                        int column4x4, uint16_t* cdef_source,
                         ptrdiff_t cdef_stride);
   template <typename Pixel>
   void ApplyCdefForOneUnit(uint16_t* cdef_block, int index, int block_width4x4,

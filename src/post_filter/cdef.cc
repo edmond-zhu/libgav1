@@ -80,7 +80,7 @@ uint8_t* PostFilter::GetCdefBufferAndStride(const int start_x,
 
 template <typename Pixel>
 void PostFilter::PrepareCdefBlock(int block_width4x4, int block_height4x4,
-                                  int row_64x64, int column_64x64,
+                                  int row4x4, int column4x4,
                                   uint16_t* cdef_source,
                                   ptrdiff_t cdef_stride) {
   for (int plane = kPlaneY; plane < planes_; ++plane) {
@@ -89,8 +89,8 @@ void PostFilter::PrepareCdefBlock(int block_width4x4, int block_height4x4,
                           kRestorationProcessingUnitSizeWithBorders;
     const int8_t subsampling_x = subsampling_x_[plane];
     const int8_t subsampling_y = subsampling_y_[plane];
-    const int start_x = MultiplyBy4(column_64x64) >> subsampling_x;
-    const int start_y = MultiplyBy4(row_64x64) >> subsampling_y;
+    const int start_x = MultiplyBy4(column4x4) >> subsampling_x;
+    const int start_y = MultiplyBy4(row4x4) >> subsampling_y;
     const int plane_width = RightShiftWithRounding(width_, subsampling_x);
     const int plane_height = RightShiftWithRounding(height_, subsampling_y);
     const int block_width = MultiplyBy4(block_width4x4) >> subsampling_x;
@@ -101,9 +101,9 @@ void PostFilter::PrepareCdefBlock(int block_width4x4, int block_height4x4,
     // a multiple of 8.
     const int unit_width = Align(block_width, (subsampling_x > 0) ? 4 : 8);
     const int unit_height = Align(block_height, (subsampling_y > 0) ? 4 : 8);
-    const bool is_frame_left = column_64x64 == 0;
+    const bool is_frame_left = column4x4 == 0;
     const bool is_frame_right = start_x + block_width >= plane_width;
-    const bool is_frame_top = row_64x64 == 0;
+    const bool is_frame_top = row4x4 == 0;
     const bool is_frame_bottom = start_y + block_height >= plane_height;
     const int src_stride = frame_buffer_.stride(plane) / sizeof(Pixel);
     const Pixel* src_buffer =
