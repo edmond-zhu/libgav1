@@ -315,24 +315,6 @@ void LoadDirection4(const uint16_t* const src, const ptrdiff_t stride,
                       src + y_1 * stride + stride + x_1);
 }
 
-// Load 4 vectors based on the given |direction|. Use when |block_width| == 2 to
-// do 2 rows at a time.
-void LoadDirection2(const uint16_t* const src, const ptrdiff_t stride,
-                    __m128i* output, const int direction) {
-  const int y_0 = kCdefDirections[direction][0][0];
-  const int x_0 = kCdefDirections[direction][0][1];
-  const int y_1 = kCdefDirections[direction][1][0];
-  const int x_1 = kCdefDirections[direction][1][1];
-  output[0] =
-      Load4x2(src - y_0 * stride - x_0, src - y_0 * stride - x_0 + stride);
-  output[1] =
-      Load4x2(src + y_0 * stride + x_0, src - y_0 * stride - x_0 + stride);
-  output[2] =
-      Load4x2(src - y_1 * stride - x_1, src - y_0 * stride - x_0 + stride);
-  output[3] =
-      Load4x2(src + y_1 * stride + x_1, src - y_0 * stride - x_0 + stride);
-}
-
 inline __m128i Constrain(const __m128i& pixel, const __m128i& reference,
                          const __m128i& damping, const __m128i& threshold) {
   const __m128i diff = _mm_sub_epi16(pixel, reference);
@@ -361,7 +343,7 @@ void DoCdef(const uint16_t* src, const ptrdiff_t src_stride, const int height,
             const int direction, const int primary_strength,
             const int secondary_strength, const int damping, uint8_t* dst,
             const ptrdiff_t dst_stride) {
-  static_assert(width == 8 || width == 4 || width == 2, "Invalid CDEF width.");
+  static_assert(width == 8 || width == 4, "Invalid CDEF width.");
 
   __m128i primary_damping_shift, secondary_damping_shift;
   // FloorLog2() requires input to be > 0.
@@ -397,20 +379,16 @@ void DoCdef(const uint16_t* src, const ptrdiff_t src_stride, const int height,
     __m128i pixel;
     if (width == 8) {
       pixel = LoadUnaligned16(src);
-    } else if (width == 4) {
-      pixel = LoadHi8(LoadLo8(src), src + src_stride);
     } else {
-      pixel = Load4x2(src, src + src_stride);
+      pixel = LoadHi8(LoadLo8(src), src + src_stride);
     }
 
     // Primary |direction|.
     __m128i primary_val[4];
     if (width == 8) {
       LoadDirection(src, src_stride, primary_val, direction);
-    } else if (width == 4) {
-      LoadDirection4(src, src_stride, primary_val, direction);
     } else {
-      LoadDirection2(src, src_stride, primary_val, direction);
+      LoadDirection4(src, src_stride, primary_val, direction);
     }
 
     __m128i min = pixel;
@@ -450,12 +428,9 @@ void DoCdef(const uint16_t* src, const ptrdiff_t src_stride, const int height,
     if (width == 8) {
       LoadDirection(src, src_stride, secondary_val, (direction + 2) & 0x7);
       LoadDirection(src, src_stride, secondary_val + 4, (direction - 2) & 0x7);
-    } else if (width == 4) {
+    } else {
       LoadDirection4(src, src_stride, secondary_val, (direction + 2) & 0x7);
       LoadDirection4(src, src_stride, secondary_val + 4, (direction - 2) & 0x7);
-    } else {
-      LoadDirection2(src, src_stride, secondary_val, (direction + 2) & 0x7);
-      LoadDirection2(src, src_stride, secondary_val + 4, (direction - 2) & 0x7);
     }
 
     min = _mm_min_epu16(min, secondary_val[0]);
@@ -536,18 +511,11 @@ void DoCdef(const uint16_t* src, const ptrdiff_t src_stride, const int height,
       StoreLo8(dst, result);
       dst += dst_stride;
       ++y;
-    } else if (width == 4) {
+    } else {
       src += 2 * src_stride;
       Store4(dst, result);
       dst += dst_stride;
       Store4(dst, _mm_srli_si128(result, 4));
-      dst += dst_stride;
-      y += 2;
-    } else {
-      src += 2 * src_stride;
-      Store2(dst, result);
-      dst += dst_stride;
-      Store2(dst, _mm_srli_si128(result, 2));
       dst += dst_stride;
       y += 2;
     }
@@ -574,12 +542,9 @@ void CdefFilter_SSE4_1(const void* const source, const ptrdiff_t source_stride,
   if (block_width == 8) {
     DoCdef<8>(src, source_stride, block_height, direction, primary_strength,
               secondary_strength, damping, dst, dest_stride);
-  } else if (block_width == 4) {
-    DoCdef<4>(src, source_stride, block_height, direction, primary_strength,
-              secondary_strength, damping, dst, dest_stride);
   } else {
-    assert(block_width == 2);
-    DoCdef<2>(src, source_stride, block_height, direction, primary_strength,
+    assert(block_width == 4);
+    DoCdef<4>(src, source_stride, block_height, direction, primary_strength,
               secondary_strength, damping, dst, dest_stride);
   }
 }
