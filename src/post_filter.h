@@ -385,7 +385,6 @@ class PostFilter {
   // Functions for the cdef filter.
 
   uint8_t* GetCdefBufferAndStride(int start_x, int start_y, int plane,
-                                  int subsampling_x, int subsampling_y,
                                   int window_buffer_plane_size,
                                   int* cdef_stride) const;
   // This function prepares the input source block for cdef filtering. The input
