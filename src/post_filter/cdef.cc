@@ -158,7 +158,6 @@ void PostFilter::ApplyCdefForOneUnit(uint16_t* cdef_block, const int index,
                                      const int block_height4x4,
                                      const int row4x4_start,
                                      const int column4x4_start) {
-  const int coeff_shift = bitdepth_ - 8;
   const int step = kNum4x4BlocksWide[kBlock8x8];
   const int window_buffer_plane_size =
       window_buffer_width_ * window_buffer_height_ * pixel_size_;
@@ -205,7 +204,6 @@ void PostFilter::ApplyCdefForOneUnit(uint16_t* cdef_block, const int index,
          column4x4 += step, bp0 += step, bp1 += step) {
       const bool skip = (*bp0)->skip && (*(bp0 + 1))->skip && (*bp1)->skip &&
                         (*(bp1 + 1))->skip;
-      int damping = frame_header_.cdef.damping + coeff_shift;
       int direction_y;
       int direction;
       int variance;
@@ -238,10 +236,8 @@ void PostFilter::ApplyCdefForOneUnit(uint16_t* cdef_block, const int index,
 
         if (plane == kPlaneY) {
           dsp_.cdef_direction(src_buffer, src_stride, &direction_y, &variance);
-          primary_strength = frame_header_.cdef.y_primary_strength[index]
-                             << coeff_shift;
-          secondary_strength = frame_header_.cdef.y_secondary_strength[index]
-                               << coeff_shift;
+          primary_strength = frame_header_.cdef.y_primary_strength[index];
+          secondary_strength = frame_header_.cdef.y_secondary_strength[index];
           direction = (primary_strength == 0) ? 0 : direction_y;
           const int variance_strength =
               ((variance >> 6) != 0) ? std::min(FloorLog2(variance >> 6), 12)
@@ -251,15 +247,12 @@ void PostFilter::ApplyCdefForOneUnit(uint16_t* cdef_block, const int index,
                   ? (primary_strength * (4 + variance_strength) + 8) >> 4
                   : 0;
         } else {
-          primary_strength = frame_header_.cdef.uv_primary_strength[index]
-                             << coeff_shift;
-          secondary_strength = frame_header_.cdef.uv_secondary_strength[index]
-                               << coeff_shift;
+          primary_strength = frame_header_.cdef.uv_primary_strength[index];
+          secondary_strength = frame_header_.cdef.uv_secondary_strength[index];
           direction =
               (primary_strength == 0)
                   ? 0
                   : kCdefUvDirection[subsampling_x][subsampling_y][direction_y];
-          damping = frame_header_.cdef.damping + coeff_shift - 1;
         }
 
         if ((primary_strength | secondary_strength) == 0) {
@@ -277,11 +270,12 @@ void PostFilter::ApplyCdefForOneUnit(uint16_t* cdef_block, const int index,
         cdef_src += (MultiplyBy4(row4x4 - row4x4_start) >> subsampling_y) *
                         kRestorationProcessingUnitSizeWithBorders +
                     (MultiplyBy4(column4x4 - column4x4_start) >> subsampling_x);
-        dsp_.cdef_filter(cdef_src, kRestorationProcessingUnitSizeWithBorders,
-                         frame_header_.rows4x4, frame_header_.columns4x4,
-                         start_x, start_y, subsampling_x, subsampling_y,
-                         primary_strength, secondary_strength, damping,
-                         direction, cdef_buffer, cdef_stride);
+        dsp_.cdef_filter(
+            cdef_src, kRestorationProcessingUnitSizeWithBorders,
+            frame_header_.rows4x4, frame_header_.columns4x4, start_x, start_y,
+            subsampling_x, subsampling_y, primary_strength, secondary_strength,
+            frame_header_.cdef.damping - static_cast<int>(plane != kPlaneY),
+            direction, cdef_buffer, cdef_stride);
       }
     }
   }

@@ -1080,29 +1080,32 @@ void ObuParser::ComputeSegmentLosslessAndQIndex() {
 }
 
 bool ObuParser::ParseCdefParameters() {
+  const int coeff_shift = sequence_header_.color_config.bitdepth - 8;
   if (frame_header_.coded_lossless || frame_header_.allow_intrabc ||
       !sequence_header_.enable_cdef) {
-    frame_header_.cdef.damping = 3;
+    frame_header_.cdef.damping = 3 + coeff_shift;
     return true;
   }
   Cdef* const cdef = &frame_header_.cdef;
   int64_t scratch;
   OBU_READ_LITERAL_OR_FAIL(2);
-  cdef->damping = scratch + 3;
+  cdef->damping = scratch + 3 + coeff_shift;
   OBU_READ_LITERAL_OR_FAIL(2);
   cdef->bits = scratch;
   for (int i = 0; i < (1 << cdef->bits); ++i) {
     OBU_READ_LITERAL_OR_FAIL(4);
-    cdef->y_primary_strength[i] = scratch;
+    cdef->y_primary_strength[i] = scratch << coeff_shift;
     OBU_READ_LITERAL_OR_FAIL(2);
     cdef->y_secondary_strength[i] = scratch;
     if (cdef->y_secondary_strength[i] == 3) ++cdef->y_secondary_strength[i];
+    cdef->y_secondary_strength[i] <<= coeff_shift;
     if (sequence_header_.color_config.is_monochrome) continue;
     OBU_READ_LITERAL_OR_FAIL(4);
-    cdef->uv_primary_strength[i] = scratch;
+    cdef->uv_primary_strength[i] = scratch << coeff_shift;
     OBU_READ_LITERAL_OR_FAIL(2);
     cdef->uv_secondary_strength[i] = scratch;
     if (cdef->uv_secondary_strength[i] == 3) ++cdef->uv_secondary_strength[i];
+    cdef->uv_secondary_strength[i] <<= coeff_shift;
   }
   return true;
 }
