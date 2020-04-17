@@ -190,19 +190,21 @@ void PostFilter::ApplyCdefForOneUnit(uint16_t* cdef_block, const int index,
                           column4x4_start, cdef_block,
                           kRestorationProcessingUnitSizeWithBorders);
 
+  BlockParameters* const* bp_row0_base =
+      block_parameters_.Address(row4x4_start, column4x4_start);
+  BlockParameters* const* bp_row1_base =
+      bp_row0_base + block_parameters_.columns4x4();
+  const int bp_stride = MultiplyBy2(block_parameters_.columns4x4());
+
   for (int row4x4 = row4x4_start; row4x4 < row4x4_start + block_height4x4;
-       row4x4 += step) {
+       row4x4 += step, bp_row0_base += bp_stride, bp_row1_base += bp_stride) {
+    BlockParameters* const* bp0 = bp_row0_base;
+    BlockParameters* const* bp1 = bp_row1_base;
     for (int column4x4 = column4x4_start;
-         column4x4 < column4x4_start + block_width4x4; column4x4 += step) {
-      const bool skip =
-          block_parameters_.Find(row4x4, column4x4) != nullptr &&
-          block_parameters_.Find(row4x4 + 1, column4x4) != nullptr &&
-          block_parameters_.Find(row4x4, column4x4 + 1) != nullptr &&
-          block_parameters_.Find(row4x4 + 1, column4x4 + 1) != nullptr &&
-          block_parameters_.Find(row4x4, column4x4)->skip &&
-          block_parameters_.Find(row4x4 + 1, column4x4)->skip &&
-          block_parameters_.Find(row4x4, column4x4 + 1)->skip &&
-          block_parameters_.Find(row4x4 + 1, column4x4 + 1)->skip;
+         column4x4 < column4x4_start + block_width4x4;
+         column4x4 += step, bp0 += step, bp1 += step) {
+      const bool skip = (*bp0)->skip && (*(bp0 + 1))->skip && (*bp1)->skip &&
+                        (*(bp1 + 1))->skip;
       int damping = frame_header_.cdef.damping + coeff_shift;
       int direction_y;
       int direction;
