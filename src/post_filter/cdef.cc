@@ -189,12 +189,14 @@ void PostFilter::ApplyCdefForOneUnit(uint16_t* cdef_block, const int index,
                           column4x4_start, cdef_block,
                           kRestorationProcessingUnitSizeWithBorders);
 
+  const bool compute_direction_and_variance =
+      (frame_header_.cdef.y_primary_strength[index] |
+       frame_header_.cdef.uv_primary_strength[index]) != 0;
   BlockParameters* const* bp_row0_base =
       block_parameters_.Address(row4x4_start, column4x4_start);
   BlockParameters* const* bp_row1_base =
       bp_row0_base + block_parameters_.columns4x4();
   const int bp_stride = MultiplyBy2(block_parameters_.columns4x4());
-
   for (int row4x4 = row4x4_start; row4x4 < row4x4_start + block_height4x4;
        row4x4 += step, bp_row0_base += bp_stride, bp_row1_base += bp_stride) {
     BlockParameters* const* bp0 = bp_row0_base;
@@ -206,7 +208,6 @@ void PostFilter::ApplyCdefForOneUnit(uint16_t* cdef_block, const int index,
                         (*(bp1 + 1))->skip;
       int direction_y;
       int direction;
-      int variance;
       uint8_t primary_strength;
       uint8_t secondary_strength;
 
@@ -235,7 +236,11 @@ void PostFilter::ApplyCdefForOneUnit(uint16_t* cdef_block, const int index,
         }
 
         if (plane == kPlaneY) {
-          dsp_.cdef_direction(src_buffer, src_stride, &direction_y, &variance);
+          int variance = 0;
+          if (compute_direction_and_variance) {
+            dsp_.cdef_direction(src_buffer, src_stride, &direction_y,
+                                &variance);
+          }
           primary_strength = frame_header_.cdef.y_primary_strength[index];
           secondary_strength = frame_header_.cdef.y_secondary_strength[index];
           direction = (primary_strength == 0) ? 0 : direction_y;
