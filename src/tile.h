@@ -180,9 +180,13 @@ class Tile : public Allocable {
   const BlockParameters& Parameters(int row, int column) const {
     return *block_parameters_holder_.Find(row, column);
   }
+
   int number() const { return number_; }
   int superblock_rows() const { return superblock_rows_; }
   int superblock_columns() const { return superblock_columns_; }
+  int row4x4_start() const { return row4x4_start_; }
+  int column4x4_start() const { return column4x4_start_; }
+  int column4x4_end() const { return column4x4_end_; }
 
  private:
   Tile(int tile_number, const uint8_t* data, size_t size,

@@ -123,9 +123,9 @@ class PostFilter {
   //                with a shift to the top-left).
   void ApplyFilteringThreaded();
 
-  // Does the overall post processing filter for one superblock row (starting at
-  // |row4x4| with height 4*|sb4x4|. Cdef, SuperRes and Loop Restoration lag by
-  // one superblock row to account for deblocking.
+  // Does the overall post processing filter for one superblock row starting at
+  // |row4x4| with height 4*|sb4x4|. If |do_deblock| is false, deblocking filter
+  // will not be applied.
   //
   // Filter behavior (single-threaded):
   // * Deblock: In-place filtering. The output is written to |source_buffer_|.
@@ -143,8 +143,15 @@ class PostFilter {
   //                top-left).
   // Returns the index of the last row whose post processing is complete and can
   // be used for referencing.
-  int ApplyFilteringForOneSuperBlockRow(int row4x4, int sb4x4,
-                                        bool is_last_row);
+  int ApplyFilteringForOneSuperBlockRow(int row4x4, int sb4x4, bool is_last_row,
+                                        bool do_deblock);
+
+  // Apply deblocking filter in one direction (specified by |loop_filter_type|)
+  // for the superblock row starting at |row4x4_start| for columns that lie
+  // between |column4x4_start| and |column4x4_end| with height 4*|sb4x4|. This
+  // function must be called only if |DoDeblock()| returns true.
+  void ApplyDeblockFilter(LoopFilterType loop_filter_type, int row4x4_start,
+                          int column4x4_start, int column4x4_end, int sb4x4);
 
   bool DoCdef() const { return DoCdef(frame_header_, do_post_filter_mask_); }
   static bool DoCdef(const ObuFrameHeader& frame_header,

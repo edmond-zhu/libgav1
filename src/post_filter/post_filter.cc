@@ -383,9 +383,10 @@ void PostFilter::ApplyFilteringThreaded() {
 }
 
 int PostFilter::ApplyFilteringForOneSuperBlockRow(int row4x4, int sb4x4,
-                                                  bool is_last_row) {
+                                                  bool is_last_row,
+                                                  bool do_deblock) {
   if (row4x4 < 0) return -1;
-  if (DoDeblock()) {
+  if (DoDeblock() && do_deblock) {
     ApplyDeblockFilterForOneSuperBlockRow(row4x4, sb4x4);
   }
   if (DoRestoration() && DoCdef()) {

@@ -657,6 +657,25 @@ bool Tile::Decode(
             row4x4, scratch_buffer.get())) {
       return false;
     }
+    if (post_filter_.DoDeblock()) {
+      // Apply vertical deblock filtering for all the columns in this tile
+      // except for the first 64 columns.
+      post_filter_.ApplyDeblockFilter(
+          kLoopFilterTypeVertical, row4x4,
+          column4x4_start_ + kNum4x4InLoopFilterMaskUnit, column4x4_end_,
+          block_width4x4);
+      // If this is the first superblock row of the tile, then we cannot apply
+      // horizontal deblocking here since we don't know if the top row is
+      // available. So it will be done by the calling thread in that case.
+      if (row4x4 != row4x4_start_) {
+        // Apply horizontal deblock filtering for all the columns in this tile
+        // except for the first and the last 64 columns.
+        post_filter_.ApplyDeblockFilter(
+            kLoopFilterTypeHorizontal, row4x4,
+            column4x4_start_ + kNum4x4InLoopFilterMaskUnit,
+            column4x4_end_ - kNum4x4InLoopFilterMaskUnit, block_width4x4);
+      }
+    }
     bool notify;
     {
       std::unique_lock<std::mutex> lock(*mutex);

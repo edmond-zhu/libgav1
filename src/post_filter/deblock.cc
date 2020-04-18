@@ -656,4 +656,33 @@ void PostFilter::ApplyDeblockFilterThreaded() {
   }
 }
 
+void PostFilter::ApplyDeblockFilter(LoopFilterType loop_filter_type,
+                                    int row4x4_start, int column4x4_start,
+                                    int column4x4_end, int sb4x4) {
+  assert(row4x4_start >= 0);
+  assert(DoDeblock());
+
+  column4x4_end = std::min(column4x4_end, frame_header_.columns4x4);
+  if (column4x4_start >= column4x4_end) return;
+
+  const DeblockFilter deblock_filter =
+      deblock_filter_type_table_[0][loop_filter_type];
+  const int sb_height4x4 =
+      std::min(sb4x4, frame_header_.rows4x4 - row4x4_start);
+  for (int plane = kPlaneY; plane < planes_; ++plane) {
+    if (plane != kPlaneY && frame_header_.loop_filter.level[plane + 1] == 0) {
+      continue;
+    }
+
+    for (int y = 0; y < sb_height4x4; y += kNum4x4InLoopFilterMaskUnit) {
+      const int row4x4 = row4x4_start + y;
+      for (int column4x4 = column4x4_start; column4x4 < column4x4_end;
+           column4x4 += kNum4x4InLoopFilterMaskUnit) {
+        (this->*deblock_filter)(static_cast<Plane>(plane), row4x4, column4x4,
+                                0);
+      }
+    }
+  }
+}
+
 }  // namespace libgav1
