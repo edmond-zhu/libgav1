@@ -390,6 +390,8 @@ Tile::Tile(int tile_number, const uint8_t* const data, size_t size,
            BlockingCounterWithStatus* const pending_tiles, bool frame_parallel,
            bool use_intra_prediction_buffer)
     : number_(tile_number),
+      row_(number_ / frame_header.tile_info.tile_columns),
+      column_(number_ % frame_header.tile_info.tile_columns),
       data_(data),
       size_(size),
       read_deltas_(false),
@@ -431,9 +433,11 @@ Tile::Tile(int tile_number, const uint8_t* const data, size_t size,
       pending_tiles_(pending_tiles),
       build_bit_mask_when_parsing_(false),
       frame_parallel_(frame_parallel),
-      use_intra_prediction_buffer_(use_intra_prediction_buffer) {
-  row_ = number_ / frame_header.tile_info.tile_columns;
-  column_ = number_ % frame_header.tile_info.tile_columns;
+      use_intra_prediction_buffer_(use_intra_prediction_buffer),
+      intra_prediction_buffer_(
+          use_intra_prediction_buffer_
+              ? &frame_scratch_buffer->intra_prediction_buffers.get()[row_]
+              : nullptr) {
   row4x4_start_ = frame_header.tile_info.tile_row_start[row_];
   row4x4_end_ = frame_header.tile_info.tile_row_start[row_ + 1];
   column4x4_start_ = frame_header.tile_info.tile_column_start[column_];
@@ -532,22 +536,6 @@ bool Tile::Init() {
     if (prediction_parameters_ == nullptr) {
       LIBGAV1_DLOG(ERROR, "Allocation of prediction_parameters_ failed.");
       return false;
-    }
-  }
-  if (use_intra_prediction_buffer_) {
-    for (int plane = 0; plane < PlaneCount(); ++plane) {
-      const size_t intra_prediction_buffer_size =
-          (MultiplyBy4(column4x4_end_ - column4x4_start_) >>
-           subsampling_x_[plane]) *
-          (sequence_header_.color_config.bitdepth == 8 ? sizeof(uint8_t)
-                                                       : sizeof(uint16_t));
-      if (!intra_prediction_buffer_[plane].Resize(
-              intra_prediction_buffer_size)) {
-        LIBGAV1_DLOG(
-            ERROR, "Failed to allocate intra prediction buffer for plane %d.\n",
-            plane);
-        return false;
-      }
     }
   }
   if (frame_header_.use_ref_frame_mvs) {
@@ -853,14 +841,16 @@ void Tile::PopulateIntraPredictionBuffer(int row4x4) {
   if (!use_intra_prediction_buffer_ || row4x4 + block_width4x4 >= row4x4_end_) {
     return;
   }
+  const size_t pixel_size =
+      (sequence_header_.color_config.bitdepth == 8 ? sizeof(uint8_t)
+                                                   : sizeof(uint16_t));
   for (int plane = 0; plane < PlaneCount(); ++plane) {
     const int row_to_copy =
         (MultiplyBy4(row4x4 + block_width4x4) >> subsampling_y_[plane]) - 1;
     const size_t pixels_to_copy =
         (MultiplyBy4(column4x4_end_ - column4x4_start_) >>
          subsampling_x_[plane]) *
-        (sequence_header_.color_config.bitdepth == 8 ? sizeof(uint8_t)
-                                                     : sizeof(uint16_t));
+        pixel_size;
     const size_t column_start =
         MultiplyBy4(column4x4_start_) >> subsampling_x_[plane];
     void* start;
@@ -875,7 +865,8 @@ void Tile::PopulateIntraPredictionBuffer(int row4x4) {
     {
       start = &buffer_[plane][row_to_copy][column_start];
     }
-    memcpy(intra_prediction_buffer_[plane].get(), start, pixels_to_copy);
+    memcpy((*intra_prediction_buffer_)[plane].get() + column_start * pixel_size,
+           start, pixels_to_copy);
   }
 }
 

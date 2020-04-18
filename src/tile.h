@@ -598,8 +598,8 @@ class Tile : public Allocable {
   }
 
   const int number_;
-  int row_;
-  int column_;
+  const int row_;
+  const int column_;
   const uint8_t* const data_;
   size_t size_;
   int row4x4_start_;
@@ -750,9 +750,10 @@ class Tile : public Allocable {
   const bool use_intra_prediction_buffer_;
   // Buffer used to store the unfiltered pixels that are necessary for decoding
   // the next superblock row (for the intra prediction process). Used only if
-  // |use_intra_prediction_buffer_| is true.
-  std::array<AlignedDynamicBuffer<uint8_t, kMaxAlignment>, kMaxPlanes>
-      intra_prediction_buffer_;
+  // |use_intra_prediction_buffer_| is true. The |frame_scratch_buffer| contains
+  // one row buffer for each tile row. This tile will have to use the buffer
+  // corresponding to this tile's row.
+  IntraPredictionBuffer* const intra_prediction_buffer_;
   // Stores the progress of the reference frames. This will be used to avoid
   // unnecessary calls into RefCountedBuffer::WaitUntil().
   std::array<int, kNumReferenceFrameTypes> reference_frame_progress_cache_;

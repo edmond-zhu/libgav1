@@ -895,6 +895,35 @@ StatusCode DecoderImpl::DecodeTiles(
   // filters in the decode loop. So this buffer need not be used.
   const bool use_intra_prediction_buffer =
       IsFrameParallel() || settings_.threads == 1;
+  if (use_intra_prediction_buffer) {
+    if (!frame_scratch_buffer->intra_prediction_buffers.Resize(
+            frame_header.tile_info.tile_rows)) {
+      LIBGAV1_DLOG(ERROR, "Failed to Resize intra_prediction_buffers.");
+      return kStatusOutOfMemory;
+    }
+    IntraPredictionBuffer* const intra_prediction_buffers =
+        frame_scratch_buffer->intra_prediction_buffers.get();
+    for (int plane = 0; plane < num_planes; ++plane) {
+      const int subsampling =
+          (plane == kPlaneY) ? 0 : sequence_header.color_config.subsampling_x;
+      const size_t intra_prediction_buffer_size =
+          ((MultiplyBy4(frame_header.columns4x4) >> subsampling) *
+           (sequence_header.color_config.bitdepth == 8 ? sizeof(uint8_t)
+                                                       : sizeof(uint16_t)));
+      for (int tile_row = 0; tile_row < frame_header.tile_info.tile_rows;
+           ++tile_row) {
+        if (!intra_prediction_buffers[tile_row][plane].Resize(
+                intra_prediction_buffer_size)) {
+          LIBGAV1_DLOG(ERROR,
+                       "Failed to allocate intra prediction buffer for tile "
+                       "row %d plane %d.\n",
+                       tile_row, plane);
+          return kStatusOutOfMemory;
+        }
+      }
+    }
+  }
+
   SymbolDecoderContext saved_symbol_decoder_context;
   int tile_index = 0;
   BlockingCounterWithStatus pending_tiles(tile_count);

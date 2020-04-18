@@ -39,6 +39,11 @@
 
 namespace libgav1 {
 
+// Buffer used to store the unfiltered pixels that are necessary for decoding
+// the next superblock row (for the intra prediction process).
+using IntraPredictionBuffer =
+    std::array<AlignedDynamicBuffer<uint8_t, kMaxAlignment>, kMaxPlanes>;
+
 // Buffer to facilitate decoding a frame. This struct is used only within
 // DecoderImpl::DecodeTiles().
 struct FrameScratchBuffer {
@@ -63,6 +68,8 @@ struct FrameScratchBuffer {
   // for every 32x32 for chroma with subsampling). The indices of the rows that
   // are stored are specified in |kDeblockedRowsForLoopRestoration|.
   YuvBuffer deblock_buffer;
+  // The size of this dynamic buffer is |tile_rows|.
+  DynamicBuffer<IntraPredictionBuffer> intra_prediction_buffers;
   TileScratchBufferPool tile_scratch_buffer_pool;
   ThreadingStrategy threading_strategy;
   std::mutex superblock_row_mutex;

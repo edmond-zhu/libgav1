@@ -277,7 +277,6 @@ void Tile::IntraPrediction(const Block& block, Plane plane, int x, int y,
                           (mode == kPredictionModeDc && has_left);
 
   const Pixel* top_row_src = buffer[y - 1];
-  int top_row_offset = 0;
 
   // Determine if we need to retrieve the top row from
   // |intra_prediction_buffer_|.
@@ -295,13 +294,8 @@ void Tile::IntraPrediction(const Block& block, Plane plane, int x, int y,
     // then we will have to retrieve the top row from the
     // |intra_prediction_buffer_|.
     if (current_superblock_index != top_row_superblock_index) {
-      top_row_src =
-          reinterpret_cast<const Pixel*>(intra_prediction_buffer_[plane].get());
-      // The |intra_prediction_buffer_| only stores the top row for this Tile.
-      // The |x| value in this function is absolute to the frame. So in order to
-      // make it relative to this Tile, all acccesses into top_row_src must be
-      // offset by negative |top_row_offset|.
-      top_row_offset = MultiplyBy4(column4x4_start_) >> subsampling_x_[plane];
+      top_row_src = reinterpret_cast<const Pixel*>(
+          (*intra_prediction_buffer_)[plane].get());
     }
   }
 
@@ -309,8 +303,7 @@ void Tile::IntraPrediction(const Block& block, Plane plane, int x, int y,
     // Compute top_row.
     if (has_top || has_left) {
       const int left_index = has_left ? x - 1 : x;
-      top_row[-1] = has_top ? top_row_src[left_index - top_row_offset]
-                            : buffer[y][left_index];
+      top_row[-1] = has_top ? top_row_src[left_index] : buffer[y][left_index];
     } else {
       top_row[-1] = 1 << (bitdepth - 1);
     }
@@ -320,14 +313,12 @@ void Tile::IntraPrediction(const Block& block, Plane plane, int x, int y,
       Memset(top_row, (1 << (bitdepth - 1)) - 1, top_size);
     } else {
       const int top_limit = std::min(max_x - x + 1, top_right_size);
-      memcpy(top_row, &top_row_src[x - top_row_offset],
-             top_limit * sizeof(Pixel));
+      memcpy(top_row, &top_row_src[x], top_limit * sizeof(Pixel));
       // Even though it is safe to call Memset with a size of 0, accessing
       // top_row_src[top_limit - x + 1] is not allowed when this condition is
       // false.
       if (top_size - top_limit > 0) {
-        Memset(top_row + top_limit,
-               top_row_src[top_limit + x - 1 - top_row_offset],
+        Memset(top_row + top_limit, top_row_src[top_limit + x - 1],
                top_size - top_limit);
       }
     }
@@ -336,13 +327,13 @@ void Tile::IntraPrediction(const Block& block, Plane plane, int x, int y,
     // Compute left_column.
     if (has_top || has_left) {
       const int left_index = has_left ? x - 1 : x;
-      left_column[-1] = has_top ? top_row_src[left_index - top_row_offset]
-                                : buffer[y][left_index];
+      left_column[-1] =
+          has_top ? top_row_src[left_index] : buffer[y][left_index];
     } else {
       left_column[-1] = 1 << (bitdepth - 1);
     }
     if (!has_left && has_top) {
-      Memset(left_column, top_row_src[x - top_row_offset], left_size);
+      Memset(left_column, top_row_src[x], left_size);
     } else if (!has_left && !has_top) {
       Memset(left_column, (1 << (bitdepth - 1)) + 1, left_size);
     } else {
