@@ -27,6 +27,7 @@
 
 #include "src/dsp/common.h"
 #include "src/dsp/dsp.h"
+#include "src/frame_scratch_buffer.h"
 #include "src/loop_filter_mask.h"
 #include "src/loop_restoration_info.h"
 #include "src/obu_parser.h"
@@ -76,14 +77,10 @@ class PostFilter {
   //      * Output: |loop_restoration_buffer_|.
   //   -> Now |frame_buffer_| contains the filtered frame.
   PostFilter(const ObuFrameHeader& frame_header,
-             const ObuSequenceHeader& sequence_header, LoopFilterMask* masks,
-             const Array2D<int16_t>& cdef_index,
-             const Array2D<TransformSize>& inter_transform_sizes,
-             LoopRestorationInfo* restoration_info,
+             const ObuSequenceHeader& sequence_header,
+             FrameScratchBuffer* frame_scratch_buffer,
              BlockParametersHolder* block_parameters, YuvBuffer* frame_buffer,
-             YuvBuffer* deblock_buffer, const dsp::Dsp* dsp,
-             ThreadPool* thread_pool, uint8_t* threaded_window_buffer,
-             uint8_t* superres_line_buffer, int do_post_filter_mask);
+             const dsp::Dsp* dsp, int do_post_filter_mask);
 
   // non copyable/movable.
   PostFilter(const PostFilter&) = delete;
@@ -535,8 +532,6 @@ class PostFilter {
   // nullptr as well.
   uint8_t* const threaded_window_buffer_;
   LoopRestorationInfo* const restoration_info_;
-  const int window_buffer_width_;
-  const int window_buffer_height_;
   // Pointer to the line buffer used by ApplySuperRes(). If SuperRes is on, then
   // the buffer will be large enough to hold one downscaled row +
   // kSuperResHorizontalBorder.
@@ -566,8 +561,10 @@ class PostFilter {
   // This buffer is used only when both Cdef and Loop Restoration are on.
   YuvBuffer& deblock_buffer_;
   const uint8_t do_post_filter_mask_;
-
   ThreadPool* const thread_pool_;
+  const int window_buffer_width_;
+  const int window_buffer_height_;
+
   // Tracks the progress of the post filters.
   int progress_row_ = -1;
 

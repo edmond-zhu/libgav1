@@ -844,16 +844,9 @@ StatusCode DecoderImpl::DecodeTiles(
     }
   }
 
-  PostFilter post_filter(
-      frame_header, sequence_header, &frame_scratch_buffer->loop_filter_mask,
-      frame_scratch_buffer->cdef_index,
-      frame_scratch_buffer->inter_transform_sizes,
-      &frame_scratch_buffer->loop_restoration_info, &block_parameters_holder,
-      current_frame->buffer(), &frame_scratch_buffer->deblock_buffer, dsp,
-      threading_strategy.post_filter_thread_pool(),
-      frame_scratch_buffer->threaded_window_buffer.get(),
-      frame_scratch_buffer->superres_line_buffer.get(),
-      settings_.post_filter_mask);
+  PostFilter post_filter(frame_header, sequence_header, frame_scratch_buffer,
+                         &block_parameters_holder, current_frame->buffer(), dsp,
+                         settings_.post_filter_mask);
 
   if (IsFrameParallel()) {
     // We can parse the current frame if all the reference frames have been

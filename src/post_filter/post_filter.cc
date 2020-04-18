@@ -122,16 +122,12 @@ void ExtendFrame(uint8_t* const frame_start, const int width, const int height,
 
 }  // namespace
 
-PostFilter::PostFilter(
-    const ObuFrameHeader& frame_header,
-    const ObuSequenceHeader& sequence_header, LoopFilterMask* const masks,
-    const Array2D<int16_t>& cdef_index,
-    const Array2D<TransformSize>& inter_transform_sizes,
-    LoopRestorationInfo* const restoration_info,
-    BlockParametersHolder* block_parameters, YuvBuffer* const frame_buffer,
-    YuvBuffer* const deblock_buffer, const dsp::Dsp* dsp,
-    ThreadPool* const thread_pool, uint8_t* const threaded_window_buffer,
-    uint8_t* const superres_line_buffer, int do_post_filter_mask)
+PostFilter::PostFilter(const ObuFrameHeader& frame_header,
+                       const ObuSequenceHeader& sequence_header,
+                       FrameScratchBuffer* const frame_scratch_buffer,
+                       BlockParametersHolder* block_parameters,
+                       YuvBuffer* const frame_buffer, const dsp::Dsp* dsp,
+                       int do_post_filter_mask)
     : frame_header_(frame_header),
       loop_restoration_(frame_header.loop_restoration),
       dsp_(*dsp),
@@ -149,19 +145,21 @@ PostFilter::PostFilter(
                                                          : kMaxPlanes),
       pixel_size_(static_cast<int>((bitdepth_ == 8) ? sizeof(uint8_t)
                                                     : sizeof(uint16_t))),
-      masks_(masks),
-      cdef_index_(cdef_index),
-      inter_transform_sizes_(inter_transform_sizes),
-      threaded_window_buffer_(threaded_window_buffer),
-      restoration_info_(restoration_info),
-      window_buffer_width_(GetWindowBufferWidth(thread_pool, frame_header)),
-      window_buffer_height_(GetWindowBufferHeight(thread_pool, frame_header)),
-      superres_line_buffer_(superres_line_buffer),
+      masks_(&frame_scratch_buffer->loop_filter_mask),
+      cdef_index_(frame_scratch_buffer->cdef_index),
+      inter_transform_sizes_(frame_scratch_buffer->inter_transform_sizes),
+      threaded_window_buffer_(
+          frame_scratch_buffer->threaded_window_buffer.get()),
+      restoration_info_(&frame_scratch_buffer->loop_restoration_info),
+      superres_line_buffer_(frame_scratch_buffer->superres_line_buffer.get()),
       block_parameters_(*block_parameters),
       frame_buffer_(*frame_buffer),
-      deblock_buffer_(*deblock_buffer),
+      deblock_buffer_(frame_scratch_buffer->deblock_buffer),
       do_post_filter_mask_(do_post_filter_mask),
-      thread_pool_(thread_pool) {
+      thread_pool_(
+          frame_scratch_buffer->threading_strategy.post_filter_thread_pool()),
+      window_buffer_width_(GetWindowBufferWidth(thread_pool_, frame_header)),
+      window_buffer_height_(GetWindowBufferHeight(thread_pool_, frame_header)) {
   const int8_t zero_delta_lf[kFrameLfCount] = {};
   ComputeDeblockFilterLevels(zero_delta_lf, deblock_filter_levels_);
   if (DoDeblock()) {
@@ -196,7 +194,7 @@ PostFilter::PostFilter(
   // In single threaded mode, we apply SuperRes without making a copy of the
   // input row by writing the output to one row to the top (we refer to this
   // process as "in place superres" in our code).
-  const bool in_place_superres = DoSuperRes() && thread_pool == nullptr;
+  const bool in_place_superres = DoSuperRes() && thread_pool_ == nullptr;
   if (DoCdef() || DoRestoration() || in_place_superres) {
     for (int plane = 0; plane < planes_; ++plane) {
       int horizontal_shift = 0;
