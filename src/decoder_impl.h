@@ -226,6 +226,12 @@ class DecoderImpl : public Allocable {
                                  FrameScratchBuffer* frame_scratch_buffer,
                                  PostFilter* post_filter,
                                  BlockingCounter* pending_jobs);
+  // Helper function used by DecodeTilesThreadedFrameParallel. Applies the
+  // deblocking filter for tile boundaries for the superblock row at |row4x4|.
+  void ApplyDeblockingFilterForTileBoundaries(
+      PostFilter* post_filter, const std::unique_ptr<Tile>* tile_row_base,
+      const ObuFrameHeader& frame_header, int row4x4, int block_width4x4,
+      int tile_columns, bool decode_entire_tiles_in_worker_threads);
   // Sets the current frame's segmentation map for two cases. The third case
   // is handled in Tile::DecodeBlock().
   void SetCurrentFrameSegmentationMap(const ObuFrameHeader& frame_header,

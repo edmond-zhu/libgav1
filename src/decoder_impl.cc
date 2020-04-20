@@ -1290,65 +1290,9 @@ StatusCode DecoderImpl::DecodeTilesThreadedFrameParallel(
     // The deblocking filter for the internal blocks will be applied in the tile
     // worker threads. In this thread, we will only have to apply deblocking
     // filter for the tile boundaries.
-    if (post_filter->DoDeblock()) {
-      // Apply vertical deblock filtering for the first 64 columns of each tile.
-      for (int tile_column = 0; tile_column < tile_columns; ++tile_column) {
-        const Tile& tile = *tile_row_base[tile_column];
-        post_filter->ApplyDeblockFilter(
-            kLoopFilterTypeVertical, row4x4, tile.column4x4_start(),
-            tile.column4x4_start() + kNum4x4InLoopFilterMaskUnit,
-            block_width4x4);
-      }
-      if (decode_entire_tiles_in_worker_threads &&
-          row4x4 == tile_row_base[0]->row4x4_start()) {
-        // This is the first superblock row of a tile row. In this case, apply
-        // horizontal deblock filtering for the entire superblock row.
-        post_filter->ApplyDeblockFilter(kLoopFilterTypeHorizontal, row4x4, 0,
-                                        frame_header.columns4x4,
-                                        block_width4x4);
-      } else {
-        // Apply horizontal deblock filtering for the first 64 columns of the
-        // first tile.
-        const Tile& first_tile = *tile_row_base[0];
-        post_filter->ApplyDeblockFilter(
-            kLoopFilterTypeHorizontal, row4x4, first_tile.column4x4_start(),
-            first_tile.column4x4_start() + kNum4x4InLoopFilterMaskUnit,
-            block_width4x4);
-        // Apply horizontal deblock filtering for the last 64 columns of the
-        // previous tile and the first 64 columns of the current tile.
-        for (int tile_column = 1; tile_column < tile_columns; ++tile_column) {
-          const Tile& tile = *tile_row_base[tile_column];
-          // If the previous tile has more than 64 columns, then include those
-          // for the horizontal deblock.
-          const Tile& previous_tile = *tile_row_base[tile_column - 1];
-          const int column4x4_start =
-              tile.column4x4_start() -
-              ((tile.column4x4_start() - kNum4x4InLoopFilterMaskUnit !=
-                previous_tile.column4x4_start())
-                   ? kNum4x4InLoopFilterMaskUnit
-                   : 0);
-          post_filter->ApplyDeblockFilter(
-              kLoopFilterTypeHorizontal, row4x4, column4x4_start,
-              tile.column4x4_start() + kNum4x4InLoopFilterMaskUnit,
-              block_width4x4);
-        }
-        // Apply horizontal deblock filtering for the last 64 columns of the
-        // last tile.
-        const Tile& last_tile = *tile_row_base[tile_columns - 1];
-        // Identify the last column4x4 value and do horizontal filtering for
-        // that column4x4. The value of last column4x4 is the nearest multiple
-        // of 16 that is before tile.column4x4_end().
-        const int column4x4_start = (last_tile.column4x4_end() - 1) & ~15;
-        // If column4x4_start is the same as tile.column4x4_start() then it
-        // means that the last tile has <= 64 columns. So there is nothing left
-        // to deblock (since it was already deblocked in the loop above).
-        if (column4x4_start != last_tile.column4x4_start()) {
-          post_filter->ApplyDeblockFilter(
-              kLoopFilterTypeHorizontal, row4x4, column4x4_start,
-              last_tile.column4x4_end(), block_width4x4);
-        }
-      }
-    }
+    ApplyDeblockingFilterForTileBoundaries(
+        post_filter, tile_row_base, frame_header, row4x4, block_width4x4,
+        tile_columns, decode_entire_tiles_in_worker_threads);
     // Apply all the post filters other than deblocking.
     const int progress_row = post_filter->ApplyFilteringForOneSuperBlockRow(
         row4x4, block_width4x4, row4x4 + block_width4x4 >= frame_header.rows4x4,
@@ -1444,6 +1388,67 @@ void DecoderImpl::DecodeSuperBlockRowInTile(
                               frame_scratch_buffer, post_filter, pending_jobs);
     pending_jobs->Decrement();
   });
+}
+
+void DecoderImpl::ApplyDeblockingFilterForTileBoundaries(
+    PostFilter* const post_filter, const std::unique_ptr<Tile>* tile_row_base,
+    const ObuFrameHeader& frame_header, int row4x4, int block_width4x4,
+    int tile_columns, bool decode_entire_tiles_in_worker_threads) {
+  if (!post_filter->DoDeblock()) return;
+  // Apply vertical deblock filtering for the first 64 columns of each tile.
+  for (int tile_column = 0; tile_column < tile_columns; ++tile_column) {
+    const Tile& tile = *tile_row_base[tile_column];
+    post_filter->ApplyDeblockFilter(
+        kLoopFilterTypeVertical, row4x4, tile.column4x4_start(),
+        tile.column4x4_start() + kNum4x4InLoopFilterMaskUnit, block_width4x4);
+  }
+  if (decode_entire_tiles_in_worker_threads &&
+      row4x4 == tile_row_base[0]->row4x4_start()) {
+    // This is the first superblock row of a tile row. In this case, apply
+    // horizontal deblock filtering for the entire superblock row.
+    post_filter->ApplyDeblockFilter(kLoopFilterTypeHorizontal, row4x4, 0,
+                                    frame_header.columns4x4, block_width4x4);
+  } else {
+    // Apply horizontal deblock filtering for the first 64 columns of the
+    // first tile.
+    const Tile& first_tile = *tile_row_base[0];
+    post_filter->ApplyDeblockFilter(
+        kLoopFilterTypeHorizontal, row4x4, first_tile.column4x4_start(),
+        first_tile.column4x4_start() + kNum4x4InLoopFilterMaskUnit,
+        block_width4x4);
+    // Apply horizontal deblock filtering for the last 64 columns of the
+    // previous tile and the first 64 columns of the current tile.
+    for (int tile_column = 1; tile_column < tile_columns; ++tile_column) {
+      const Tile& tile = *tile_row_base[tile_column];
+      // If the previous tile has more than 64 columns, then include those
+      // for the horizontal deblock.
+      const Tile& previous_tile = *tile_row_base[tile_column - 1];
+      const int column4x4_start =
+          tile.column4x4_start() -
+          ((tile.column4x4_start() - kNum4x4InLoopFilterMaskUnit !=
+            previous_tile.column4x4_start())
+               ? kNum4x4InLoopFilterMaskUnit
+               : 0);
+      post_filter->ApplyDeblockFilter(
+          kLoopFilterTypeHorizontal, row4x4, column4x4_start,
+          tile.column4x4_start() + kNum4x4InLoopFilterMaskUnit, block_width4x4);
+    }
+    // Apply horizontal deblock filtering for the last 64 columns of the
+    // last tile.
+    const Tile& last_tile = *tile_row_base[tile_columns - 1];
+    // Identify the last column4x4 value and do horizontal filtering for
+    // that column4x4. The value of last column4x4 is the nearest multiple
+    // of 16 that is before tile.column4x4_end().
+    const int column4x4_start = (last_tile.column4x4_end() - 1) & ~15;
+    // If column4x4_start is the same as tile.column4x4_start() then it
+    // means that the last tile has <= 64 columns. So there is nothing left
+    // to deblock (since it was already deblocked in the loop above).
+    if (column4x4_start != last_tile.column4x4_start()) {
+      post_filter->ApplyDeblockFilter(
+          kLoopFilterTypeHorizontal, row4x4, column4x4_start,
+          last_tile.column4x4_end(), block_width4x4);
+    }
+  }
 }
 
 void DecoderImpl::SetCurrentFrameSegmentationMap(
