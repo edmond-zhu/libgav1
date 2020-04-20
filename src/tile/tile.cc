@@ -670,6 +670,11 @@ bool Tile::Decode(
       if (row4x4 != row4x4_start_) {
         // Apply horizontal deblock filtering for all the columns in this tile
         // except for the first and the last 64 columns.
+        // Note about the last tile of each row: For the last tile,
+        // column4x4_end may not be a multiple of 16. In that case it is still
+        // okay to simply subtract 16 since ApplyDeblockFilter() will only do
+        // the filters in increments of 64 columns (or 32 columns for chroma
+        // with subsampling).
         post_filter_.ApplyDeblockFilter(
             kLoopFilterTypeHorizontal, row4x4,
             column4x4_start_ + kNum4x4InLoopFilterMaskUnit,

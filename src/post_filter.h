@@ -144,9 +144,11 @@ class PostFilter {
                                         bool do_deblock);
 
   // Apply deblocking filter in one direction (specified by |loop_filter_type|)
-  // for the superblock row starting at |row4x4_start| for columns that lie
-  // between |column4x4_start| and |column4x4_end| with height 4*|sb4x4|. This
-  // function must be called only if |DoDeblock()| returns true.
+  // for the superblock row starting at |row4x4_start| for columns starting from
+  // |column4x4_start| in increments of 16 (or 8 for chroma with subsampling)
+  // until the smallest multiple of 16 that is >= |column4x4_end| or until
+  // |frame_header_.columns4x4|, whichever is lower. This function must be
+  // called only if |DoDeblock()| returns true.
   void ApplyDeblockFilter(LoopFilterType loop_filter_type, int row4x4_start,
                           int column4x4_start, int column4x4_end, int sb4x4);
 
