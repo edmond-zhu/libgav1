@@ -1286,13 +1286,15 @@ StatusCode DecoderImpl::DecodeTilesThreadedFrameParallel(
       }
       if (frame_scratch_buffer->tile_decoding_failed) break;
     }
-    // Apply deblocking filter for the tile boundaries of this superblock row.
-    // The deblocking filter for the internal blocks will be applied in the tile
-    // worker threads. In this thread, we will only have to apply deblocking
-    // filter for the tile boundaries.
-    ApplyDeblockingFilterForTileBoundaries(
-        post_filter, tile_row_base, frame_header, row4x4, block_width4x4,
-        tile_columns, decode_entire_tiles_in_worker_threads);
+    if (post_filter->DoDeblock()) {
+      // Apply deblocking filter for the tile boundaries of this superblock row.
+      // The deblocking filter for the internal blocks will be applied in the
+      // tile worker threads. In this thread, we will only have to apply
+      // deblocking filter for the tile boundaries.
+      ApplyDeblockingFilterForTileBoundaries(
+          post_filter, tile_row_base, frame_header, row4x4, block_width4x4,
+          tile_columns, decode_entire_tiles_in_worker_threads);
+    }
     // Apply all the post filters other than deblocking.
     const int progress_row = post_filter->ApplyFilteringForOneSuperBlockRow(
         row4x4, block_width4x4, row4x4 + block_width4x4 >= frame_header.rows4x4,
@@ -1394,7 +1396,6 @@ void DecoderImpl::ApplyDeblockingFilterForTileBoundaries(
     PostFilter* const post_filter, const std::unique_ptr<Tile>* tile_row_base,
     const ObuFrameHeader& frame_header, int row4x4, int block_width4x4,
     int tile_columns, bool decode_entire_tiles_in_worker_threads) {
-  if (!post_filter->DoDeblock()) return;
   // Apply vertical deblock filtering for the first 64 columns of each tile.
   for (int tile_column = 0; tile_column < tile_columns; ++tile_column) {
     const Tile& tile = *tile_row_base[tile_column];
