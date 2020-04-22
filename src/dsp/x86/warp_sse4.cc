@@ -471,7 +471,7 @@ void Warp_SSE4_1(const void* source, ptrdiff_t source_stride, int source_width,
       typename std::conditional<is_compound, int16_t, uint8_t>::type;
   auto* dst = static_cast<DestType*>(dest);
 
-  // Warp process applies for each 8x8 block (or smaller).
+  // Warp process applies for each 8x8 block.
   assert(block_width >= 8);
   assert(block_height >= 8);
   const int block_end_x = block_start_x + block_width;
