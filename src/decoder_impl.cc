@@ -729,11 +729,10 @@ StatusCode DecoderImpl::DecodeTiles(
   // The addition of kMaxBlockHeight4x4 and kMaxBlockWidth4x4 is necessary so
   // that the block parameters cache can be filled in for the last row/column
   // without having to check for boundary conditions.
-  BlockParametersHolder block_parameters_holder(
-      frame_header.rows4x4 + kMaxBlockHeight4x4,
-      frame_header.columns4x4 + kMaxBlockWidth4x4,
-      sequence_header.use_128x128_superblock);
-  if (!block_parameters_holder.Init()) {
+  if (!frame_scratch_buffer->block_parameters_holder.Reset(
+          frame_header.rows4x4 + kMaxBlockHeight4x4,
+          frame_header.columns4x4 + kMaxBlockWidth4x4,
+          sequence_header.use_128x128_superblock)) {
     return kStatusOutOfMemory;
   }
   const dsp::Dsp* const dsp =
@@ -845,7 +844,7 @@ StatusCode DecoderImpl::DecodeTiles(
   }
 
   PostFilter post_filter(frame_header, sequence_header, frame_scratch_buffer,
-                         &block_parameters_holder, current_frame->buffer(), dsp,
+                         current_frame->buffer(), dsp,
                          settings_.post_filter_mask);
 
   if (IsFrameParallel()) {
@@ -951,7 +950,7 @@ StatusCode DecoderImpl::DecodeTiles(
           tile_number, tile_group.data + byte_offset, tile_size,
           sequence_header, frame_header, current_frame, state,
           frame_scratch_buffer, wedge_masks_, &saved_symbol_decoder_context,
-          prev_segment_ids, &post_filter, &block_parameters_holder, dsp,
+          prev_segment_ids, &post_filter, dsp,
           threading_strategy.row_thread_pool(tile_index++), &pending_tiles,
           IsFrameParallel(), use_intra_prediction_buffer);
       if (tile == nullptr) {
@@ -981,9 +980,8 @@ StatusCode DecoderImpl::DecodeTiles(
                                          frame_scratch_buffer, &post_filter);
   } else {
     status = DecodeTilesThreadedNonFrameParallel(
-        sequence_header, frame_header, tiles, tile_groups,
-        block_parameters_holder, frame_scratch_buffer, &post_filter,
-        &pending_tiles);
+        sequence_header, frame_header, tiles, tile_groups, frame_scratch_buffer,
+        &post_filter, &pending_tiles);
   }
   if (status != kStatusOk) return status;
   if (frame_header.enable_frame_end_update_cdf) {
@@ -1027,7 +1025,6 @@ StatusCode DecoderImpl::DecodeTilesThreadedNonFrameParallel(
     const ObuFrameHeader& frame_header,
     const Vector<std::unique_ptr<Tile>>& tiles,
     const Vector<ObuTileGroup>& tile_groups,
-    const BlockParametersHolder& block_parameters_holder,
     FrameScratchBuffer* const frame_scratch_buffer,
     PostFilter* const post_filter,
     BlockingCounterWithStatus* const pending_tiles) {
@@ -1084,7 +1081,7 @@ StatusCode DecoderImpl::DecodeTilesThreadedNonFrameParallel(
   if (post_filter->DoDeblock() && kDeblockFilterBitMask) {
     frame_scratch_buffer->loop_filter_mask.Build(
         sequence_header, frame_header, tile_groups.front().start,
-        tile_groups.back().end, block_parameters_holder,
+        tile_groups.back().end, frame_scratch_buffer->block_parameters_holder,
         frame_scratch_buffer->inter_transform_sizes);
   }
   if (threading_strategy.post_filter_thread_pool() != nullptr) {

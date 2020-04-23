@@ -77,16 +77,14 @@ class Tile : public Allocable {
       const WedgeMaskArray& wedge_masks,
       SymbolDecoderContext* const saved_symbol_decoder_context,
       const SegmentationMap* prev_segment_ids, PostFilter* const post_filter,
-      BlockParametersHolder* const block_parameters_holder,
       const dsp::Dsp* const dsp, ThreadPool* const thread_pool,
       BlockingCounterWithStatus* const pending_tiles, bool frame_parallel,
       bool use_intra_prediction_buffer) {
     std::unique_ptr<Tile> tile(new (std::nothrow) Tile(
         tile_number, data, size, sequence_header, frame_header, current_frame,
         state, frame_scratch_buffer, wedge_masks, saved_symbol_decoder_context,
-        prev_segment_ids, post_filter, block_parameters_holder, dsp,
-        thread_pool, pending_tiles, frame_parallel,
-        use_intra_prediction_buffer));
+        prev_segment_ids, post_filter, dsp, thread_pool, pending_tiles,
+        frame_parallel, use_intra_prediction_buffer));
     return (tile != nullptr && tile->Init()) ? std::move(tile) : nullptr;
   }
 
@@ -196,9 +194,9 @@ class Tile : public Allocable {
        const WedgeMaskArray& wedge_masks,
        SymbolDecoderContext* saved_symbol_decoder_context,
        const SegmentationMap* prev_segment_ids, PostFilter* post_filter,
-       BlockParametersHolder* block_parameters_holder, const dsp::Dsp* dsp,
-       ThreadPool* thread_pool, BlockingCounterWithStatus* pending_tiles,
-       bool frame_parallel, bool use_intra_prediction_buffer);
+       const dsp::Dsp* dsp, ThreadPool* thread_pool,
+       BlockingCounterWithStatus* pending_tiles, bool frame_parallel,
+       bool use_intra_prediction_buffer);
 
   // Stores the transform tree state when reading variable size transform trees
   // and when applying the transform tree. When applying the transform tree,

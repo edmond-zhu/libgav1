@@ -78,8 +78,7 @@ class PostFilter {
   //   -> Now |frame_buffer_| contains the filtered frame.
   PostFilter(const ObuFrameHeader& frame_header,
              const ObuSequenceHeader& sequence_header,
-             FrameScratchBuffer* frame_scratch_buffer,
-             BlockParametersHolder* block_parameters, YuvBuffer* frame_buffer,
+             FrameScratchBuffer* frame_scratch_buffer, YuvBuffer* frame_buffer,
              const dsp::Dsp* dsp, int do_post_filter_mask);
 
   // non copyable/movable.

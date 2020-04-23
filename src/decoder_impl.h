@@ -191,7 +191,6 @@ class DecoderImpl : public Allocable {
       const ObuFrameHeader& frame_header,
       const Vector<std::unique_ptr<Tile>>& tiles,
       const Vector<ObuTileGroup>& tile_groups,
-      const BlockParametersHolder& block_parameters_holder,
       FrameScratchBuffer* frame_scratch_buffer, PostFilter* post_filter,
       BlockingCounterWithStatus* pending_tiles);
   StatusCode DecodeTilesFrameParallel(
