@@ -119,17 +119,15 @@ int Constrain(int diff, int threshold, int damping) {
 // constant large value if at the boundary. And the input should be uint16_t.
 template <int bitdepth, typename Pixel>
 void CdefFilter_C(const void* const source, const ptrdiff_t source_stride,
-                  const int subsampling_x, const int subsampling_y,
+                  const int block_width, const int block_height,
                   const int primary_strength, const int secondary_strength,
                   const int damping, const int direction, void* const dest,
                   const ptrdiff_t dest_stride) {
+  assert(block_width == 4 || block_width == 8);
+  assert(block_height == 4 || block_height == 8);
   static constexpr int kCdefSecondaryTaps[2] = {kCdefSecondaryTap0,
                                                 kCdefSecondaryTap1};
   const int coeff_shift = bitdepth - 8;
-  const int block_width = 8 >> subsampling_x;
-  assert(block_width == 4 || block_width == 8);
-  const int block_height = 8 >> subsampling_y;
-  assert(block_height == 4 || block_height == 8);
   const auto* src = static_cast<const uint16_t*>(source);
   auto* dst = static_cast<Pixel*>(dest);
   const ptrdiff_t dst_stride = dest_stride / sizeof(Pixel);

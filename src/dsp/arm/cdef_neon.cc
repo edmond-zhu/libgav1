@@ -501,12 +501,10 @@ void DoCdef(const uint16_t* src, const ptrdiff_t src_stride, const int height,
 // inside the frame. However it requires the source input to be padded with a
 // constant large value if at the boundary. The input must be uint16_t.
 void CdefFilter_NEON(const void* const source, const ptrdiff_t source_stride,
-                     const int subsampling_x, const int subsampling_y,
+                     const int block_width, const int block_height,
                      const int primary_strength, const int secondary_strength,
                      const int damping, const int direction, void* const dest,
                      const ptrdiff_t dest_stride) {
-  const int block_width = 8 >> subsampling_x;
-  const int block_height = 8 >> subsampling_y;
   const auto* src = static_cast<const uint16_t*>(source);
   auto* dst = static_cast<uint8_t*>(dest);
 

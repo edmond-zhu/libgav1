@@ -329,14 +329,13 @@ using CdefDirectionFunc = void (*)(const void* src, ptrdiff_t stride,
 
 // Cdef filtering function signature. Section 7.15.3.
 // |source| is a pointer to the input block. |source_stride| is given in bytes.
-// |subsampling_x|, |subsampling_y| are the subsampling factors of current
-// plane.
+// |block_width|, |block_height| are the width/height of the input block.
 // |primary_strength|, |secondary_strength|, and |damping| are Cdef filtering
 // parameters.
 // |direction| is the filtering direction.
 // |dest| is the output buffer. |dest_stride| is given in bytes.
 using CdefFilteringFunc = void (*)(const void* source, ptrdiff_t source_stride,
-                                   int subsampling_x, int subsampling_y,
+                                   int block_width, int block_height,
                                    int primary_strength, int secondary_strength,
                                    int damping, int direction, void* dest,
                                    ptrdiff_t dest_stride);
