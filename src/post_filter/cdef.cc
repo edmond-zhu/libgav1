@@ -296,11 +296,8 @@ void PostFilter::ApplyCdefForOneUnit(uint16_t* cdef_block, const int index,
                         kRestorationProcessingUnitSizeWithBorders +
                     (MultiplyBy4(column4x4 - column4x4_start) >> subsampling_x);
         dsp_.cdef_filter(
-            cdef_src, kRestorationProcessingUnitSizeWithBorders,
-            frame_header_.rows4x4, frame_header_.columns4x4,
-            MultiplyBy4(column4x4) >> subsampling_x,
-            MultiplyBy4(row4x4) >> subsampling_y, subsampling_x, subsampling_y,
-            primary_strength, secondary_strength,
+            cdef_src, kRestorationProcessingUnitSizeWithBorders, subsampling_x,
+            subsampling_y, primary_strength, secondary_strength,
             frame_header_.cdef.damping - static_cast<int>(plane != kPlaneY),
             direction, cdef_buffer, cdef_stride);
       }

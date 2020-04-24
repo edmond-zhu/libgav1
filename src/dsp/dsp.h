@@ -329,8 +329,6 @@ using CdefDirectionFunc = void (*)(const void* src, ptrdiff_t stride,
 
 // Cdef filtering function signature. Section 7.15.3.
 // |source| is a pointer to the input block. |source_stride| is given in bytes.
-// |rows4x4| and |columns4x4| are frame sizes in units of 4x4 pixels.
-// |curr_x| and |curr_y| are current position in units of pixels.
 // |subsampling_x|, |subsampling_y| are the subsampling factors of current
 // plane.
 // |primary_strength|, |secondary_strength|, and |damping| are Cdef filtering
@@ -338,11 +336,9 @@ using CdefDirectionFunc = void (*)(const void* src, ptrdiff_t stride,
 // |direction| is the filtering direction.
 // |dest| is the output buffer. |dest_stride| is given in bytes.
 using CdefFilteringFunc = void (*)(const void* source, ptrdiff_t source_stride,
-                                   int rows4x4, int columns4x4, int curr_x,
-                                   int curr_y, int subsampling_x,
-                                   int subsampling_y, int primary_strength,
-                                   int secondary_strength, int damping,
-                                   int direction, void* dest,
+                                   int subsampling_x, int subsampling_y,
+                                   int primary_strength, int secondary_strength,
+                                   int damping, int direction, void* dest,
                                    ptrdiff_t dest_stride);
 
 // Upscaling process function signature. Section 7.16.

@@ -119,20 +119,16 @@ int Constrain(int diff, int threshold, int damping) {
 // constant large value if at the boundary. And the input should be uint16_t.
 template <int bitdepth, typename Pixel>
 void CdefFilter_C(const void* const source, const ptrdiff_t source_stride,
-                  const int rows4x4, const int columns4x4, const int curr_x,
-                  const int curr_y, const int subsampling_x,
-                  const int subsampling_y, const int primary_strength,
-                  const int secondary_strength, const int damping,
-                  const int direction, void* const dest,
+                  const int subsampling_x, const int subsampling_y,
+                  const int primary_strength, const int secondary_strength,
+                  const int damping, const int direction, void* const dest,
                   const ptrdiff_t dest_stride) {
   static constexpr int kCdefSecondaryTaps[2] = {kCdefSecondaryTap0,
                                                 kCdefSecondaryTap1};
   const int coeff_shift = bitdepth - 8;
-  const int plane_width = MultiplyBy4(columns4x4) >> subsampling_x;
-  const int plane_height = MultiplyBy4(rows4x4) >> subsampling_y;
-  const int block_width = std::min(8 >> subsampling_x, plane_width - curr_x);
+  const int block_width = 8 >> subsampling_x;
   assert(block_width == 4 || block_width == 8);
-  const int block_height = std::min(8 >> subsampling_y, plane_height - curr_y);
+  const int block_height = 8 >> subsampling_y;
   assert(block_height == 4 || block_height == 8);
   const auto* src = static_cast<const uint16_t*>(source);
   auto* dst = static_cast<Pixel*>(dest);
