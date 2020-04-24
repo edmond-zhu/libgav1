@@ -140,7 +140,7 @@ void CdefFilter_C(const void* const source, const ptrdiff_t source_stride,
       uint16_t max_value = pixel_value;
       uint16_t min_value = pixel_value;
       for (int k = 0; k < 2; ++k) {
-        const int signs[] = {-1, 1};
+        static constexpr int signs[] = {-1, 1};
         for (const int& sign : signs) {
           int dy = sign * kCdefDirections[direction][k][0];
           int dx = sign * kCdefDirections[direction][k][1];
@@ -154,7 +154,7 @@ void CdefFilter_C(const void* const source, const ptrdiff_t source_stride,
             max_value = std::max(value, max_value);
             min_value = std::min(value, min_value);
           }
-          const int offsets[] = {-2, 2};
+          static constexpr int offsets[] = {-2, 2};
           for (const int& offset : offsets) {
             dy = sign * kCdefDirections[(direction + offset) & 7][k][0];
             dx = sign * kCdefDirections[(direction + offset) & 7][k][1];
