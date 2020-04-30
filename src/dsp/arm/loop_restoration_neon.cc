@@ -1488,7 +1488,7 @@ inline void BoxFilterProcess(const uint8_t* const src, const ptrdiff_t stride,
       BoxFilter2(src_u8, a2[1], b2[1], sum343_a, sum444_a, sum343_b, sum444_b,
                  out_buf + 8);
       src_ptr += stride;
-      out_buf += 2 * kRestorationProcessingUnitSize;
+      out_buf += 2 * kRestorationUnitWidth;
 
       src_u8 = vld1_u8(src_ptr);
       CalculateFilteredOutput<4>(src_u8, sum565_a[1], sum565_b[1], out_buf);
@@ -1500,7 +1500,7 @@ inline void BoxFilterProcess(const uint8_t* const src, const ptrdiff_t stride,
       BoxFilter2(src_u8, a2[1], b2[1], sum343_a + 1, sum444_a + 1, sum343_b + 1,
                  sum444_b + 1, out_buf + 8);
       src_ptr += stride;
-      out_buf += 2 * kRestorationProcessingUnitSize;
+      out_buf += 2 * kRestorationUnitWidth;
 
       sum565_a[0] = sum565_a[1];
       sum565_b[0] = sum565_b[1];
@@ -1701,12 +1701,12 @@ inline void BoxFilterProcess_FirstPass(
       uint8x8_t src_u8 = vld1_u8(src_ptr);
       BoxFilter1(src_u8, a2, b2, sum565_a, sum565_b, out_buf);
       src_ptr += stride;
-      out_buf += kRestorationProcessingUnitSize;
+      out_buf += kRestorationUnitWidth;
 
       src_u8 = vld1_u8(src_ptr);
       CalculateFilteredOutput<4>(src_u8, sum565_a[1], sum565_b[1], out_buf);
       src_ptr += stride;
-      out_buf += kRestorationProcessingUnitSize;
+      out_buf += kRestorationUnitWidth;
 
       sum565_a[0] = sum565_a[1];
       sum565_b[0] = sum565_b[1];
@@ -1839,7 +1839,7 @@ inline void BoxFilterProcess_SecondPass(
       sum343_b[1] = sum343_b[2];
       sum444_b[0] = sum444_b[1];
       src_ptr += stride;
-      out_buf += kRestorationProcessingUnitSize;
+      out_buf += kRestorationUnitWidth;
     } while (--y != 0);
     x += 8;
   } while (x < width);
@@ -1874,7 +1874,7 @@ inline void SelfGuidedSingleMultiplier(
     } while (x < width);
     src += src_stride;
     dst += dst_stride;
-    box_filter += kRestorationProcessingUnitSize;
+    box_filter += kRestorationUnitWidth;
   } while (--y != 0);
 }
 
@@ -1914,7 +1914,7 @@ inline void SelfGuidedDoubleMultiplier(
     } while (x < width);
     src += src_stride;
     dst += dst_stride;
-    box_filter += 2 * kRestorationProcessingUnitSize;
+    box_filter += 2 * kRestorationUnitWidth;
   } while (--y != 0);
 }
 
@@ -1938,8 +1938,7 @@ void SelfGuidedFilter_NEON(const void* const source, void* const dest,
   const int radius_pass_1 = kSgrProjParams[index][2];
   alignas(kMaxAlignment)
       uint16_t box_filter_process_output[2 * kMaxBoxFilterProcessOutputPixels];
-  alignas(kMaxAlignment)
-      uint16_t temp[12 * (kRestorationProcessingUnitSize + 2)];
+  alignas(kMaxAlignment) uint16_t temp[12 * (kRestorationUnitHeight + 2)];
 
   // If |radius| is 0 then there is nothing to do. If |radius| is not 0, it is
   // always 2 for the first pass and 1 for the second pass.

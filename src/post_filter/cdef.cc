@@ -96,9 +96,8 @@ void PostFilter::PrepareCdefBlock(int block_width4x4, int block_height4x4,
                                   uint16_t* cdef_source,
                                   ptrdiff_t cdef_stride) {
   for (int plane = kPlaneY; plane < planes_; ++plane) {
-    uint16_t* cdef_src =
-        cdef_source + plane * kRestorationProcessingUnitSizeWithBorders *
-                          kRestorationProcessingUnitSizeWithBorders;
+    uint16_t* cdef_src = cdef_source + plane * kCdefUnitSizeWithBorders *
+                                           kCdefUnitSizeWithBorders;
     const int8_t subsampling_x = subsampling_x_[plane];
     const int8_t subsampling_y = subsampling_y_[plane];
     const int start_x = MultiplyBy4(column4x4) >> subsampling_x;
@@ -212,7 +211,7 @@ void PostFilter::ApplyCdefForOneUnit(uint16_t* cdef_block, const int index,
 
   PrepareCdefBlock<Pixel>(block_width4x4, block_height4x4, row4x4_start,
                           column4x4_start, cdef_block,
-                          kRestorationProcessingUnitSizeWithBorders);
+                          kCdefUnitSizeWithBorders);
 
   const bool compute_direction_and_variance =
       (frame_header_.cdef.y_primary_strength[index] |
@@ -287,17 +286,15 @@ void PostFilter::ApplyCdefForOneUnit(uint16_t* cdef_block, const int index,
                      block_width, block_height, pixel_size_);
           continue;
         }
-        uint16_t* cdef_src =
-            cdef_block + plane * kRestorationProcessingUnitSizeWithBorders *
-                             kRestorationProcessingUnitSizeWithBorders;
-        cdef_src += kCdefBorder * kRestorationProcessingUnitSizeWithBorders +
-                    kCdefBorder;
+        uint16_t* cdef_src = cdef_block + plane * kCdefUnitSizeWithBorders *
+                                              kCdefUnitSizeWithBorders;
+        cdef_src += kCdefBorder * kCdefUnitSizeWithBorders + kCdefBorder;
         cdef_src += (MultiplyBy4(row4x4 - row4x4_start) >> subsampling_y) *
-                        kRestorationProcessingUnitSizeWithBorders +
+                        kCdefUnitSizeWithBorders +
                     (MultiplyBy4(column4x4 - column4x4_start) >> subsampling_x);
         dsp_.cdef_filter(
-            cdef_src, kRestorationProcessingUnitSizeWithBorders, block_width,
-            block_height, primary_strength, secondary_strength,
+            cdef_src, kCdefUnitSizeWithBorders, block_width, block_height,
+            primary_strength, secondary_strength,
             frame_header_.cdef.damping - static_cast<int>(plane != kPlaneY),
             direction, cdef_buffer, cdef_stride);
       }
@@ -373,8 +370,7 @@ void PostFilter::ApplyCdefForOneSuperBlockRow(int row4x4_start, int sb4x4,
 template <typename Pixel>
 void PostFilter::ApplyCdefForOneRowInWindow(const int row4x4,
                                             const int column4x4_start) {
-  uint16_t cdef_block[kRestorationProcessingUnitSizeWithBorders *
-                      kRestorationProcessingUnitSizeWithBorders * 3];
+  uint16_t cdef_block[kCdefUnitSizeWithBorders * kCdefUnitSizeWithBorders * 3];
 
   for (int column4x4_64x64 = 0;
        column4x4_64x64 < std::min(DivideBy4(window_buffer_width_),

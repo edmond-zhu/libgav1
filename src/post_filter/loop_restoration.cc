@@ -52,13 +52,12 @@ void PostFilter::ApplyLoopRestorationForOneUnit(
   // The SIMD implementation of wiener filter (currently WienerFilter_SSE4_1())
   // over-reads 6 bytes, so add 6 extra bytes at the end of block_buffer for 8
   // bit.
-  alignas(alignof(uint16_t))
-      uint8_t block_buffer[kRestorationProcessingUnitSizeWithBorders *
-                               kRestorationProcessingUnitSizeWithBorders *
-                               sizeof(Pixel) +
-                           ((sizeof(Pixel) == 1) ? 6 : 0)];
+  alignas(alignof(uint16_t)) uint8_t
+      block_buffer[kRestorationUnitHeightWithBorders *
+                       kRestorationUnitWidthWithBorders * sizeof(Pixel) +
+                   ((sizeof(Pixel) == 1) ? 6 : 0)];
   const ptrdiff_t block_buffer_stride =
-      kRestorationProcessingUnitSizeWithBorders * pixel_size_;
+      kRestorationUnitWidthWithBorders * pixel_size_;
   IntermediateBuffers intermediate_buffers;
 
   RestorationBuffer restoration_buffer = {
@@ -67,9 +66,9 @@ void PostFilter::ApplyLoopRestorationForOneUnit(
       plane_process_unit_width,
       {intermediate_buffers.box_filter.intermediate_a,
        intermediate_buffers.box_filter.intermediate_b},
-      kRestorationProcessingUnitSizeWithBorders + kRestorationPadding,
+      kRestorationUnitWidthWithBorders + kRestorationPadding,
       intermediate_buffers.wiener,
-      kMaxSuperBlockSizeInPixels};
+      kRestorationUnitWidth};
   const int deblock_buffer_units = 64 >> subsampling_y_[plane];
   uint8_t* const deblock_buffer = deblock_buffer_.data(plane);
   const int deblock_buffer_stride = deblock_buffer_.stride(plane);
@@ -95,7 +94,7 @@ void PostFilter::ApplyLoopRestorationForOneUnit(
                    &(*loop_restored_window)[row][column],
                    restoration_info_->loop_restoration_info(
                        static_cast<Plane>(plane), unit_id),
-                   kRestorationProcessingUnitSizeWithBorders,
+                   kRestorationUnitWidthWithBorders,
                    loop_restored_window->columns(), current_process_unit_width,
                    current_process_unit_height, &restoration_buffer);
 }
@@ -128,13 +127,11 @@ void PostFilter::ApplyLoopRestorationForOneSuperBlockRow(int row4x4_start,
   assert(row4x4_start >= 0);
   assert(DoRestoration());
   const int plane_process_unit_width[kMaxPlanes] = {
-      kRestorationProcessingUnitSize,
-      kRestorationProcessingUnitSize >> subsampling_x_[kPlaneU],
-      kRestorationProcessingUnitSize >> subsampling_x_[kPlaneV]};
+      kRestorationUnitWidth, kRestorationUnitWidth >> subsampling_x_[kPlaneU],
+      kRestorationUnitWidth >> subsampling_x_[kPlaneV]};
   const int plane_process_unit_height[kMaxPlanes] = {
-      kRestorationProcessingUnitSize,
-      kRestorationProcessingUnitSize >> subsampling_y_[kPlaneU],
-      kRestorationProcessingUnitSize >> subsampling_y_[kPlaneV]};
+      kRestorationUnitHeight, kRestorationUnitHeight >> subsampling_y_[kPlaneU],
+      kRestorationUnitHeight >> subsampling_y_[kPlaneV]};
   for (int plane = 0; plane < planes_; ++plane) {
     if (frame_header_.loop_restoration.type[plane] ==
         kLoopRestorationTypeNone) {
@@ -216,13 +213,11 @@ void PostFilter::ApplyLoopRestorationForOneRowInWindow(
 template <typename Pixel>
 void PostFilter::ApplyLoopRestorationThreaded() {
   const int plane_process_unit_width[kMaxPlanes] = {
-      kRestorationProcessingUnitSize,
-      kRestorationProcessingUnitSize >> subsampling_x_[kPlaneU],
-      kRestorationProcessingUnitSize >> subsampling_x_[kPlaneV]};
+      kRestorationUnitWidth, kRestorationUnitWidth >> subsampling_x_[kPlaneU],
+      kRestorationUnitWidth >> subsampling_x_[kPlaneV]};
   const int plane_process_unit_height[kMaxPlanes] = {
-      kRestorationProcessingUnitSize,
-      kRestorationProcessingUnitSize >> subsampling_y_[kPlaneU],
-      kRestorationProcessingUnitSize >> subsampling_y_[kPlaneV]};
+      kRestorationUnitHeight, kRestorationUnitHeight >> subsampling_y_[kPlaneU],
+      kRestorationUnitHeight >> subsampling_y_[kPlaneV]};
 
   for (int plane = kPlaneY; plane < planes_; ++plane) {
     if (loop_restoration_.type[plane] == kLoopRestorationTypeNone) {

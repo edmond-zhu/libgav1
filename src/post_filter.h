@@ -270,8 +270,8 @@ class PostFilter {
     // The array |intermediate| in Section 7.17.4, the intermediate results
     // between the horizontal and vertical filters.
     alignas(kMaxAlignment)
-        uint16_t wiener[(kMaxSuperBlockSizeInPixels + kSubPixelTaps - 1) *
-                        kMaxSuperBlockSizeInPixels];
+        uint16_t wiener[(kRestorationUnitHeight + kSubPixelTaps - 1) *
+                        kRestorationUnitWidth];
     // For self-guided filter.
     struct {
       // The arrays flt0 and flt1 in Section 7.17.2, the outputs of the box
@@ -575,13 +575,11 @@ class PostFilter {
   // Wiener filter needs extended border of three pixels.
   // Therefore the size of the buffer is 70x70 pixels.
   alignas(alignof(uint16_t)) uint8_t
-      block_buffer_[kRestorationProcessingUnitSizeWithBorders *
-                    kRestorationProcessingUnitSizeWithBorders *
-                    sizeof(uint16_t)];
+      block_buffer_[kRestorationUnitHeightWithBorders *
+                    kRestorationUnitWidthWithBorders * sizeof(uint16_t)];
   // A block buffer to hold the input that is converted to uint16_t before
   // cdef filtering. Only used in single threaded case.
-  uint16_t cdef_block_[kRestorationProcessingUnitSizeWithBorders *
-                       kRestorationProcessingUnitSizeWithBorders * 3];
+  uint16_t cdef_block_[kCdefUnitSizeWithBorders * kCdefUnitSizeWithBorders * 3];
 
   template <int bitdepth, typename Pixel>
   friend class PostFilterSuperResTest;

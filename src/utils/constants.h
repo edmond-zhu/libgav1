@@ -109,21 +109,25 @@ enum {
   kNum4x4InLoopFilterMaskUnit = 16,
   kProjectionMvClamp = (1 << 14) - 1,  // == 16383
   kProjectionMvMaxHorizontalOffset = 8,
+  kCdefUnitSize = 64,
+  kCdefUnitSizeWithBorders = kCdefUnitSize + 2 * kRestorationBorder,
   kRestorationUnitOffset = 8,
   // 2 pixel padding for 5x5 box sum on each side.
   kRestorationPadding = 4,
   // Loop restoration's processing unit size is fixed as 64x64.
-  kRestorationProcessingUnitSize = 64,
-  kRestorationProcessingUnitSizeWithBorders =
-      kRestorationProcessingUnitSize + 2 * kRestorationBorder,
+  kRestorationUnitHeight = 64,
+  kRestorationUnitWidth = 64,
+  kRestorationUnitHeightWithBorders =
+      kRestorationUnitHeight + 2 * kRestorationBorder,
+  kRestorationUnitWidthWithBorders =
+      kRestorationUnitWidth + 2 * kRestorationBorder,
   // The max size of a box filter process output buffer.
-  kMaxBoxFilterProcessOutputPixels = kRestorationProcessingUnitSize *
-                                     kRestorationProcessingUnitSize,  // == 4096
+  kMaxBoxFilterProcessOutputPixels =
+      kRestorationUnitHeight * kRestorationUnitWidth,  // == 4096
   // The max size of a box filter process intermediate buffer.
   kBoxFilterProcessIntermediatePixels =
-      (kRestorationProcessingUnitSizeWithBorders + kRestorationPadding) *
-      (kRestorationProcessingUnitSizeWithBorders +
-       kRestorationPadding),  // == 5476
+      (kRestorationUnitHeightWithBorders + kRestorationPadding) *
+      (kRestorationUnitWidthWithBorders + kRestorationPadding),  // == 5476
   kSuperResFilterBits = 6,
   kSuperResFilterShifts = 1 << kSuperResFilterBits,
   kSuperResFilterTaps = 8,

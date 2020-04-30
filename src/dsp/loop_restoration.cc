@@ -407,8 +407,7 @@ void LoopRestorationFuncs_C<bitdepth, Pixel>::BoxFilterPreProcess(
   const uint32_t s = kSgrScaleParameter[sgr_proj_index][pass];
   assert(s != 0);
   const ptrdiff_t array_stride = buffer->box_filter_process_intermediate_stride;
-  const ptrdiff_t integral_image_stride =
-      kRestorationProcessingUnitSizeWithBorders + 1;
+  const ptrdiff_t integral_image_stride = kRestorationUnitWidthWithBorders + 1;
   // The size of the intermediate result buffer is the size of the filter area
   // plus horizontal (3) and vertical (3) padding. The processing start point
   // is the filter area start point -1 row and -1 column. Therefore we need to
@@ -517,16 +516,16 @@ void LoopRestorationFuncs_C<bitdepth, Pixel>::BoxFilterProcess(
 
   // We calculate intermediate values for the region (width + 1) x (height + 1).
   // The region we can access is (width + 1 + radius) x (height + 1 + radius).
-  // The max radius is 2. width = height =
-  // kRestorationProcessingUnitSizeWithBorders.
-  // For the integral_image, we need one row before the accessible region,
-  // so the stride is kRestorationProcessingUnitSizeWithBorders + 1.
+  // The max radius is 2. width = kRestorationUnitWidthWithBorders. height =
+  // kRestorationUnitHeightWithBorders.
+  // For the integral_image, we need one column before the accessible region,
+  // so the stride is kRestorationUnitWidthWithBorders + 1.
   // We fix the first row and first column of integral image be 0 to facilitate
   // computation.
 
   // Note that the max sum = (2 ^ bitdepth - 1) *
-  // kRestorationProcessingUnitSizeWithBorders *
-  // kRestorationProcessingUnitSizeWithBorders.
+  // kRestorationUnitHeightWithBorders *
+  // kRestorationUnitWidthWithBorders.
   // The max sum is larger than 2^16.
   // Case 8 bit and 10 bit:
   // The final box sum has at most 25 pixels, which is within 16 bits. So
@@ -540,21 +539,19 @@ void LoopRestorationFuncs_C<bitdepth, Pixel>::BoxFilterProcess(
   // together. So keeping truncated 16-bit values is enough.
   // If it is slower than using 32-bit for specific CPU targets, please split
   // into 2 paths.
-  uint16_t integral_image[(kRestorationProcessingUnitSizeWithBorders + 1) *
-                          (kRestorationProcessingUnitSizeWithBorders + 1)];
+  uint16_t integral_image[(kRestorationUnitHeightWithBorders + 1) *
+                          (kRestorationUnitWidthWithBorders + 1)];
 
   // Note that the max squared sum =
   // (2 ^ bitdepth - 1) * (2 ^ bitdepth - 1) *
-  // kRestorationProcessingUnitSizeWithBorders *
-  // kRestorationProcessingUnitSizeWithBorders.
+  // kRestorationUnitHeightWithBorders *
+  // kRestorationUnitWidthWithBorders.
   // For 8 bit, 32-bit is enough. For 10 bit and up, the sum could be larger
   // than 2^32. However, the final box sum has at most 25 squares, which is
   // within 32 bits. So keeping truncated 32-bit values is enough.
-  uint32_t
-      square_integral_image[(kRestorationProcessingUnitSizeWithBorders + 1) *
-                            (kRestorationProcessingUnitSizeWithBorders + 1)];
-  const ptrdiff_t integral_image_stride =
-      kRestorationProcessingUnitSizeWithBorders + 1;
+  uint32_t square_integral_image[(kRestorationUnitHeightWithBorders + 1) *
+                                 (kRestorationUnitWidthWithBorders + 1)];
+  const ptrdiff_t integral_image_stride = kRestorationUnitWidthWithBorders + 1;
   const ptrdiff_t filtered_output_stride =
       buffer->box_filter_process_output_stride;
   const ptrdiff_t intermediate_stride =
