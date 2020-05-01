@@ -438,12 +438,14 @@ class PostFilter {
   // Functions for the Loop Restoration filter.
 
   template <typename Pixel>
-  void ApplyLoopRestorationForOneUnit(
-      uint8_t* cdef_buffer, ptrdiff_t cdef_buffer_stride, Plane plane,
-      int plane_height, int x, int y, int row, int column, int unit_row,
-      int current_process_unit_height, int plane_process_unit_width,
-      int plane_unit_size, int num_horizontal_units, int plane_width,
-      Array2DView<Pixel>* loop_restored_window);
+  void ApplyLoopRestorationForOneUnit(uint8_t* cdef_buffer,
+                                      ptrdiff_t cdef_buffer_stride, Plane plane,
+                                      int plane_height, int x, int y, int row,
+                                      int column, int unit_row,
+                                      int current_process_unit_height,
+                                      int plane_unit_size,
+                                      int num_horizontal_units, int plane_width,
+                                      Array2DView<Pixel>* loop_restored_window);
   template <typename Pixel>
   void ApplyLoopRestorationForSuperBlock(Plane plane, int x, int y,
                                          int unit_row,
@@ -458,8 +460,8 @@ class PostFilter {
   void ApplyLoopRestorationForOneRowInWindow(
       uint8_t* cdef_buffer, ptrdiff_t cdef_buffer_stride, Plane plane,
       int plane_height, int plane_width, int x, int y, int row, int unit_row,
-      int current_process_unit_height, int process_unit_width, int window_width,
-      int plane_unit_size, int num_horizontal_units);
+      int current_process_unit_height, int plane_unit_size, int window_width,
+      int num_horizontal_units);
   // Note for ApplyLoopRestoration():
   // First, we must differentiate loop restoration processing unit from loop
   // restoration unit.
