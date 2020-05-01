@@ -12,8 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Constant used for cdef implementations.
+// Constants used for cdef implementations.
 // This will be included inside an anonymous namespace on files where these are
 // necessary.
 
 const int8_t (*const kCdefDirections)[2][2] = kCdefDirectionsPadded + 2;
+
+// Mirror values and pad to 16 elements.
+alignas(16) constexpr uint32_t kCdefDivisionTable[] = {
+    840, 420, 280, 210, 168, 140, 120, 105,
+    120, 140, 168, 210, 280, 420, 840, 0};
+
+// Used when calculating odd |cost[x]| values to mask off unwanted elements.
+// Holds elements 1 3 5 X 5 3 1 X
+alignas(16) constexpr uint32_t kCdefDivisionTableOdd[] = {420, 210, 140, 0,
+                                                          140, 210, 420, 0};

@@ -38,17 +38,6 @@ namespace {
 
 #include "src/dsp/cdef.inc"
 
-// CdefDirection:
-// Mirror values and pad to 16 elements.
-alignas(16) constexpr uint32_t kDivisionTable[] = {840, 420, 280, 210, 168, 140,
-                                                   120, 105, 120, 140, 168, 210,
-                                                   280, 420, 840, 0};
-
-// Used when calculating odd |cost[x]| values to mask off unwanted elements.
-// Holds elements 1 3 5 X 5 3 1 X
-alignas(16) constexpr uint32_t kDivisionTableOdd[] = {420, 210, 140, 0,
-                                                      140, 210, 420, 0};
-
 // Expand |a| to int8x16_t, left shift it by |shift| and sum the low
 // and high values with |b| and |c| respectively.
 // Used to calculate |partial[0][i + j]| and |partial[4][7 + i - j]|. The input
@@ -161,10 +150,10 @@ uint32x4_t SquareAccumulate(uint32x4_t a, uint16x4_t b) {
 
 // |cost[0]| and |cost[4]| square the input and sum with the corresponding
 // element from the other end of the vector:
-// |kDivisionTable[]| element:
+// |kCdefDivisionTable[]| element:
 // cost[0] += (Square(partial[0][i]) + Square(partial[0][14 - i])) *
-//             kDivisionTable[i + 1];
-// cost[0] += Square(partial[0][7]) * kDivisionTable[8];
+//             kCdefDivisionTable[i + 1];
+// cost[0] += Square(partial[0][7]) * kCdefDivisionTable[8];
 // Because everything is being summed into a single value the distributive
 // property allows us to mirror the division table and accumulate once.
 uint32_t Cost0Or4(const uint16x8_t a, const uint16x8_t b,
@@ -181,7 +170,7 @@ uint32_t Cost0Or4(const uint16x8_t a, const uint16x8_t b,
 uint32_t SquareAccumulate(const uint16x8_t a) {
   uint32x4_t c = Square(vget_low_u16(a));
   c = SquareAccumulate(c, vget_high_u16(a));
-  c = vmulq_n_u32(c, kDivisionTable[7]);
+  c = vmulq_n_u32(c, kCdefDivisionTable[7]);
   return SumVector(c);
 }
 
@@ -190,7 +179,7 @@ uint32_t CostOdd(const uint16x8_t a, const uint16x8_t b, const uint32x4_t mask,
   // Remove elements 0-2.
   uint32x4_t c = vandq_u32(mask, Square(vget_low_u16(a)));
   c = vaddq_u32(c, Square(vget_high_u16(a)));
-  c = vmulq_n_u32(c, kDivisionTable[7]);
+  c = vmulq_n_u32(c, kCdefDivisionTable[7]);
 
   c = vmlaq_u32(c, Square(vget_low_u16(a)), division_table[0]);
   c = vmlaq_u32(c, Square(vget_low_u16(b)), division_table[1]);
@@ -232,14 +221,14 @@ void CdefDirection_NEON(const void* const source, ptrdiff_t stride,
   cost[6] = SquareAccumulate(partial_lo[6]);
 
   const uint32x4_t division_table[4] = {
-      vld1q_u32(kDivisionTable), vld1q_u32(kDivisionTable + 4),
-      vld1q_u32(kDivisionTable + 8), vld1q_u32(kDivisionTable + 12)};
+      vld1q_u32(kCdefDivisionTable), vld1q_u32(kCdefDivisionTable + 4),
+      vld1q_u32(kCdefDivisionTable + 8), vld1q_u32(kCdefDivisionTable + 12)};
 
   cost[0] = Cost0Or4(partial_lo[0], partial_hi[0], division_table);
   cost[4] = Cost0Or4(partial_lo[4], partial_hi[4], division_table);
 
-  const uint32x4_t division_table_odd[2] = {vld1q_u32(kDivisionTableOdd),
-                                            vld1q_u32(kDivisionTableOdd + 4)};
+  const uint32x4_t division_table_odd[2] = {
+      vld1q_u32(kCdefDivisionTableOdd), vld1q_u32(kCdefDivisionTableOdd + 4)};
 
   const uint32x4_t element_3_mask = {0, 0, 0, static_cast<uint32_t>(-1)};
 

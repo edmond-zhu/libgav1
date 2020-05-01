@@ -40,17 +40,6 @@ namespace {
 
 #include "src/dsp/cdef.inc"
 
-// CdefDirection:
-// Mirror values and pad to 16 elements.
-alignas(16) constexpr uint32_t kDivisionTable[] = {840, 420, 280, 210, 168, 140,
-                                                   120, 105, 120, 140, 168, 210,
-                                                   280, 420, 840, 0};
-
-// Used when calculating odd |cost[x]| values to mask off unwanted elements.
-// Holds elements 1 3 5 X 5 3 1 X
-alignas(16) constexpr uint32_t kDivisionTableOdd[] = {420, 210, 140, 0,
-                                                      140, 210, 420, 0};
-
 // Used to calculate |partial[0][i + j]| and |partial[4][7 + i - j]|. The input
 // is |src[j]| and it is being added to |partial[]| based on the above indices.
 // |x| is assumed to be reversed when called for partial[4].
@@ -162,10 +151,10 @@ inline __m128i Square_S32(__m128i a) { return _mm_mullo_epi32(a, a); }
 
 // |cost[0]| and |cost[4]| square the input and sum with the corresponding
 // element from the other end of the vector:
-// |kDivisionTable[]| element:
+// |kCdefDivisionTable[]| element:
 // cost[0] += (Square(partial[0][i]) + Square(partial[0][14 - i])) *
-//             kDivisionTable[i + 1];
-// cost[0] += Square(partial[0][7]) * kDivisionTable[8];
+//             kCdefDivisionTable[i + 1];
+// cost[0] += Square(partial[0][7]) * kCdefDivisionTable[8];
 // Because everything is being summed into a single value the distributive
 // property allows us to mirror the division table and accumulate once.
 inline uint32_t Cost0Or4(const __m128i a, const __m128i b,
@@ -187,16 +176,16 @@ inline uint32_t CostOdd(const __m128i a, const __m128i b,
   const __m128i a_hi_square =
       Square_S32(_mm_cvtepi16_epi32(_mm_srli_si128(a, 8)));
   // Swap element 0 and element 2. This pairs partial[i][10 - j] with
-  // kDivisionTable[2*j+1].
+  // kCdefDivisionTable[2*j+1].
   const __m128i b_lo_square =
       _mm_shuffle_epi32(Square_S32(_mm_cvtepi16_epi32(b)), 0x06);
   // First terms are indices 3-7.
   __m128i c = _mm_srli_si128(a_lo_square, 12);
   c = _mm_add_epi32(c, a_hi_square);
-  c = _mm_mullo_epi32(c, _mm_set1_epi32(kDivisionTable[7]));
+  c = _mm_mullo_epi32(c, _mm_set1_epi32(kCdefDivisionTable[7]));
 
   // cost[i] += (Square(base_partial[i][j]) + Square(base_partial[i][10 - j])) *
-  //          kDivisionTable[2 * j + 1];
+  //          kCdefDivisionTable[2 * j + 1];
   const __m128i second_cost = _mm_add_epi32(a_lo_square, b_lo_square);
   c = _mm_add_epi32(c, _mm_mullo_epi32(second_cost, division_table));
   return SumVector_S32(c);
@@ -243,18 +232,18 @@ void CdefDirection_SSE4_1(const void* const source, ptrdiff_t stride,
   const __m128i signed_offset = _mm_set1_epi16(128 * 8);
   partial_lo[2] = _mm_sub_epi16(partial_lo[2], signed_offset);
 
-  cost[2] = kDivisionTable[7] * SquareSum_S16(partial_lo[2]);
-  cost[6] = kDivisionTable[7] * SquareSum_S16(partial_lo[6]);
+  cost[2] = kCdefDivisionTable[7] * SquareSum_S16(partial_lo[2]);
+  cost[6] = kCdefDivisionTable[7] * SquareSum_S16(partial_lo[6]);
 
-  const __m128i division_table[4] = {LoadUnaligned16(kDivisionTable),
-                                     LoadUnaligned16(kDivisionTable + 4),
-                                     LoadUnaligned16(kDivisionTable + 8),
-                                     LoadUnaligned16(kDivisionTable + 12)};
+  const __m128i division_table[4] = {LoadUnaligned16(kCdefDivisionTable),
+                                     LoadUnaligned16(kCdefDivisionTable + 4),
+                                     LoadUnaligned16(kCdefDivisionTable + 8),
+                                     LoadUnaligned16(kCdefDivisionTable + 12)};
 
   cost[0] = Cost0Or4(partial_lo[0], partial_hi[0], division_table);
   cost[4] = Cost0Or4(partial_lo[4], partial_hi[4], division_table);
 
-  const __m128i division_table_odd = LoadAligned16(kDivisionTableOdd);
+  const __m128i division_table_odd = LoadAligned16(kCdefDivisionTableOdd);
 
   cost[1] = CostOdd(partial_lo[1], partial_hi[1], division_table_odd);
   cost[3] = CostOdd(partial_lo[3], partial_hi[3], division_table_odd);
