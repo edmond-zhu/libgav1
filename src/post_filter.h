@@ -263,29 +263,6 @@ class PostFilter {
       {&PostFilter::VerticalDeblockFilter,
        &PostFilter::HorizontalDeblockFilter},
   };
-  // Buffers for loop restoration intermediate results. Depending on the filter
-  // type, only one member of the union is used.
-  union IntermediateBuffers {
-    // For Wiener filter.
-    // The array |intermediate| in Section 7.17.4, the intermediate results
-    // between the horizontal and vertical filters.
-    alignas(kMaxAlignment)
-        uint16_t wiener[(kRestorationUnitHeight + kSubPixelTaps - 1) *
-                        kRestorationUnitWidth];
-    // For self-guided filter.
-    struct {
-      // The arrays flt0 and flt1 in Section 7.17.2, the outputs of the box
-      // filter process in pass 0 and pass 1.
-      alignas(
-          kMaxAlignment) int32_t output[2][kMaxBoxFilterProcessOutputPixels];
-      // The 2d arrays A and B in Section 7.17.3, the intermediate results in
-      // the box filter process. Reused for pass 0 and pass 1.
-      alignas(kMaxAlignment) uint32_t
-          intermediate_a[kBoxFilterProcessIntermediatePixels];
-      alignas(kMaxAlignment) uint32_t
-          intermediate_b[kBoxFilterProcessIntermediatePixels];
-    } box_filter;
-  };
 
   // Functions common to all post filters.
 

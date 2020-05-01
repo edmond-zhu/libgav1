@@ -77,7 +77,7 @@ void WienerFilter_SSE4_1(const void* source, void* const dest,
       (1 << (8 + 1 + kWienerFilterBits - kInterRoundBitsHorizontal)) - 1;
   const auto* src = static_cast<const uint8_t*>(source);
   auto* dst = static_cast<uint8_t*>(dest);
-  const ptrdiff_t buffer_stride = buffer->wiener_buffer_stride;
+  const ptrdiff_t buffer_stride = (width + 7) & ~7;
   auto* wiener_buffer = buffer->wiener_buffer;
   // horizontal filtering.
   PopulateWienerCoefficients(restoration_info, WienerInfo::kHorizontal, filter);
@@ -1500,12 +1500,11 @@ void SelfGuidedFilter_SSE4_1(const void* source, void* dest,
                              const RestorationUnitInfo& restoration_info,
                              ptrdiff_t source_stride, ptrdiff_t dest_stride,
                              int width, int height,
-                             RestorationBuffer* const /*buffer*/) {
+                             RestorationBuffer* const buffer) {
   // -96 to 96 (Sgrproj_Xqd_Min/Max)
   const int index = restoration_info.sgr_proj_info.index;
   const int radius_pass_0 = kSgrProjParams[index][0];
   const int radius_pass_1 = kSgrProjParams[index][2];
-  alignas(kMaxAlignment) uint16_t temp[12 * (kRestorationUnitHeight + 2)];
   // If |radius| is 0 then there is nothing to do. If |radius| is not 0, it is
   // always 2 for the first pass and 1 for the second pass.
   const int w0 = restoration_info.sgr_proj_info.multiplier[0];
@@ -1515,17 +1514,17 @@ void SelfGuidedFilter_SSE4_1(const void* source, void* dest,
   auto* dst = static_cast<uint8_t*>(dest);
   if (radius_pass_0 != 0 && radius_pass_1 != 0) {
     BoxFilterProcess(src, source_stride, width, height,
-                     kSgrScaleParameter[index], temp, w0, w1, w2, dst,
-                     dest_stride);
+                     kSgrScaleParameter[index], buffer->sgf_buffer, w0, w1, w2,
+                     dst, dest_stride);
   } else if (radius_pass_0 != 0) {
     BoxFilterProcess_FirstPass(src, source_stride, width, height,
-                               kSgrScaleParameter[index][0], temp, w0, dst,
-                               dest_stride);
+                               kSgrScaleParameter[index][0], buffer->sgf_buffer,
+                               w0, dst, dest_stride);
   } else {
     assert(radius_pass_1 != 0);
     BoxFilterProcess_SecondPass(src, source_stride, width, height,
-                                kSgrScaleParameter[index][1], temp, w2, dst,
-                                dest_stride);
+                                kSgrScaleParameter[index][1],
+                                buffer->sgf_buffer, w2, dst, dest_stride);
   }
 }
 

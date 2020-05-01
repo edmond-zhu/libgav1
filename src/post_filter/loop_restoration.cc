@@ -56,17 +56,7 @@ void PostFilter::ApplyLoopRestorationForOneUnit(
                    ((sizeof(Pixel) == 1) ? 6 : 0)];
   const ptrdiff_t block_buffer_stride =
       kRestorationUnitWidthWithBorders * pixel_size_;
-  IntermediateBuffers intermediate_buffers;
-
-  RestorationBuffer restoration_buffer = {
-      {intermediate_buffers.box_filter.output[0],
-       intermediate_buffers.box_filter.output[1]},
-      plane_unit_size,
-      {intermediate_buffers.box_filter.intermediate_a,
-       intermediate_buffers.box_filter.intermediate_b},
-      kRestorationUnitWidthWithBorders + kRestorationPadding,
-      intermediate_buffers.wiener,
-      kRestorationUnitWidth};
+  RestorationBuffer restoration_buffer;
   const int deblock_buffer_units = 64 >> subsampling_y_[plane];
   uint8_t* const deblock_buffer = deblock_buffer_.data(plane);
   const int deblock_buffer_stride = deblock_buffer_.stride(plane);
@@ -194,10 +184,9 @@ void PostFilter::ApplyLoopRestorationForOneRowInWindow(
 // completes filtering until all jobs are finished. This approach requires an
 // extra buffer (|threaded_window_buffer_|) to hold the filtering output, whose
 // size is the size of the window. It also needs block buffers (i.e.,
-// |block_buffer| and |intermediate_buffers| in
-// ApplyLoopRestorationForOneUnit()) to store intermediate results in loop
-// restoration for each thread. After all units inside the window are filtered,
-// the output is written to the frame buffer.
+// |block_buffer| in ApplyLoopRestorationForOneUnit()) to store intermediate
+// results in loop restoration for each thread. After all units inside the
+// window are filtered, the output is written to the frame buffer.
 template <typename Pixel>
 void PostFilter::ApplyLoopRestorationThreaded() {
   const int plane_process_unit_height[kMaxPlanes] = {
