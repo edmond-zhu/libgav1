@@ -24,6 +24,7 @@ list(APPEND libgav1_dsp_sources
             "${libgav1_source}/dsp/average_blend.h"
             "${libgav1_source}/dsp/cdef.cc"
             "${libgav1_source}/dsp/cdef.h"
+            "${libgav1_source}/dsp/cdef.inc"
             "${libgav1_source}/dsp/common.h"
             "${libgav1_source}/dsp/constants.cc"
             "${libgav1_source}/dsp/constants.h"

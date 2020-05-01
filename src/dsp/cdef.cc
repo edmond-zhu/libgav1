@@ -29,6 +29,8 @@ namespace libgav1 {
 namespace dsp {
 namespace {
 
+#include "src/dsp/cdef.inc"
+
 // Silence unused function warnings when CdefDirection_C is obviated.
 #if LIBGAV1_ENABLE_ALL_DSP_FUNCTIONS ||        \
     !defined(LIBGAV1_Dsp8bpp_CdefDirection) || \
@@ -125,6 +127,7 @@ void CdefFilter_C(const void* const source, const ptrdiff_t source_stride,
                   const ptrdiff_t dest_stride) {
   assert(block_width == 4 || block_width == 8);
   assert(block_height == 4 || block_height == 8);
+  assert(direction >= 0 && direction <= 7);
   static constexpr int kCdefSecondaryTaps[2] = {kCdefSecondaryTap0,
                                                 kCdefSecondaryTap1};
   const int coeff_shift = bitdepth - 8;
@@ -156,8 +159,8 @@ void CdefFilter_C(const void* const source, const ptrdiff_t source_stride,
           }
           static constexpr int offsets[] = {-2, 2};
           for (const int& offset : offsets) {
-            dy = sign * kCdefDirections[(direction + offset) & 7][k][0];
-            dx = sign * kCdefDirections[(direction + offset) & 7][k][1];
+            dy = sign * kCdefDirections[direction + offset][k][0];
+            dx = sign * kCdefDirections[direction + offset][k][1];
             value = src[dy * source_stride + dx + x];
             // Note: the summation can ignore the condition check in SIMD
             // implementation.

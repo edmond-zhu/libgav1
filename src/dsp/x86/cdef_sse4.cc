@@ -38,6 +38,8 @@ namespace dsp {
 namespace low_bitdepth {
 namespace {
 
+#include "src/dsp/cdef.inc"
+
 // CdefDirection:
 // Mirror values and pad to 16 elements.
 alignas(16) constexpr uint32_t kDivisionTable[] = {840, 420, 280, 210, 168, 140,
@@ -428,13 +430,11 @@ void DoCdef(const uint16_t* src, const ptrdiff_t src_stride, const int height,
       // Secondary |direction| values (+/- 2). Clamp |direction|.
       __m128i secondary_val[8];
       if (width == 8) {
-        LoadDirection(src, src_stride, secondary_val, (direction + 2) & 0x7);
-        LoadDirection(src, src_stride, secondary_val + 4,
-                      (direction - 2) & 0x7);
+        LoadDirection(src, src_stride, secondary_val, direction + 2);
+        LoadDirection(src, src_stride, secondary_val + 4, direction - 2);
       } else {
-        LoadDirection4(src, src_stride, secondary_val, (direction + 2) & 0x7);
-        LoadDirection4(src, src_stride, secondary_val + 4,
-                       (direction - 2) & 0x7);
+        LoadDirection4(src, src_stride, secondary_val, direction + 2);
+        LoadDirection4(src, src_stride, secondary_val + 4, direction - 2);
       }
 
       min = _mm_min_epu16(min, secondary_val[0]);
