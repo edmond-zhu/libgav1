@@ -56,6 +56,7 @@ list(APPEND libgav1_decoder_sources
             "${libgav1_source}/reconstruction.h"
             "${libgav1_source}/residual_buffer_pool.cc"
             "${libgav1_source}/residual_buffer_pool.h"
+            "${libgav1_source}/scan_tables.inc"
             "${libgav1_source}/symbol_decoder_context.cc"
             "${libgav1_source}/symbol_decoder_context.h"
             "${libgav1_source}/symbol_decoder_context_cdfs.inc"
