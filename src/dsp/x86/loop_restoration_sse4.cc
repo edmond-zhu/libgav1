@@ -1503,28 +1503,28 @@ void SelfGuidedFilter_SSE4_1(const void* source, void* dest,
                              RestorationBuffer* const buffer) {
   // -96 to 96 (Sgrproj_Xqd_Min/Max)
   const int index = restoration_info.sgr_proj_info.index;
-  const int radius_pass_0 = kSgrProjParams[index][0];
-  const int radius_pass_1 = kSgrProjParams[index][2];
-  // If |radius| is 0 then there is nothing to do. If |radius| is not 0, it is
-  // always 2 for the first pass and 1 for the second pass.
+  const int radius_pass_0 = kSgrProjParams[index][0];  // 2 or 0
+  const int radius_pass_1 = kSgrProjParams[index][2];  // 1 or 0
   const int w0 = restoration_info.sgr_proj_info.multiplier[0];
   const int w1 = restoration_info.sgr_proj_info.multiplier[1];
   const int w2 = (1 << kSgrProjPrecisionBits) - w0 - w1;
   const auto* src = static_cast<const uint8_t*>(source);
   auto* dst = static_cast<uint8_t*>(dest);
-  if (radius_pass_0 != 0 && radius_pass_1 != 0) {
-    BoxFilterProcess(src, source_stride, width, height,
-                     kSgrScaleParameter[index], buffer->sgf_buffer, w0, w1, w2,
-                     dst, dest_stride);
-  } else if (radius_pass_0 != 0) {
+  if (radius_pass_1 == 0) {
+    // |radius_pass_0| and |radius_pass_1| cannot both be 0, so we have the
+    // following assertion.
+    assert(radius_pass_0 != 0);
     BoxFilterProcess_FirstPass(src, source_stride, width, height,
                                kSgrScaleParameter[index][0], buffer->sgf_buffer,
                                w0, dst, dest_stride);
-  } else {
-    assert(radius_pass_1 != 0);
+  } else if (radius_pass_0 == 0) {
     BoxFilterProcess_SecondPass(src, source_stride, width, height,
                                 kSgrScaleParameter[index][1],
                                 buffer->sgf_buffer, w2, dst, dest_stride);
+  } else {
+    BoxFilterProcess(src, source_stride, width, height,
+                     kSgrScaleParameter[index], buffer->sgf_buffer, w0, w1, w2,
+                     dst, dest_stride);
   }
 }
 
