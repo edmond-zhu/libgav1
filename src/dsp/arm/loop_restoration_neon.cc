@@ -1929,7 +1929,7 @@ void SelfGuidedFilter_NEON(const void* const source, void* const dest,
   } else /* if (radius_pass_1 != 0) */ {
     BoxFilterProcess_SecondPass(src, source_stride, width, height,
                                 kSgrScaleParameter[index][1],
-                                buffer->sgf_buffer, w0, dst, dest_stride);
+                                buffer->sgf_buffer, w2, dst, dest_stride);
   }
 }
 
