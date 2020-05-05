@@ -151,7 +151,6 @@ class PostFilter {
   void ApplyDeblockFilter(LoopFilterType loop_filter_type, int row4x4_start,
                           int column4x4_start, int column4x4_end, int sb4x4);
 
-  bool DoCdef() const { return DoCdef(frame_header_, do_post_filter_mask_); }
   static bool DoCdef(const ObuFrameHeader& frame_header,
                      int do_post_filter_mask) {
     return (do_post_filter_mask & 0x02) != 0 &&
@@ -161,6 +160,7 @@ class PostFilter {
             frame_header.cdef.uv_primary_strength[0] > 0 ||
             frame_header.cdef.uv_secondary_strength[0] > 0);
   }
+  bool DoCdef() const { return DoCdef(frame_header_, do_post_filter_mask_); }
   // If filter levels for Y plane (0 for vertical, 1 for horizontal),
   // are all zero, deblock filter will not be applied.
   static bool DoDeblock(const ObuFrameHeader& frame_header,
@@ -183,9 +183,6 @@ class PostFilter {
       const int8_t delta_lf[kFrameLfCount],
       uint8_t deblock_filter_levels[kMaxSegments][kFrameLfCount]
                                    [kNumReferenceFrameTypes][2]) const;
-  bool DoRestoration() const {
-    return DoRestoration(loop_restoration_, do_post_filter_mask_, planes_);
-  }
   // Returns true if loop restoration will be performed for the given parameters
   // and mask.
   static bool DoRestoration(const LoopRestoration& loop_restoration,
@@ -197,6 +194,9 @@ class PostFilter {
     return loop_restoration.type[kPlaneY] != kLoopRestorationTypeNone ||
            loop_restoration.type[kPlaneU] != kLoopRestorationTypeNone ||
            loop_restoration.type[kPlaneV] != kLoopRestorationTypeNone;
+  }
+  bool DoRestoration() const {
+    return DoRestoration(loop_restoration_, do_post_filter_mask_, planes_);
   }
 
   // Returns a pointer to the unfiltered buffer. This is used by the Tile class
