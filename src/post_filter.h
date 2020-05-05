@@ -153,21 +153,21 @@ class PostFilter {
 
   static bool DoCdef(const ObuFrameHeader& frame_header,
                      int do_post_filter_mask) {
-    return (do_post_filter_mask & 0x02) != 0 &&
-           (frame_header.cdef.bits > 0 ||
+    return (frame_header.cdef.bits > 0 ||
             frame_header.cdef.y_primary_strength[0] > 0 ||
             frame_header.cdef.y_secondary_strength[0] > 0 ||
             frame_header.cdef.uv_primary_strength[0] > 0 ||
-            frame_header.cdef.uv_secondary_strength[0] > 0);
+            frame_header.cdef.uv_secondary_strength[0] > 0) &&
+           (do_post_filter_mask & 0x02) != 0;
   }
   bool DoCdef() const { return DoCdef(frame_header_, do_post_filter_mask_); }
   // If filter levels for Y plane (0 for vertical, 1 for horizontal),
   // are all zero, deblock filter will not be applied.
   static bool DoDeblock(const ObuFrameHeader& frame_header,
                         uint8_t do_post_filter_mask) {
-    return (do_post_filter_mask & 0x01) != 0 &&
-           (frame_header.loop_filter.level[0] > 0 ||
-            frame_header.loop_filter.level[1] > 0);
+    return (frame_header.loop_filter.level[0] > 0 ||
+            frame_header.loop_filter.level[1] > 0) &&
+           (do_post_filter_mask & 0x01) != 0;
   }
   bool DoDeblock() const {
     return DoDeblock(frame_header_, do_post_filter_mask_);
@@ -187,13 +187,14 @@ class PostFilter {
   // and mask.
   static bool DoRestoration(const LoopRestoration& loop_restoration,
                             uint8_t do_post_filter_mask, int num_planes) {
-    if ((do_post_filter_mask & 0x08) == 0) return false;
     if (num_planes == kMaxPlanesMonochrome) {
-      return loop_restoration.type[kPlaneY] != kLoopRestorationTypeNone;
+      return loop_restoration.type[kPlaneY] != kLoopRestorationTypeNone &&
+             (do_post_filter_mask & 0x08) != 0;
     }
-    return loop_restoration.type[kPlaneY] != kLoopRestorationTypeNone ||
-           loop_restoration.type[kPlaneU] != kLoopRestorationTypeNone ||
-           loop_restoration.type[kPlaneV] != kLoopRestorationTypeNone;
+    return (loop_restoration.type[kPlaneY] != kLoopRestorationTypeNone ||
+            loop_restoration.type[kPlaneU] != kLoopRestorationTypeNone ||
+            loop_restoration.type[kPlaneV] != kLoopRestorationTypeNone) &&
+           (do_post_filter_mask & 0x08) != 0;
   }
   bool DoRestoration() const {
     return DoRestoration(loop_restoration_, do_post_filter_mask_, planes_);
@@ -209,8 +210,8 @@ class PostFilter {
   // mask.
   static bool DoSuperRes(const ObuFrameHeader& frame_header,
                          uint8_t do_post_filter_mask) {
-    return (do_post_filter_mask & 0x04) != 0 &&
-           frame_header.width != frame_header.upscaled_width;
+    return frame_header.width != frame_header.upscaled_width &&
+           (do_post_filter_mask & 0x04) != 0;
   }
   bool DoSuperRes() const {
     return DoSuperRes(frame_header_, do_post_filter_mask_);
