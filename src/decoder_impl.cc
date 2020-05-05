@@ -1084,9 +1084,8 @@ StatusCode DecoderImpl::DecodeTilesThreadedNonFrameParallel(
         tile_groups.back().end, frame_scratch_buffer->block_parameters_holder,
         frame_scratch_buffer->inter_transform_sizes);
   }
-  if (threading_strategy.post_filter_thread_pool() != nullptr) {
-    post_filter->ApplyFilteringThreaded();
-  }
+  assert(threading_strategy.post_filter_thread_pool() != nullptr);
+  post_filter->ApplyFilteringThreaded();
   return kStatusOk;
 }
 
