@@ -33,8 +33,6 @@ list(APPEND libgav1_decoder_sources
             "${libgav1_source}/inter_intra_masks.inc"
             "${libgav1_source}/internal_frame_buffer_list.cc"
             "${libgav1_source}/internal_frame_buffer_list.h"
-            "${libgav1_source}/loop_filter_mask.cc"
-            "${libgav1_source}/loop_filter_mask.h"
             "${libgav1_source}/loop_restoration_info.cc"
             "${libgav1_source}/loop_restoration_info.h"
             "${libgav1_source}/motion_vector.cc"

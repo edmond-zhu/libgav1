@@ -22,13 +22,13 @@
 #include <memory>
 #include <mutex>  // NOLINT (unapproved c++11 header)
 
-#include "src/loop_filter_mask.h"
 #include "src/loop_restoration_info.h"
 #include "src/residual_buffer_pool.h"
 #include "src/symbol_decoder_context.h"
 #include "src/threading_strategy.h"
 #include "src/tile_scratch_buffer.h"
 #include "src/utils/array_2d.h"
+#include "src/utils/block_parameters_holder.h"
 #include "src/utils/compiler_attributes.h"
 #include "src/utils/constants.h"
 #include "src/utils/dynamic_buffer.h"
@@ -47,7 +47,6 @@ using IntraPredictionBuffer =
 // Buffer to facilitate decoding a frame. This struct is used only within
 // DecoderImpl::DecodeTiles().
 struct FrameScratchBuffer {
-  LoopFilterMask loop_filter_mask;
   LoopRestorationInfo loop_restoration_info;
   Array2D<int16_t> cdef_index;
   Array2D<TransformSize> inter_transform_sizes;

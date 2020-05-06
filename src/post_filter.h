@@ -28,7 +28,6 @@
 #include "src/dsp/common.h"
 #include "src/dsp/dsp.h"
 #include "src/frame_scratch_buffer.h"
-#include "src/loop_filter_mask.h"
 #include "src/loop_restoration_info.h"
 #include "src/obu_parser.h"
 #include "src/utils/array_2d.h"
@@ -47,8 +46,6 @@ namespace libgav1 {
 // and loop restoration.
 // Historically, for example in libaom, loop filter refers to deblock filter.
 // To avoid name conflicts, we call this class PostFilter (post processing).
-// Input info includes deblock parameters (bit masks), CDEF
-// parameters, super resolution parameters and loop restoration parameters.
 // In-loop post filtering order is:
 // deblock --> CDEF --> super resolution--> loop restoration.
 // When CDEF and super resolution is not used, we can combine deblock
@@ -216,7 +213,6 @@ class PostFilter {
   bool DoSuperRes() const {
     return DoSuperRes(frame_header_, do_post_filter_mask_);
   }
-  LoopFilterMask* masks() const { return masks_; }
   LoopRestorationInfo* restoration_info() const { return restoration_info_; }
   uint8_t* GetBufferOffset(uint8_t* base_buffer, int stride, Plane plane,
                            int row4x4, int column4x4) const {
@@ -255,15 +251,11 @@ class PostFilter {
   // The type of the HorizontalDeblockFilter and VerticalDeblockFilter member
   // functions.
   using DeblockFilter = void (PostFilter::*)(Plane plane, int row4x4_start,
-                                             int column4x4_start, int unit_id);
-  // The lookup table for picking the deblock filter, according to:
-  // kDeblockFilterBitMask (first dimension), and deblock filter type (second).
-  const DeblockFilter deblock_filter_type_table_[2][2] = {
-      {&PostFilter::VerticalDeblockFilterNoMask,
-       &PostFilter::HorizontalDeblockFilterNoMask},
-      {&PostFilter::VerticalDeblockFilter,
-       &PostFilter::HorizontalDeblockFilter},
-  };
+                                             int column4x4_start);
+  // The lookup table for picking the deblock filter, according to deblock
+  // filter type.
+  const DeblockFilter deblock_filter_func_[2] = {
+      &PostFilter::VerticalDeblockFilter, &PostFilter::HorizontalDeblockFilter};
 
   // Functions common to all post filters.
 
@@ -337,18 +329,14 @@ class PostFilter {
                                 int8_t subsampling_x, int8_t subsampling_y,
                                 uint8_t* level, int* step,
                                 int* filter_length) const;
-  void HorizontalDeblockFilter(Plane plane, int row4x4_start,
-                               int column4x4_start, int unit_id);
-  void VerticalDeblockFilter(Plane plane, int row4x4_start, int column4x4_start,
-                             int unit_id);
   // |unit_id| is not used, keep it to match the same interface as
   // HorizontalDeblockFilter().
-  void HorizontalDeblockFilterNoMask(Plane plane, int row4x4_start,
-                                     int column4x4_start, int unit_id);
+  void HorizontalDeblockFilter(Plane plane, int row4x4_start,
+                               int column4x4_start);
   // |unit_id| is not used, keep it to match the same interface as
   // VerticalDeblockFilter().
-  void VerticalDeblockFilterNoMask(Plane plane, int row4x4_start,
-                                   int column4x4_start, int unit_id);
+  void VerticalDeblockFilter(Plane plane, int row4x4_start,
+                             int column4x4_start);
   // HorizontalDeblockFilter and VerticalDeblockFilter must have the correct
   // signature.
   static_assert(std::is_same<decltype(&PostFilter::HorizontalDeblockFilter),
@@ -485,9 +473,6 @@ class PostFilter {
   const int8_t subsampling_y_[kMaxPlanes];
   const int8_t planes_;
   const int pixel_size_;
-  // This class does not take ownership of the masks/restoration_info, but it
-  // could change their values.
-  LoopFilterMask* const masks_;
   uint8_t inner_thresh_[kMaxLoopFilterValue + 1] = {};
   uint8_t outer_thresh_[kMaxLoopFilterValue + 1] = {};
   uint8_t hev_thresh_[kMaxLoopFilterValue + 1] = {};

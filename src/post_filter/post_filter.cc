@@ -144,7 +144,6 @@ PostFilter::PostFilter(const ObuFrameHeader& frame_header,
                                                          : kMaxPlanes),
       pixel_size_(static_cast<int>((bitdepth_ == 8) ? sizeof(uint8_t)
                                                     : sizeof(uint16_t))),
-      masks_(&frame_scratch_buffer->loop_filter_mask),
       cdef_index_(frame_scratch_buffer->cdef_index),
       inter_transform_sizes_(frame_scratch_buffer->inter_transform_sizes),
       threaded_window_buffer_(

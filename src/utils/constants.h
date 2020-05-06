@@ -27,12 +27,6 @@ namespace libgav1 {
 // Returns the number of elements between begin (inclusive) and end (inclusive).
 constexpr int EnumRangeLength(int begin, int end) { return end - begin + 1; }
 
-#if defined(ENABLE_DEBLOCK_BIT_MASK)
-constexpr bool kDeblockFilterBitMask = true;
-#else
-constexpr bool kDeblockFilterBitMask = false;
-#endif  // defined(ENABLE_DEBLOCK_BIT_MASK)
-
 enum {
 // Maximum number of threads that the library will ever create.
 #if defined(LIBGAV1_MAX_THREADS) && LIBGAV1_MAX_THREADS > 0
@@ -53,7 +47,6 @@ enum {
   kFrameLfCount = 4,
   kMaxLoopFilterValue = 63,
   kNum4x4In64x64 = 256,
-  kNumLoopFilterMasks = 4,
   kMaxAngleDelta = 3,
   kDirectionalIntraModes = 8,
   kMaxSuperBlockSizeLog2 = 7,

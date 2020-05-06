@@ -31,7 +31,6 @@
 #include "src/gav1/decoder_buffer.h"
 #include "src/gav1/decoder_settings.h"
 #include "src/gav1/status_code.h"
-#include "src/loop_filter_mask.h"
 #include "src/obu_parser.h"
 #include "src/residual_buffer_pool.h"
 #include "src/symbol_decoder_context.h"
@@ -187,10 +186,7 @@ class DecoderImpl : public Allocable {
       const Vector<std::unique_ptr<Tile>>& tiles,
       FrameScratchBuffer* frame_scratch_buffer, PostFilter* post_filter);
   StatusCode DecodeTilesThreadedNonFrameParallel(
-      const ObuSequenceHeader& sequence_header,
-      const ObuFrameHeader& frame_header,
       const Vector<std::unique_ptr<Tile>>& tiles,
-      const Vector<ObuTileGroup>& tile_groups,
       FrameScratchBuffer* frame_scratch_buffer, PostFilter* post_filter,
       BlockingCounterWithStatus* pending_tiles);
   StatusCode DecodeTilesFrameParallel(

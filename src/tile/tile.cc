@@ -101,6 +101,14 @@ constexpr PredictionMode
         kPredictionModeDc, kPredictionModeVertical, kPredictionModeHorizontal,
         kPredictionModeD157, kPredictionModeDc};
 
+// Mask used to determine the index for mode_deltas lookup.
+constexpr BitMaskSet kPredictionModeDeltasMask(
+    kPredictionModeNearestMv, kPredictionModeNearMv, kPredictionModeNewMv,
+    kPredictionModeNearestNearestMv, kPredictionModeNearNearMv,
+    kPredictionModeNearestNewMv, kPredictionModeNewNearestMv,
+    kPredictionModeNearNewMv, kPredictionModeNewNearMv,
+    kPredictionModeNewNewMv);
+
 // This is computed as:
 // min(transform_width_log2, 5) + min(transform_height_log2, 5) - 4.
 constexpr uint8_t kEobMultiSizeLookup[kNumTransformSizes] = {
@@ -430,7 +438,6 @@ Tile::Tile(int tile_number, const uint8_t* const data, size_t size,
       tile_scratch_buffer_pool_(
           &frame_scratch_buffer->tile_scratch_buffer_pool),
       pending_tiles_(pending_tiles),
-      build_bit_mask_when_parsing_(false),
       frame_parallel_(frame_parallel),
       use_intra_prediction_buffer_(use_intra_prediction_buffer),
       intra_prediction_buffer_(
@@ -587,11 +594,10 @@ void Tile::SaveSymbolDecoderContext() {
   }
 }
 
-bool Tile::ParseAndDecode(bool is_main_thread) {
+bool Tile::ParseAndDecode() {
   // If this is the main thread, we build the loop filter bit masks when parsing
   // so that it happens in the current thread. This ensures that the main thread
   // does as much work as possible.
-  build_bit_mask_when_parsing_ = is_main_thread;
   if (split_parse_and_decode_) {
     if (!ThreadedParseAndDecode()) return false;
     SaveSymbolDecoderContext();
@@ -2108,15 +2114,16 @@ bool Tile::ComputePrediction(const Block& block) {
 void Tile::PopulateDeblockFilterLevel(const Block& block) {
   if (!post_filter_.DoDeblock()) return;
   BlockParameters& bp = *block.bp;
+  const int mode_id =
+      static_cast<int>(kPredictionModeDeltasMask.Contains(bp.y_mode));
   for (int i = 0; i < kFrameLfCount; ++i) {
     if (delta_lf_all_zero_) {
       bp.deblock_filter_level[i] = post_filter_.GetZeroDeltaDeblockFilterLevel(
-          bp.segment_id, i, bp.reference_frame[0],
-          LoopFilterMask::GetModeId(bp.y_mode));
+          bp.segment_id, i, bp.reference_frame[0], mode_id);
     } else {
       bp.deblock_filter_level[i] =
           deblock_filter_levels_[bp.segment_id][i][bp.reference_frame[0]]
-                                [LoopFilterMask::GetModeId(bp.y_mode)];
+                                [mode_id];
     }
   }
 }
@@ -2179,10 +2186,6 @@ bool Tile::ProcessBlock(int row4x4, int column4x4, BlockSize block_size,
     current_frame_.segmentation_map()->FillBlock(row4x4, column4x4, x_limit,
                                                  y_limit, bp.segment_id);
   }
-  if (kDeblockFilterBitMask &&
-      (build_bit_mask_when_parsing_ || !split_parse_and_decode_)) {
-    BuildBitMask(block);
-  }
   StoreMotionFieldMvsIntoCurrentFrame(block);
   if (!split_parse_and_decode_) {
     prediction_parameters_ = std::move(bp.prediction_parameters);
@@ -2204,9 +2207,6 @@ bool Tile::DecodeBlock(ParameterTree* const tree,
   if (!ComputePrediction(block) ||
       !Residual(block, kProcessingModeDecodeOnly)) {
     return false;
-  }
-  if (kDeblockFilterBitMask && !build_bit_mask_when_parsing_) {
-    BuildBitMask(block);
   }
   block.bp->prediction_parameters.reset(nullptr);
   return true;
@@ -2487,174 +2487,6 @@ void Tile::ReadLoopRestorationCoefficients(int row4x4, int column4x4,
               &reader_, &symbol_decoder_context_, static_cast<Plane>(plane),
               unit_id, &reference_unit_info_);
         }
-      }
-    }
-  }
-}
-
-void Tile::BuildBitMask(const Block& block) {
-  if (!post_filter_.DoDeblock()) return;
-  if (block.size <= kBlock64x64) {
-    BuildBitMaskHelper(block, block.row4x4, block.column4x4, block.size, true,
-                       true);
-  } else {
-    const int block_width4x4 = kNum4x4BlocksWide[block.size];
-    const int block_height4x4 = kNum4x4BlocksHigh[block.size];
-    for (int y = 0; y < block_height4x4; y += 16) {
-      for (int x = 0; x < block_width4x4; x += 16) {
-        BuildBitMaskHelper(block, block.row4x4 + y, block.column4x4 + x,
-                           kBlock64x64, x == 0, y == 0);
-      }
-    }
-  }
-}
-
-void Tile::BuildBitMaskHelper(const Block& block, int row4x4, int column4x4,
-                              BlockSize block_size,
-                              const bool is_vertical_block_border,
-                              const bool is_horizontal_block_border) {
-  const int block_width4x4 = kNum4x4BlocksWide[block_size];
-  const int block_height4x4 = kNum4x4BlocksHigh[block_size];
-  BlockParameters& bp = *block.bp;
-  const bool skip = bp.skip && bp.is_inter;
-  LoopFilterMask* const masks = post_filter_.masks();
-  const int unit_id = DivideBy16(row4x4) * masks->num_64x64_blocks_per_row() +
-                      DivideBy16(column4x4);
-
-  for (int plane = kPlaneY; plane < PlaneCount(); ++plane) {
-    // For U and V planes, do not build bit masks if level == 0.
-    if (plane > kPlaneY && frame_header_.loop_filter.level[plane + 1] == 0) {
-      continue;
-    }
-    // Build bit mask for vertical edges.
-    const int subsampling_x = subsampling_x_[plane];
-    const int subsampling_y = subsampling_y_[plane];
-    const int column_limit =
-        std::min(column4x4 + block_width4x4, deblock_column_limit_[plane]);
-    const int row_limit =
-        std::min(row4x4 + block_height4x4, deblock_row_limit_[plane]);
-    const int row_start = GetDeblockPosition(row4x4, subsampling_y);
-    const int column_start = GetDeblockPosition(column4x4, subsampling_x);
-    if (row_start >= row_limit || column_start >= column_limit) {
-      continue;
-    }
-    const int vertical_step = 1 << subsampling_y;
-    const int horizontal_step = 1 << subsampling_x;
-    const BlockParameters& bp =
-        *block_parameters_holder_.Find(row_start, column_start);
-    const int horizontal_level_index =
-        kDeblockFilterLevelIndex[plane][kLoopFilterTypeHorizontal];
-    const int vertical_level_index =
-        kDeblockFilterLevelIndex[plane][kLoopFilterTypeVertical];
-    const uint8_t vertical_level =
-        bp.deblock_filter_level[vertical_level_index];
-
-    for (int row = row_start; row < row_limit; row += vertical_step) {
-      for (int column = column_start; column < column_limit;) {
-        const TransformSize tx_size = (plane == kPlaneY)
-                                          ? inter_transform_sizes_[row][column]
-                                          : bp.uv_transform_size;
-        // (1). Don't filter frame boundary.
-        // (2). For tile boundary, we don't know whether the previous tile is
-        // available or not, thus we handle it after all tiles are decoded.
-        const bool is_vertical_border =
-            (column == column_start) && is_vertical_block_border;
-        if (column == GetDeblockPosition(column4x4_start_, subsampling_x) ||
-            (skip && !is_vertical_border)) {
-          column += kNum4x4BlocksWide[tx_size] << subsampling_x;
-          continue;
-        }
-
-        // bp_left is the parameter of the left prediction block which
-        // is guaranteed to be inside the tile.
-        const BlockParameters& bp_left =
-            *block_parameters_holder_.Find(row, column - horizontal_step);
-        const uint8_t left_level =
-            is_vertical_border
-                ? bp_left.deblock_filter_level[vertical_level_index]
-                : vertical_level;
-        // We don't have to check if the left block is skipped or not,
-        // because if the current transform block is on the edge of the coding
-        // block, is_vertical_border is true; if it's not on the edge,
-        // left skip is equal to skip.
-        if (vertical_level != 0 || left_level != 0) {
-          const TransformSize left_tx_size =
-              (plane == kPlaneY)
-                  ? inter_transform_sizes_[row][column - horizontal_step]
-                  : bp_left.uv_transform_size;
-          const LoopFilterTransformSizeId transform_size_id =
-              GetTransformSizeIdWidth(tx_size, left_tx_size);
-          const int r = row & (kNum4x4InLoopFilterMaskUnit - 1);
-          const int c = column & (kNum4x4InLoopFilterMaskUnit - 1);
-          const int shift = LoopFilterMask::GetShift(r, c);
-          const int index = LoopFilterMask::GetIndex(r);
-          const auto mask = static_cast<uint64_t>(1) << shift;
-          masks->SetLeft(mask, unit_id, plane, transform_size_id, index);
-          const uint8_t current_level =
-              (vertical_level == 0) ? left_level : vertical_level;
-          masks->SetLevel(current_level, unit_id, plane,
-                          kLoopFilterTypeVertical,
-                          LoopFilterMask::GetLevelOffset(r, c));
-        }
-        column += kNum4x4BlocksWide[tx_size] << subsampling_x;
-      }
-    }
-
-    // Build bit mask for horizontal edges.
-    const uint8_t horizontal_level =
-        bp.deblock_filter_level[horizontal_level_index];
-    for (int column = column_start; column < column_limit;
-         column += horizontal_step) {
-      for (int row = row_start; row < row_limit;) {
-        const TransformSize tx_size = (plane == kPlaneY)
-                                          ? inter_transform_sizes_[row][column]
-                                          : bp.uv_transform_size;
-
-        // (1). Don't filter frame boundary.
-        // (2). For tile boundary, we don't know whether the previous tile is
-        // available or not, thus we handle it after all tiles are decoded.
-        const bool is_horizontal_border =
-            (row == row_start) && is_horizontal_block_border;
-        if (row == GetDeblockPosition(row4x4_start_, subsampling_y) ||
-            (skip && !is_horizontal_border)) {
-          row += kNum4x4BlocksHigh[tx_size] << subsampling_y;
-          continue;
-        }
-
-        // bp_top is the parameter of the top prediction block which is
-        // guaranteed to be inside the tile.
-        const BlockParameters& bp_top =
-            *block_parameters_holder_.Find(row - vertical_step, column);
-        const uint8_t top_level =
-            is_horizontal_border
-                ? bp_top.deblock_filter_level[horizontal_level_index]
-                : horizontal_level;
-        // We don't have to check it the top block is skipped or not,
-        // because if the current transform block is on the edge of the coding
-        // block, is_horizontal_border is true; if it's not on the edge,
-        // top skip is equal to skip.
-        if (horizontal_level != 0 || top_level != 0) {
-          const TransformSize top_tx_size =
-              (plane == kPlaneY)
-                  ? inter_transform_sizes_[row - vertical_step][column]
-                  : bp_top.uv_transform_size;
-          const LoopFilterTransformSizeId transform_size_id =
-              static_cast<LoopFilterTransformSizeId>(
-                  std::min({kTransformHeightLog2[tx_size] - 2,
-                            kTransformHeightLog2[top_tx_size] - 2, 2}));
-          const int r = row & (kNum4x4InLoopFilterMaskUnit - 1);
-          const int c = column & (kNum4x4InLoopFilterMaskUnit - 1);
-          const int shift = LoopFilterMask::GetShift(r, c);
-          const int index = LoopFilterMask::GetIndex(r);
-          const auto mask = static_cast<uint64_t>(1) << shift;
-          masks->SetTop(mask, unit_id, plane, transform_size_id, index);
-          const uint8_t current_level =
-              (horizontal_level == 0) ? top_level : horizontal_level;
-          masks->SetLevel(current_level, unit_id, plane,
-                          kLoopFilterTypeHorizontal,
-                          LoopFilterMask::GetLevelOffset(r, c));
-        }
-        row += kNum4x4BlocksHigh[tx_size] << subsampling_y;
       }
     }
   }

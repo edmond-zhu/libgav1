@@ -27,7 +27,6 @@
 #include "src/film_grain.h"
 #include "src/frame_buffer_utils.h"
 #include "src/frame_scratch_buffer.h"
-#include "src/loop_filter_mask.h"
 #include "src/loop_restoration_info.h"
 #include "src/obu_parser.h"
 #include "src/post_filter.h"
@@ -642,13 +641,6 @@ StatusCode DecoderImpl::DecodeTiles(
     RefCountedBuffer* const current_frame) {
   frame_scratch_buffer->tile_scratch_buffer_pool.Reset(
       sequence_header.color_config.bitdepth);
-  if (PostFilter::DoDeblock(frame_header, settings_.post_filter_mask)) {
-    if (kDeblockFilterBitMask && !frame_scratch_buffer->loop_filter_mask.Reset(
-                                     frame_header.width, frame_header.height)) {
-      LIBGAV1_DLOG(ERROR, "Failed to allocate memory for loop filter masks.");
-      return kStatusOutOfMemory;
-    }
-  }
   if (!frame_scratch_buffer->loop_restoration_info.Reset(
           &frame_header.loop_restoration, frame_header.upscaled_width,
           frame_header.height, sequence_header.color_config.subsampling_x,
@@ -979,9 +971,8 @@ StatusCode DecoderImpl::DecodeTiles(
     status = DecodeTilesNonFrameParallel(sequence_header, frame_header, tiles,
                                          frame_scratch_buffer, &post_filter);
   } else {
-    status = DecodeTilesThreadedNonFrameParallel(
-        sequence_header, frame_header, tiles, tile_groups, frame_scratch_buffer,
-        &post_filter, &pending_tiles);
+    status = DecodeTilesThreadedNonFrameParallel(tiles, frame_scratch_buffer,
+                                                 &post_filter, &pending_tiles);
   }
   if (status != kStatusOk) return status;
   if (frame_header.enable_frame_end_update_cdf) {
@@ -1021,10 +1012,7 @@ StatusCode DecoderImpl::DecodeTilesNonFrameParallel(
 }
 
 StatusCode DecoderImpl::DecodeTilesThreadedNonFrameParallel(
-    const ObuSequenceHeader& sequence_header,
-    const ObuFrameHeader& frame_header,
     const Vector<std::unique_ptr<Tile>>& tiles,
-    const Vector<ObuTileGroup>& tile_groups,
     FrameScratchBuffer* const frame_scratch_buffer,
     PostFilter* const post_filter,
     BlockingCounterWithStatus* const pending_tiles) {
@@ -1047,7 +1035,7 @@ StatusCode DecoderImpl::DecodeTilesThreadedNonFrameParallel(
              tile_count) {
         if (!failed) {
           const auto& tile_ptr = tiles[index];
-          if (!tile_ptr->ParseAndDecode(/*is_main_thread=*/false)) {
+          if (!tile_ptr->ParseAndDecode()) {
             LIBGAV1_DLOG(ERROR, "Error decoding tile #%d", tile_ptr->number());
             failed = true;
           }
@@ -1064,7 +1052,7 @@ StatusCode DecoderImpl::DecodeTilesThreadedNonFrameParallel(
          tile_count) {
     if (!tile_decoding_failed) {
       const auto& tile_ptr = tiles[index];
-      if (!tile_ptr->ParseAndDecode(/*is_main_thread=*/true)) {
+      if (!tile_ptr->ParseAndDecode()) {
         LIBGAV1_DLOG(ERROR, "Error decoding tile #%d", tile_ptr->number());
         tile_decoding_failed = true;
       }
@@ -1078,12 +1066,6 @@ StatusCode DecoderImpl::DecodeTilesThreadedNonFrameParallel(
   // Wait until all the tiles have been decoded.
   tile_decoding_failed |= !pending_tiles->Wait();
   if (tile_decoding_failed) return kStatusUnknownError;
-  if (post_filter->DoDeblock() && kDeblockFilterBitMask) {
-    frame_scratch_buffer->loop_filter_mask.Build(
-        sequence_header, frame_header, tile_groups.front().start,
-        tile_groups.back().end, frame_scratch_buffer->block_parameters_holder,
-        frame_scratch_buffer->inter_transform_sizes);
-  }
   assert(threading_strategy.post_filter_thread_pool() != nullptr);
   post_filter->ApplyFilteringThreaded();
   return kStatusOk;

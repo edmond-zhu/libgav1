@@ -33,7 +33,6 @@
 #include "src/dsp/constants.h"
 #include "src/dsp/dsp.h"
 #include "src/frame_scratch_buffer.h"
-#include "src/loop_filter_mask.h"
 #include "src/loop_restoration_info.h"
 #include "src/obu_parser.h"
 #include "src/post_filter.h"
@@ -108,7 +107,7 @@ class Tile : public Allocable {
               std::condition_variable* superblock_row_progress_condvar);
   // Parses and decodes the entire tile. Depending on the configuration of this
   // Tile, this function may do multithreaded decoding.
-  bool ParseAndDecode(bool is_main_thread);  // 5.11.2.
+  bool ParseAndDecode();  // 5.11.2.
   // Processes all the columns of the superblock row at |row4x4| that are within
   // this Tile. If |save_symbol_decoder_context| is true, then
   // SaveSymbolDecoderContext() is invoked for the last superblock row.
@@ -315,14 +314,6 @@ class Tile : public Allocable {
   void ResetLoopRestorationParams();
   void ReadLoopRestorationCoefficients(int row4x4, int column4x4,
                                        BlockSize block_size);  // 5.11.57.
-  // Build bit masks for vertical edges followed by horizontal edges.
-  // Traverse through each transform edge in the current coding block, and
-  // determine if a 4x4 edge needs filtering. If filtering is needed, determine
-  // filter length. Set corresponding bit mask to 1.
-  void BuildBitMask(const Block& block);
-  void BuildBitMaskHelper(const Block& block, int row4x4, int column4x4,
-                          BlockSize block_size, bool is_vertical_block_border,
-                          bool is_horizontal_block_border);
 
   // Helper functions for DecodeBlock.
   bool ReadSegmentId(const Block& block);       // 5.11.9.
@@ -747,7 +738,6 @@ class Tile : public Allocable {
   int8_t delta_lf_[kFrameLfCount];
   // True if all the values in |delta_lf_| are zero. False otherwise.
   bool delta_lf_all_zero_;
-  bool build_bit_mask_when_parsing_;
   const bool frame_parallel_;
   const bool use_intra_prediction_buffer_;
   // Buffer used to store the unfiltered pixels that are necessary for decoding
