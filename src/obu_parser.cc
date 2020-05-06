@@ -2164,6 +2164,11 @@ bool ObuParser::ParseFrameHeader() {
       ParseQuantizerIndexDeltaParameters() && ParseLoopFilterDeltaParameters();
   if (!status) return false;
   ComputeSegmentLosslessAndQIndex();
+  // Section 6.8.2: It is a requirement of bitstream conformance that
+  // delta_q_present is equal to 0 when CodedLossless is equal to 1.
+  if (frame_header_.coded_lossless && frame_header_.delta_q.present) {
+    return false;
+  }
   status = ParseLoopFilterParameters();
   if (!status) return false;
   current_frame_->SetLoopFilterDeltas(frame_header_.loop_filter);
