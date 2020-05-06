@@ -667,7 +667,7 @@ bool Tile::Decode(
       // except for the first 64 columns.
       post_filter_.ApplyDeblockFilter(
           kLoopFilterTypeVertical, row4x4,
-          column4x4_start_ + kNum4x4InLoopFilterMaskUnit, column4x4_end_,
+          column4x4_start_ + kNum4x4InLoopFilterUnit, column4x4_end_,
           block_width4x4);
       // If this is the first superblock row of the tile, then we cannot apply
       // horizontal deblocking here since we don't know if the top row is
@@ -682,8 +682,8 @@ bool Tile::Decode(
         // with subsampling).
         post_filter_.ApplyDeblockFilter(
             kLoopFilterTypeHorizontal, row4x4,
-            column4x4_start_ + kNum4x4InLoopFilterMaskUnit,
-            column4x4_end_ - kNum4x4InLoopFilterMaskUnit, block_width4x4);
+            column4x4_start_ + kNum4x4InLoopFilterUnit,
+            column4x4_end_ - kNum4x4InLoopFilterUnit, block_width4x4);
       }
     }
     bool notify;

@@ -368,8 +368,8 @@ void PostFilter::ApplyFilteringThreaded() {
   if (DoDeblock()) ApplyDeblockFilterThreaded();
   if (DoCdef() && DoRestoration()) {
     for (int row4x4 = 0; row4x4 < frame_header_.rows4x4;
-         row4x4 += kNum4x4InLoopFilterMaskUnit) {
-      SetupDeblockBuffer(row4x4, kNum4x4InLoopFilterMaskUnit);
+         row4x4 += kNum4x4InLoopFilterUnit) {
+      SetupDeblockBuffer(row4x4, kNum4x4InLoopFilterUnit);
     }
   }
   if (DoCdef()) ApplyCdef();

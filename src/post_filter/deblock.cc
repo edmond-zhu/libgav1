@@ -186,11 +186,11 @@ void PostFilter::HorizontalDeblockFilter(Plane plane, int row4x4_start,
   int filter_length;
 
   for (int column4x4 = 0; MultiplyBy4(column4x4_start + column4x4) < width_ &&
-                          column4x4 < kNum4x4InLoopFilterMaskUnit;
+                          column4x4 < kNum4x4InLoopFilterUnit;
        column4x4 += column_step, src += src_step) {
     uint8_t* src_row = src;
     for (int row4x4 = 0; MultiplyBy4(row4x4_start + row4x4) < height_ &&
-                         row4x4 < kNum4x4InLoopFilterMaskUnit;
+                         row4x4 < kNum4x4InLoopFilterUnit;
          row4x4 += row_step) {
       const bool need_filter =
           GetDeblockFilterEdgeInfo<kLoopFilterTypeHorizontal>(
@@ -229,11 +229,11 @@ void PostFilter::VerticalDeblockFilter(Plane plane, int row4x4_start,
   int filter_length;
 
   for (int row4x4 = 0; MultiplyBy4(row4x4_start + row4x4) < height_ &&
-                       row4x4 < kNum4x4InLoopFilterMaskUnit;
+                       row4x4 < kNum4x4InLoopFilterUnit;
        row4x4 += row_step, src += row_stride) {
     uint8_t* src_row = src;
     for (int column4x4 = 0; MultiplyBy4(column4x4_start + column4x4) < width_ &&
-                            column4x4 < kNum4x4InLoopFilterMaskUnit;
+                            column4x4 < kNum4x4InLoopFilterUnit;
          column4x4 += column_step) {
       const bool need_filter =
           GetDeblockFilterEdgeInfo<kLoopFilterTypeVertical>(
@@ -272,19 +272,19 @@ void PostFilter::ApplyDeblockFilterForOneSuperBlockRow(int row4x4_start,
       if (row4x4 >= frame_header_.rows4x4) break;
       int column4x4;
       for (column4x4 = 0; column4x4 < frame_header_.columns4x4;
-           column4x4 += kNum4x4InLoopFilterMaskUnit) {
+           column4x4 += kNum4x4InLoopFilterUnit) {
         // First apply vertical filtering
         VerticalDeblockFilter(static_cast<Plane>(plane), row4x4, column4x4);
 
         // Delay one superblock to apply horizontal filtering.
         if (column4x4 != 0) {
           HorizontalDeblockFilter(static_cast<Plane>(plane), row4x4,
-                                  column4x4 - kNum4x4InLoopFilterMaskUnit);
+                                  column4x4 - kNum4x4InLoopFilterUnit);
         }
       }
       // Horizontal filtering for the last 64x64 block.
       HorizontalDeblockFilter(static_cast<Plane>(plane), row4x4,
-                              column4x4 - kNum4x4InLoopFilterMaskUnit);
+                              column4x4 - kNum4x4InLoopFilterUnit);
     }
   }
 }
@@ -299,10 +299,10 @@ void PostFilter::DeblockFilterWorker(int jobs_per_plane, const Plane* planes,
          total_jobs) {
     const Plane plane = planes[job_index / jobs_per_plane];
     const int row_unit = job_index % jobs_per_plane;
-    const int row4x4 = row_unit * kNum4x4InLoopFilterMaskUnit;
+    const int row4x4 = row_unit * kNum4x4InLoopFilterUnit;
     for (int column4x4 = 0, column_unit = 0;
          column4x4 < frame_header_.columns4x4;
-         column4x4 += kNum4x4InLoopFilterMaskUnit, ++column_unit) {
+         column4x4 += kNum4x4InLoopFilterUnit, ++column_unit) {
       (this->*deblock_filter)(plane, row4x4, column4x4);
     }
   }
@@ -368,10 +368,10 @@ void PostFilter::ApplyDeblockFilter(LoopFilterType loop_filter_type,
       continue;
     }
 
-    for (int y = 0; y < sb_height4x4; y += kNum4x4InLoopFilterMaskUnit) {
+    for (int y = 0; y < sb_height4x4; y += kNum4x4InLoopFilterUnit) {
       const int row4x4 = row4x4_start + y;
       for (int column4x4 = column4x4_start; column4x4 < column4x4_end;
-           column4x4 += kNum4x4InLoopFilterMaskUnit) {
+           column4x4 += kNum4x4InLoopFilterUnit) {
         (this->*deblock_filter)(static_cast<Plane>(plane), row4x4, column4x4);
       }
     }
