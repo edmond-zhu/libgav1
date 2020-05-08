@@ -76,14 +76,19 @@ const uint8_t kSgrMa2Lookup[256] = {
 
 namespace {
 
+constexpr ptrdiff_t kIntermediateStride = kRestorationUnitWidth + 2;
+
+struct SgrIntermediateBuffer {
+  uint16_t a;  // [1, 256]
+  uint32_t b;  // < 2^20. 32-bit is required for bitdepth 10 and up.
+};
+
 struct SgrBuffer {
-  // The arrays flt0 and flt1 in Section 7.17.2, the outputs of the box
-  // filter process in pass 0 and pass 1.
-  int32_t box_filter_process_output[2][kMaxBoxFilterProcessOutputPixels];
-  // The 2d arrays A and B in Section 7.17.3, the intermediate results in
-  // the box filter process. Reused for pass 0 and pass 1.
-  uint32_t box_filter_process_intermediate[2]
-                                          [kBoxFilterProcessIntermediatePixels];
+  // Circular buffer to save memory.
+  // The 2d arrays A and B in Section 7.17.3, the intermediate results in the
+  // box filter process. Reused for pass 0 and pass 1. Pass 0 uses 2 rows. Pass
+  // 1 uses 3 or 4 rows.
+  SgrIntermediateBuffer intermediate[6 * kIntermediateStride];
 };
 
 constexpr int kOneByX[25] = {
@@ -104,12 +109,18 @@ struct LoopRestorationFuncs_C {
                            const RestorationUnitInfo& restoration_info,
                            ptrdiff_t source_stride, ptrdiff_t dest_stride,
                            int width, int height, RestorationBuffer* buffer);
-  static void BoxFilterPreProcess(const RestorationUnitInfo& restoration_info,
-                                  const Pixel* src, ptrdiff_t stride, int width,
-                                  int height, int pass, SgrBuffer* buffer);
   static void BoxFilterProcess(const RestorationUnitInfo& restoration_info,
-                               const Pixel* src, ptrdiff_t stride, int width,
-                               int height, SgrBuffer* buffer);
+                               const Pixel* src, ptrdiff_t src_stride,
+                               int width, int height, SgrBuffer* buffer,
+                               Pixel* dst, ptrdiff_t dst_stride);
+  static void BoxFilterProcessPass1(const RestorationUnitInfo& restoration_info,
+                                    const Pixel* src, ptrdiff_t src_stride,
+                                    int width, int height, SgrBuffer* buffer,
+                                    Pixel* dst, ptrdiff_t dst_stride);
+  static void BoxFilterProcessPass2(const RestorationUnitInfo& restoration_info,
+                                    const Pixel* src, ptrdiff_t src_stride,
+                                    int width, int height, SgrBuffer* buffer,
+                                    Pixel* dst, ptrdiff_t dst_stride);
 };
 
 // Note: range of wiener filter coefficients.
@@ -351,26 +362,10 @@ void LoopRestorationFuncs_C<bitdepth, Pixel>::WienerFilter(
 //------------------------------------------------------------------------------
 // SGR
 
-template <typename Pixel>
-inline void UpdateSum(const Pixel* src, const ptrdiff_t stride, const int size,
-                      uint32_t* const a, uint32_t* const b) {
-  int y = size;
-  do {
-    const Pixel source0 = src[0];
-    const Pixel source1 = src[size];
-    *a -= source0 * source0;
-    *a += source1 * source1;
-    *b -= source0;
-    *b += source1;
-    src += stride;
-  } while (--y != 0);
-}
-
 template <int bitdepth>
 inline void CalculateIntermediate(const uint32_t s, uint32_t a,
                                   const uint32_t b, const uint32_t n,
-                                  const int x,
-                                  uint32_t* intermediate_result[2]) {
+                                  SgrIntermediateBuffer* const intermediate) {
   // a: before shift, max is 25 * (2^(bitdepth) - 1) * (2^(bitdepth) - 1).
   // since max bitdepth = 12, max < 2^31.
   // after shift, a < 2^16 * n < 2^22 regardless of bitdepth
@@ -400,193 +395,274 @@ inline void CalculateIntermediate(const uint32_t s, uint32_t a,
   // This holds even with the rounding in one_over_n and in the overall
   // result, as long as (kSgrProjSgrBits - a2) is strictly less than 2^8.
   const uint32_t b2 = ((1 << kSgrProjSgrBits) - a2) * b * one_over_n;
-  intermediate_result[0][x] = a2;
-  intermediate_result[1][x] =
-      RightShiftWithRounding(b2, kSgrProjReciprocalBits);
+  intermediate->a = a2;
+  intermediate->b = RightShiftWithRounding(b2, kSgrProjReciprocalBits);
+}
+
+template <int bitdepth, typename Pixel, int size>
+LIBGAV1_ALWAYS_INLINE void BoxFilterPreProcess(
+    const Pixel* src, const ptrdiff_t stride, const int width, const uint32_t s,
+    SgrIntermediateBuffer* intermediate) {
+  const int n = size * size;
+  uint32_t a = 0;
+  uint32_t b = 0;
+  for (int dy = 0; dy < size; ++dy) {
+    for (int dx = 0; dx < size; ++dx) {
+      const Pixel source = src[dy * stride + dx];
+      a += source * source;
+      b += source;
+    }
+  }
+  CalculateIntermediate<bitdepth>(s, a, b, n, intermediate);
+  int x = width - 1;
+  do {
+    int dy = 0;
+    do {
+      const Pixel source0 = src[dy * stride];
+      const Pixel source1 = src[dy * stride + size];
+      a -= source0 * source0;
+      a += source1 * source1;
+      b -= source0;
+      b += source1;
+    } while (++dy < size);
+    src++;
+    CalculateIntermediate<bitdepth>(s, a, b, n, ++intermediate);
+  } while (--x != 0);
+}
+
+inline void Sum565(const SgrIntermediateBuffer* const intermediate,
+                   uint16_t* const a, uint32_t* const b) {
+  *a = 5 * (intermediate[0].a + intermediate[2].a) + 6 * intermediate[1].a;
+  *b = 5 * (intermediate[0].b + intermediate[2].b) + 6 * intermediate[1].b;
+}
+
+template <typename Pixel>
+inline int CalculateFilteredOutput(const Pixel src, const uint32_t a,
+                                   const uint32_t b, const int shift) {
+  // v < 2^32. All intermediate calculations are positive.
+  const uint32_t v = a * src + b;
+  return RightShiftWithRounding(v,
+                                kSgrProjSgrBits + shift - kSgrProjRestoreBits);
+}
+
+template <typename Pixel>
+inline void BoxFilterPass1(const Pixel src0, const Pixel src1,
+                           const SgrIntermediateBuffer* const intermediate[2],
+                           const ptrdiff_t x, int p[2]) {
+  uint16_t a[2];
+  uint32_t b[2];
+  Sum565(intermediate[0] + x, &a[0], &b[0]);
+  Sum565(intermediate[1] + x, &a[1], &b[1]);
+  p[0] = CalculateFilteredOutput<Pixel>(src0, a[0] + a[1], b[0] + b[1], 5);
+  p[1] = CalculateFilteredOutput<Pixel>(src1, a[1], b[1], 4);
+}
+
+template <typename Pixel>
+inline int BoxFilterPass2(const Pixel src,
+                          const SgrIntermediateBuffer* const intermediate[3],
+                          const ptrdiff_t x) {
+  const uint32_t a = 3 * (intermediate[0][x + 0].a + intermediate[0][x + 2].a +
+                          intermediate[2][x + 0].a + intermediate[2][x + 2].a) +
+                     4 * (intermediate[0][x + 1].a + intermediate[1][x + 0].a +
+                          intermediate[1][x + 1].a + intermediate[1][x + 2].a +
+                          intermediate[2][x + 1].a);
+  const uint32_t b = 3 * (intermediate[0][x + 0].b + intermediate[0][x + 2].b +
+                          intermediate[2][x + 0].b + intermediate[2][x + 2].b) +
+                     4 * (intermediate[0][x + 1].b + intermediate[1][x + 0].b +
+                          intermediate[1][x + 1].b + intermediate[1][x + 2].b +
+                          intermediate[2][x + 1].b);
+  return CalculateFilteredOutput<Pixel>(src, a, b, 5);
 }
 
 template <int bitdepth, typename Pixel>
-void LoopRestorationFuncs_C<bitdepth, Pixel>::BoxFilterPreProcess(
+inline Pixel SelfGuidedDoubleMultiplier(const int src,
+                                        const int box_filter_process_output0,
+                                        const int box_filter_process_output1,
+                                        const int16_t w0, const int16_t w1,
+                                        const int16_t w2) {
+  const int v = w1 * (src << kSgrProjRestoreBits) +
+                w0 * box_filter_process_output0 +
+                w2 * box_filter_process_output1;
+  // if radius_pass_0 == 0 and radius_pass_1 == 0, the range of v is:
+  // bits(u) + bits(w0/w1/w2) + 2 = bitdepth + 13.
+  // Then, range of s is bitdepth + 2. This is a rough estimation, taking
+  // the maximum value of each element.
+  const int s =
+      RightShiftWithRounding(v, kSgrProjRestoreBits + kSgrProjPrecisionBits);
+  return static_cast<Pixel>(Clip3(s, 0, (1 << bitdepth) - 1));
+}
+
+template <int bitdepth, typename Pixel>
+inline Pixel SelfGuidedSingleMultiplier(const int src,
+                                        const int box_filter_process_output,
+                                        const int16_t w0, const int16_t w1) {
+  const int v =
+      w1 * (src << kSgrProjRestoreBits) + w0 * box_filter_process_output;
+  // if radius_pass_0 == 0 and radius_pass_1 == 0, the range of v is:
+  // bits(u) + bits(w0/w1/w2) + 2 = bitdepth + 13.
+  // Then, range of s is bitdepth + 2. This is a rough estimation, taking
+  // the maximum value of each element.
+  const int s =
+      RightShiftWithRounding(v, kSgrProjRestoreBits + kSgrProjPrecisionBits);
+  return static_cast<Pixel>(Clip3(s, 0, (1 << bitdepth) - 1));
+}
+
+template <int bitdepth, typename Pixel>
+inline void LoopRestorationFuncs_C<bitdepth, Pixel>::BoxFilterProcess(
     const RestorationUnitInfo& restoration_info, const Pixel* src,
-    const ptrdiff_t stride, int width, int height, int pass,
-    SgrBuffer* const buffer) {
+    const ptrdiff_t src_stride, const int width, const int height,
+    SgrBuffer* const buffer, Pixel* dst, const ptrdiff_t dst_stride) {
   const int sgr_proj_index = restoration_info.sgr_proj_info.index;
-  const uint8_t radius = kSgrProjParams[sgr_proj_index][pass * 2];
-  assert(radius != 0);
-  const uint32_t n = (2 * radius + 1) * (2 * radius + 1);
-  const uint32_t s = kSgrScaleParameter[sgr_proj_index][pass];
+  const uint32_t s0 = kSgrScaleParameter[sgr_proj_index][0];  // s0 < 2^12.
+  const uint32_t s1 = kSgrScaleParameter[sgr_proj_index][1];  // s1 < 2^12.
+  const int16_t w0 = restoration_info.sgr_proj_info.multiplier[0];
+  const int16_t w1 = restoration_info.sgr_proj_info.multiplier[1];
+  const int16_t w2 = (1 << kSgrProjPrecisionBits) - w0 - w1;
+  SgrIntermediateBuffer *intermediate0[2], *intermediate1[4];
+  assert(s0 != 0);
+  assert(s1 != 0);
+  intermediate0[0] = buffer->intermediate;
+  intermediate0[1] = intermediate0[0] + kIntermediateStride;
+  intermediate1[0] = intermediate0[1] + kIntermediateStride;
+  intermediate1[1] = intermediate1[0] + kIntermediateStride,
+  intermediate1[2] = intermediate1[1] + kIntermediateStride,
+  intermediate1[3] = intermediate1[2] + kIntermediateStride;
+  BoxFilterPreProcess<bitdepth, Pixel, 5>(src - 3 * src_stride - 3, src_stride,
+                                          width + 2, s0, intermediate0[0]);
+  BoxFilterPreProcess<bitdepth, Pixel, 3>(src - 2 * src_stride - 2, src_stride,
+                                          width + 2, s1, intermediate1[0]);
+  BoxFilterPreProcess<bitdepth, Pixel, 3>(src - 1 * src_stride - 2, src_stride,
+                                          width + 2, s1, intermediate1[1]);
+  int y = (height + 1) >> 1;
+  do {
+    BoxFilterPreProcess<bitdepth, Pixel, 5>(src - src_stride - 3, src_stride,
+                                            width + 2, s0, intermediate0[1]);
+    BoxFilterPreProcess<bitdepth, Pixel, 3>(src - 2, src_stride, width + 2, s1,
+                                            intermediate1[2]);
+    BoxFilterPreProcess<bitdepth, Pixel, 3>(src + src_stride - 2, src_stride,
+                                            width + 2, s1, intermediate1[3]);
+    int x = 0;
+    do {
+      int p[2][2];
+      BoxFilterPass1<Pixel>(src[x], src[src_stride + x], intermediate0, x,
+                            p[0]);
+      p[1][0] = BoxFilterPass2<Pixel>(src[x], intermediate1, x);
+      p[1][1] =
+          BoxFilterPass2<Pixel>(src[src_stride + x], intermediate1 + 1, x);
+      dst[x] = SelfGuidedDoubleMultiplier<bitdepth, Pixel>(src[x], p[0][0],
+                                                           p[1][0], w0, w1, w2);
+      dst[dst_stride + x] = SelfGuidedDoubleMultiplier<bitdepth, Pixel>(
+          src[src_stride + x], p[0][1], p[1][1], w0, w1, w2);
+    } while (++x < width);
+    src += 2 * src_stride;
+    dst += 2 * dst_stride;
+    std::swap(intermediate0[0], intermediate0[1]);
+    std::swap(intermediate1[0], intermediate1[2]);
+    std::swap(intermediate1[1], intermediate1[3]);
+  } while (--y != 0);
+}
+
+template <int bitdepth, typename Pixel>
+inline void LoopRestorationFuncs_C<bitdepth, Pixel>::BoxFilterProcessPass1(
+    const RestorationUnitInfo& restoration_info, const Pixel* src,
+    const ptrdiff_t src_stride, const int width, const int height,
+    SgrBuffer* const buffer, Pixel* dst, const ptrdiff_t dst_stride) {
+  const int sgr_proj_index = restoration_info.sgr_proj_info.index;
+  const uint32_t s = kSgrScaleParameter[sgr_proj_index][0];  // s < 2^12.
+  const int16_t w0 = restoration_info.sgr_proj_info.multiplier[0];
+  const int16_t w1 = (1 << kSgrProjPrecisionBits) - w0;
+  SgrIntermediateBuffer* intermediate[2];
   assert(s != 0);
-  const ptrdiff_t array_stride =
-      kRestorationUnitWidthWithBorders + kRestorationPadding;
-  // The size of the intermediate result buffer is the size of the filter area
-  // plus horizontal (3) and vertical (3) padding. The processing start point
-  // is the filter area start point -1 row and -1 column. Therefore we need to
-  // set offset and use the intermediate_result as the start point for
-  // processing.
-  const ptrdiff_t intermediate_buffer_offset =
-      kRestorationBorder * array_stride + kRestorationBorder;
-  uint32_t* intermediate_result[2] = {
-      buffer->box_filter_process_intermediate[0] + intermediate_buffer_offset -
-          array_stride,
-      buffer->box_filter_process_intermediate[1] + intermediate_buffer_offset -
-          array_stride};
-
-  // Calculate intermediate results, including one-pixel border, for example,
-  // if unit size is 64x64, we calculate 66x66 pixels.
-  const int step = (pass == 0) ? 2 : 1;
-  const ptrdiff_t intermediate_stride = step * array_stride;
-  src -= (radius + 1) * stride + radius + 1;
-  for (int y = -1; y <= height; y += step) {
-    uint32_t a = 0;
-    uint32_t b = 0;
-    for (int dy = 0; dy <= 2 * radius; ++dy) {
-      for (int dx = 0; dx <= 2 * radius; ++dx) {
-        const Pixel source = src[dy * stride + dx];
-        a += source * source;
-        b += source;
-      }
-    }
-    CalculateIntermediate<bitdepth>(s, a, b, n, -1, intermediate_result);
-    for (int x = 0; x <= width; ++x) {
-      UpdateSum<Pixel>(src + x, stride, 2 * radius + 1, &a, &b);
-      CalculateIntermediate<bitdepth>(s, a, b, n, x, intermediate_result);
-    }
-    intermediate_result[0] += intermediate_stride;
-    intermediate_result[1] += intermediate_stride;
-    src += step * stride;
-  }
+  intermediate[0] = buffer->intermediate;
+  intermediate[1] = intermediate[0] + kIntermediateStride;
+  BoxFilterPreProcess<bitdepth, Pixel, 5>(src - 3 * src_stride - 3, src_stride,
+                                          width + 2, s, intermediate[0]);
+  int y = (height + 1) >> 1;
+  do {
+    BoxFilterPreProcess<bitdepth, Pixel, 5>(src - src_stride - 3, src_stride,
+                                            width + 2, s, intermediate[1]);
+    int x = 0;
+    do {
+      int p[2];
+      BoxFilterPass1<Pixel>(src[x], src[src_stride + x], intermediate, x, p);
+      dst[x] =
+          SelfGuidedSingleMultiplier<bitdepth, Pixel>(src[x], p[0], w0, w1);
+      dst[dst_stride + x] = SelfGuidedSingleMultiplier<bitdepth, Pixel>(
+          src[src_stride + x], p[1], w0, w1);
+    } while (++x < width);
+    src += 2 * src_stride;
+    dst += 2 * dst_stride;
+    std::swap(intermediate[0], intermediate[1]);
+  } while (--y != 0);
 }
 
 template <int bitdepth, typename Pixel>
-void LoopRestorationFuncs_C<bitdepth, Pixel>::BoxFilterProcess(
+inline void LoopRestorationFuncs_C<bitdepth, Pixel>::BoxFilterProcessPass2(
     const RestorationUnitInfo& restoration_info, const Pixel* src,
-    ptrdiff_t stride, int width, int height, SgrBuffer* const buffer) {
+    const ptrdiff_t src_stride, const int width, const int height,
+    SgrBuffer* const buffer, Pixel* dst, const ptrdiff_t dst_stride) {
+  assert(restoration_info.sgr_proj_info.multiplier[0] == 0);
+  const int16_t w1 = restoration_info.sgr_proj_info.multiplier[1];
+  const int16_t w0 = (1 << kSgrProjPrecisionBits) - w1;
   const int sgr_proj_index = restoration_info.sgr_proj_info.index;
-  const ptrdiff_t filtered_output_stride = width;
-  const ptrdiff_t intermediate_stride =
-      kRestorationUnitWidthWithBorders + kRestorationPadding;
-  const ptrdiff_t intermediate_buffer_offset =
-      kRestorationBorder * intermediate_stride + kRestorationBorder;
-
-  for (int pass = 0; pass < 2; ++pass) {
-    const uint8_t radius = kSgrProjParams[sgr_proj_index][pass * 2];
-    if (radius == 0) continue;
-    LoopRestorationFuncs_C<bitdepth, Pixel>::BoxFilterPreProcess(
-        restoration_info, src, stride, width, height, pass, buffer);
-
-    const Pixel* src_ptr = src;
-    // Set intermediate buffer start point to the actual start point of
-    // filtering.
-    const uint32_t* array_start[2] = {
-        buffer->box_filter_process_intermediate[0] + intermediate_buffer_offset,
-        buffer->box_filter_process_intermediate[1] +
-            intermediate_buffer_offset};
-    int* filtered_output = buffer->box_filter_process_output[pass];
-    for (int y = 0; y < height; ++y) {
-      const int shift = (pass == 0 && (y & 1) != 0) ? 4 : 5;
-      // array_start[0]: range [1, 256].
-      // array_start[1] < 2^20.
-      for (int x = 0; x < width; ++x) {
-        uint32_t a, b;
-        if (pass == 0) {
-          if ((y & 1) == 0) {
-            a = 5 * (array_start[0][-intermediate_stride + x - 1] +
-                     array_start[0][-intermediate_stride + x + 1] +
-                     array_start[0][intermediate_stride + x - 1] +
-                     array_start[0][intermediate_stride + x + 1]) +
-                6 * (array_start[0][-intermediate_stride + x] +
-                     array_start[0][intermediate_stride + x]);
-            b = 5 * (array_start[1][-intermediate_stride + x - 1] +
-                     array_start[1][-intermediate_stride + x + 1] +
-                     array_start[1][intermediate_stride + x - 1] +
-                     array_start[1][intermediate_stride + x + 1]) +
-                6 * (array_start[1][-intermediate_stride + x] +
-                     array_start[1][intermediate_stride + x]);
-          } else {
-            a = 5 * (array_start[0][x - 1] + array_start[0][x + 1]) +
-                6 * array_start[0][x];
-            b = 5 * (array_start[1][x - 1] + array_start[1][x + 1]) +
-                6 * array_start[1][x];
-          }
-        } else {
-          a = 3 * (array_start[0][-intermediate_stride + x - 1] +
-                   array_start[0][-intermediate_stride + x + 1] +
-                   array_start[0][intermediate_stride + x - 1] +
-                   array_start[0][intermediate_stride + x + 1]) +
-              4 * (array_start[0][-intermediate_stride + x] +
-                   array_start[0][x - 1] + array_start[0][x] +
-                   array_start[0][x + 1] +
-                   array_start[0][intermediate_stride + x]);
-          b = 3 * (array_start[1][-intermediate_stride + x - 1] +
-                   array_start[1][-intermediate_stride + x + 1] +
-                   array_start[1][intermediate_stride + x - 1] +
-                   array_start[1][intermediate_stride + x + 1]) +
-              4 * (array_start[1][-intermediate_stride + x] +
-                   array_start[1][x - 1] + array_start[1][x] +
-                   array_start[1][x + 1] +
-                   array_start[1][intermediate_stride + x]);
-        }
-        // v < 2^32. All intermediate calculations are positive.
-        const uint32_t v = a * src_ptr[x] + b;
-        filtered_output[x] = RightShiftWithRounding(
-            v, kSgrProjSgrBits + shift - kSgrProjRestoreBits);
-      }
-      src_ptr += stride;
-      array_start[0] += intermediate_stride;
-      array_start[1] += intermediate_stride;
-      filtered_output += filtered_output_stride;
-    }
-  }
+  const uint32_t s = kSgrScaleParameter[sgr_proj_index][1];  // s < 2^12.
+  SgrIntermediateBuffer* intermediate[3];
+  assert(s != 0);
+  intermediate[0] = buffer->intermediate;
+  intermediate[1] = intermediate[0] + kIntermediateStride;
+  intermediate[2] = intermediate[1] + kIntermediateStride;
+  BoxFilterPreProcess<bitdepth, Pixel, 3>(src - 2 * src_stride - 2, src_stride,
+                                          width + 2, s, intermediate[0]);
+  BoxFilterPreProcess<bitdepth, Pixel, 3>(src - 1 * src_stride - 2, src_stride,
+                                          width + 2, s, intermediate[1]);
+  int y = height;
+  do {
+    BoxFilterPreProcess<bitdepth, Pixel, 3>(src - 2, src_stride, width + 2, s,
+                                            intermediate[2]);
+    int x = 0;
+    do {
+      const int p = BoxFilterPass2<Pixel>(src[x], intermediate, x);
+      dst[x] = SelfGuidedSingleMultiplier<bitdepth, Pixel>(src[x], p, w0, w1);
+    } while (++x < width);
+    src += src_stride;
+    dst += dst_stride;
+    SgrIntermediateBuffer* const intermediate0 = intermediate[0];
+    intermediate[0] = intermediate[1];
+    intermediate[1] = intermediate[2];
+    intermediate[2] = intermediate0;
+  } while (--y != 0);
 }
 
-// Assume box_filter_process_output[2] are allocated before calling
-// this function. Their sizes are width * height, stride equals width.
+// If |height| is odd and |radius_pass_0| is non-zero, 1 more row of pixels is
+// written to |dest|. It is safe to overwrite the output as it will not be part
+// of the visible frame.
 template <int bitdepth, typename Pixel>
 void LoopRestorationFuncs_C<bitdepth, Pixel>::SelfGuidedFilter(
     const void* const source, void* const dest,
     const RestorationUnitInfo& restoration_info, ptrdiff_t source_stride,
     ptrdiff_t dest_stride, int width, int height,
     RestorationBuffer* const /*buffer*/) {
-  SgrBuffer buffer;
-  const int w0 = restoration_info.sgr_proj_info.multiplier[0];
-  const int w1 = restoration_info.sgr_proj_info.multiplier[1];
-  const int w2 = (1 << kSgrProjPrecisionBits) - w0 - w1;
   const int index = restoration_info.sgr_proj_info.index;
-  const int radius_pass_0 = kSgrProjParams[index][0];
-  const int radius_pass_1 = kSgrProjParams[index][2];
-  const ptrdiff_t array_stride = width;
-  const int* box_filter_process_output[2] = {
-      buffer.box_filter_process_output[0], buffer.box_filter_process_output[1]};
+  const int radius_pass_0 = kSgrProjParams[index][0];  // 2 or 0
+  const int radius_pass_1 = kSgrProjParams[index][2];  // 1 or 0
   const auto* src = static_cast<const Pixel*>(source);
   auto* dst = static_cast<Pixel*>(dest);
-  LoopRestorationFuncs_C<bitdepth, Pixel>::BoxFilterProcess(
-      restoration_info, src, source_stride, width, height, &buffer);
-  for (int y = 0; y < height; ++y) {
-    for (int x = 0; x < width; ++x) {
-      const int u = src[x] << kSgrProjRestoreBits;
-      int v = w1 * u;
-      if (radius_pass_0 != 0) {
-        v += w0 * box_filter_process_output[0][x];
-      } else {
-        v += w0 * u;
-      }
-      if (radius_pass_1 != 0) {
-        v += w2 * box_filter_process_output[1][x];
-      } else {
-        v += w2 * u;
-      }
-      // if radius_pass_0 == 0 and radius_pass_1 == 0, the range of v is:
-      // bits(u) + bits(w0/w1/w2) + 2 = bitdepth + 13.
-      // Then, range of s is bitdepth + 2. This is a rough estimation, taking
-      // the maximum value of each element.
-      const int s = RightShiftWithRounding(
-          v, kSgrProjRestoreBits + kSgrProjPrecisionBits);
-      dst[x] = static_cast<Pixel>(Clip3(s, 0, (1 << bitdepth) - 1));
-    }
-    src += source_stride;
-    dst += dest_stride;
-    box_filter_process_output[0] += array_stride;
-    box_filter_process_output[1] += array_stride;
+  SgrBuffer buffer;
+  if (radius_pass_1 == 0) {
+    // |radius_pass_0| and |radius_pass_1| cannot both be 0, so we have the
+    // following assertion.
+    assert(radius_pass_0 != 0);
+    LoopRestorationFuncs_C<bitdepth, Pixel>::BoxFilterProcessPass1(
+        restoration_info, src, source_stride, width, height, &buffer, dst,
+        dest_stride);
+  } else if (radius_pass_0 == 0) {
+    LoopRestorationFuncs_C<bitdepth, Pixel>::BoxFilterProcessPass2(
+        restoration_info, src, source_stride, width, height, &buffer, dst,
+        dest_stride);
+  } else {
+    LoopRestorationFuncs_C<bitdepth, Pixel>::BoxFilterProcess(
+        restoration_info, src, source_stride, width, height, &buffer, dst,
+        dest_stride);
   }
 }
 
@@ -644,6 +720,7 @@ void LoopRestorationInit_C() {
   // available.
   static_cast<void>(CountZeroCoefficients);
   static_cast<void>(PopulateWienerCoefficients);
+  static_cast<void>(Sum565);
   static_cast<void>(WienerVertical);
 }
 
