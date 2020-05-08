@@ -386,7 +386,7 @@ class PostFilter {
   template <typename Pixel>
   void PrepareCdefBlock(int block_width4x4, int block_height4x4, int row4x4,
                         int column4x4, uint16_t* cdef_source,
-                        ptrdiff_t cdef_stride);
+                        ptrdiff_t cdef_stride, bool y_plane);
   template <typename Pixel>
   void ApplyCdefForOneUnit(uint16_t* cdef_block, int index, int block_width4x4,
                            int block_height4x4, int row4x4_start,

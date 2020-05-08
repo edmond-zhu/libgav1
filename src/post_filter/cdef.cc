@@ -20,6 +20,7 @@ namespace libgav1 {
 namespace {
 
 constexpr int kStep64x64 = 16;  // =64/4.
+constexpr int kCdefSkip = 8;
 
 constexpr uint8_t kCdefUvDirection[2][2][8] = {
     {{0, 1, 2, 3, 4, 5, 6, 7}, {1, 2, 2, 2, 3, 4, 6, 0}},
@@ -93,9 +94,12 @@ uint8_t* PostFilter::GetCdefBufferAndStride(const int start_x,
 template <typename Pixel>
 void PostFilter::PrepareCdefBlock(int block_width4x4, int block_height4x4,
                                   int row4x4, int column4x4,
-                                  uint16_t* cdef_source,
-                                  ptrdiff_t cdef_stride) {
-  for (int plane = kPlaneY; plane < planes_; ++plane) {
+                                  uint16_t* cdef_source, ptrdiff_t cdef_stride,
+                                  const bool y_plane) {
+  const int max_planes = y_plane ? 1 : planes_;
+  int plane = y_plane ? kPlaneY : kPlaneU;
+
+  for (; plane < max_planes; ++plane) {
     uint16_t* cdef_src = cdef_source + plane * kCdefUnitSizeWithBorders *
                                            kCdefUnitSizeWithBorders;
     const int8_t subsampling_x = subsampling_x_[plane];
@@ -175,7 +179,6 @@ void PostFilter::ApplyCdefForOneUnit(uint16_t* cdef_block, const int index,
 
   const int window_buffer_plane_size =
       window_buffer_width_ * window_buffer_height_ * pixel_size_;
-
   int cdef_buffer_row_base_stride[kMaxPlanes];
   int cdef_buffer_stride[kMaxPlanes];
   uint8_t* cdef_buffer_row_base[kMaxPlanes];
@@ -210,12 +213,21 @@ void PostFilter::ApplyCdefForOneUnit(uint16_t* cdef_block, const int index,
   }
 
   PrepareCdefBlock<Pixel>(block_width4x4, block_height4x4, row4x4_start,
-                          column4x4_start, cdef_block,
-                          kCdefUnitSizeWithBorders);
+                          column4x4_start, cdef_block, kCdefUnitSizeWithBorders,
+                          true);
+
+  // Stored direction used during the u/v pass.  If bit 3 is set, then block is
+  // a skip.
+  int direction_y[8 * 8];
+  int y_index = 0;
+
+  const uint8_t y_primary_strength =
+      frame_header_.cdef.y_primary_strength[index];
+  const uint8_t y_secondary_strength =
+      frame_header_.cdef.y_secondary_strength[index];
 
   const bool compute_direction_and_variance =
-      (frame_header_.cdef.y_primary_strength[index] |
-       frame_header_.cdef.uv_primary_strength[index]) != 0;
+      (y_primary_strength | frame_header_.cdef.uv_primary_strength[index]) != 0;
   BlockParameters* const* bp_row0_base =
       block_parameters_.Address(row4x4_start, column4x4_start);
   BlockParameters* const* bp_row1_base =
@@ -223,98 +235,176 @@ void PostFilter::ApplyCdefForOneUnit(uint16_t* cdef_block, const int index,
   const int bp_stride = MultiplyBy2(block_parameters_.columns4x4());
   int row4x4 = row4x4_start;
   do {
-    uint8_t* cdef_buffer_base[kMaxPlanes] = {cdef_buffer_row_base[kPlaneY],
-                                             cdef_buffer_row_base[kPlaneU],
-                                             cdef_buffer_row_base[kPlaneV]};
-    const uint8_t* src_buffer_base[kMaxPlanes] = {src_buffer_row_base[kPlaneY],
-                                                  src_buffer_row_base[kPlaneU],
-                                                  src_buffer_row_base[kPlaneV]};
+    uint8_t* cdef_buffer_base = cdef_buffer_row_base[kPlaneY];
+    const uint8_t* src_buffer_base = src_buffer_row_base[kPlaneY];
     BlockParameters* const* bp0 = bp_row0_base;
     BlockParameters* const* bp1 = bp_row1_base;
     int column4x4 = column4x4_start;
     do {
+      const int block_width = kStep;
+      const int block_height = kStep;
+      const int cdef_stride = cdef_buffer_stride[kPlaneY];
+      uint8_t* const cdef_buffer = cdef_buffer_base;
+      const int src_stride = frame_buffer_.stride(kPlaneY);
+      const uint8_t* const src_buffer = src_buffer_base;
+
       const bool skip = (*bp0)->skip && (*(bp0 + 1))->skip && (*bp1)->skip &&
                         (*(bp1 + 1))->skip;
-      int direction_y;
-      int direction;
-      uint8_t primary_strength;
-      uint8_t secondary_strength;
 
-      for (int plane = kPlaneY; plane < planes_; ++plane) {
-        const int8_t subsampling_x = subsampling_x_[plane];
-        const int8_t subsampling_y = subsampling_y_[plane];
-        const int block_width = kStep >> subsampling_x;
-        const int block_height = kStep >> subsampling_y;
-        const int cdef_stride = cdef_buffer_stride[plane];
-        uint8_t* const cdef_buffer = cdef_buffer_base[plane];
-        const int src_stride = frame_buffer_.stride(plane);
-        const uint8_t* const src_buffer = src_buffer_base[plane];
+      if (skip) {  // No cdef filtering.
+        direction_y[y_index] = kCdefSkip;
+        CopyPixels(src_buffer, src_stride, cdef_buffer, cdef_stride,
+                   block_width, block_height, pixel_size_);
+      } else {
+        // Zero out residual skip flag.
+        direction_y[y_index] = 0;
 
-        if (skip) {  // No cdef filtering.
+        int variance = 0;
+        if (compute_direction_and_variance) {
+          dsp_.cdef_direction(src_buffer, src_stride, &direction_y[y_index],
+                              &variance);
+        }
+        const int direction =
+            (y_primary_strength == 0) ? 0 : direction_y[y_index];
+        const int variance_strength =
+            ((variance >> 6) != 0) ? std::min(FloorLog2(variance >> 6), 12) : 0;
+        const uint8_t primary_strength =
+            (variance != 0)
+                ? (y_primary_strength * (4 + variance_strength) + 8) >> 4
+                : 0;
+
+        if ((primary_strength | y_secondary_strength) == 0) {
           CopyPixels(src_buffer, src_stride, cdef_buffer, cdef_stride,
                      block_width, block_height, pixel_size_);
-          continue;
-        }
-
-        if (plane == kPlaneY) {
-          int variance = 0;
-          if (compute_direction_and_variance) {
-            dsp_.cdef_direction(src_buffer, src_stride, &direction_y,
-                                &variance);
-          }
-          primary_strength = frame_header_.cdef.y_primary_strength[index];
-          secondary_strength = frame_header_.cdef.y_secondary_strength[index];
-          direction = (primary_strength == 0) ? 0 : direction_y;
-          const int variance_strength =
-              ((variance >> 6) != 0) ? std::min(FloorLog2(variance >> 6), 12)
-                                     : 0;
-          primary_strength =
-              (variance != 0)
-                  ? (primary_strength * (4 + variance_strength) + 8) >> 4
-                  : 0;
         } else {
-          primary_strength = frame_header_.cdef.uv_primary_strength[index];
-          secondary_strength = frame_header_.cdef.uv_secondary_strength[index];
-          direction =
-              (primary_strength == 0)
-                  ? 0
-                  : kCdefUvDirection[subsampling_x][subsampling_y][direction_y];
+          uint16_t* cdef_src = cdef_block + kPlaneY * kCdefUnitSizeWithBorders *
+                                                kCdefUnitSizeWithBorders;
+          cdef_src += kCdefBorder * kCdefUnitSizeWithBorders + kCdefBorder;
+          cdef_src +=
+              (MultiplyBy4(row4x4 - row4x4_start)) * kCdefUnitSizeWithBorders +
+              (MultiplyBy4(column4x4 - column4x4_start));
+          dsp_.cdef_filter(cdef_src, kCdefUnitSizeWithBorders, block_width,
+                           block_height, primary_strength, y_secondary_strength,
+                           frame_header_.cdef.damping, direction, cdef_buffer,
+                           cdef_stride);
         }
+      }
+      cdef_buffer_base += column_step[kPlaneY];
+      src_buffer_base += column_step[kPlaneY];
 
-        if ((primary_strength | secondary_strength) == 0) {
-          CopyPixels(src_buffer, src_stride, cdef_buffer, cdef_stride,
-                     block_width, block_height, pixel_size_);
-          continue;
-        }
-        uint16_t* cdef_src = cdef_block + plane * kCdefUnitSizeWithBorders *
-                                              kCdefUnitSizeWithBorders;
-        cdef_src += kCdefBorder * kCdefUnitSizeWithBorders + kCdefBorder;
-        cdef_src += (MultiplyBy4(row4x4 - row4x4_start) >> subsampling_y) *
-                        kCdefUnitSizeWithBorders +
-                    (MultiplyBy4(column4x4 - column4x4_start) >> subsampling_x);
-        dsp_.cdef_filter(
-            cdef_src, kCdefUnitSizeWithBorders, block_width, block_height,
-            primary_strength, secondary_strength,
-            frame_header_.cdef.damping - static_cast<int>(plane != kPlaneY),
-            direction, cdef_buffer, cdef_stride);
-      }
-      for (int plane = 0; plane < planes_; ++plane) {
-        cdef_buffer_base[plane] += column_step[plane];
-        src_buffer_base[plane] += column_step[plane];
-      }
       bp0 += kStep4x4;
       bp1 += kStep4x4;
       column4x4 += kStep4x4;
+      y_index++;
     } while (column4x4 < column4x4_start + block_width4x4);
 
-    for (int plane = 0; plane < planes_; ++plane) {
-      cdef_buffer_row_base[plane] += cdef_buffer_row_base_stride[plane];
-      src_buffer_row_base[plane] += src_buffer_row_base_stride[plane];
-    }
+    cdef_buffer_row_base[kPlaneY] += cdef_buffer_row_base_stride[kPlaneY];
+    src_buffer_row_base[kPlaneY] += src_buffer_row_base_stride[kPlaneY];
     bp_row0_base += bp_stride;
     bp_row1_base += bp_stride;
     row4x4 += kStep4x4;
   } while (row4x4 < row4x4_start + block_height4x4);
+
+  if (planes_ == kMaxPlanesMonochrome) {
+    return;
+  }
+
+  const uint8_t uv_primary_strength =
+      frame_header_.cdef.uv_primary_strength[index];
+  const uint8_t uv_secondary_strength =
+      frame_header_.cdef.uv_secondary_strength[index];
+
+  if ((uv_primary_strength | uv_secondary_strength) == 0) {
+    for (int plane = kPlaneU; plane <= kPlaneV; ++plane) {
+      CopyPixels(src_buffer_row_base[plane], frame_buffer_.stride(plane),
+                 cdef_buffer_row_base[plane], cdef_buffer_stride[plane],
+                 MultiplyBy4(block_width4x4) >> subsampling_x_[plane],
+                 MultiplyBy4(block_height4x4) >> subsampling_y_[plane],
+                 pixel_size_);
+    }
+    return;
+  }
+
+  PrepareCdefBlock<Pixel>(block_width4x4, block_height4x4, row4x4_start,
+                          column4x4_start, cdef_block, kCdefUnitSizeWithBorders,
+                          false);
+
+  for (int plane = kPlaneU; plane <= kPlaneV; ++plane) {
+    const int8_t subsampling_x = subsampling_x_[plane];
+    const int8_t subsampling_y = subsampling_y_[plane];
+    const int block_width = kStep >> subsampling_x;
+    const int block_height = kStep >> subsampling_y;
+    int row4x4 = row4x4_start;
+
+    y_index = 0;
+    do {
+      uint8_t* cdef_buffer_base = cdef_buffer_row_base[plane];
+      const uint8_t* src_buffer_base = src_buffer_row_base[plane];
+      int column4x4 = column4x4_start;
+      do {
+        const int cdef_stride = cdef_buffer_stride[plane];
+        uint8_t* const cdef_buffer = cdef_buffer_base;
+        const int src_stride = frame_buffer_.stride(plane);
+        const uint8_t* const src_buffer = src_buffer_base;
+        const bool skip = direction_y[y_index] & kCdefSkip;
+        int dual_cdef = 0;
+
+        if (skip) {  // No cdef filtering.
+          CopyPixels(src_buffer, src_stride, cdef_buffer, cdef_stride,
+                     block_width, block_height, pixel_size_);
+        } else {
+          // Make sure block pair is not out of bounds.
+          if (column4x4 + (kStep4x4 * 2) <= column4x4_start + block_width4x4) {
+            // Enable dual processing if subsampling_x is 1.
+            dual_cdef = subsampling_x;
+          }
+
+          int direction = (uv_primary_strength == 0)
+                              ? 0
+                              : kCdefUvDirection[subsampling_x][subsampling_y]
+                                                [direction_y[y_index]];
+
+          if (dual_cdef != 0) {
+            if (uv_primary_strength &&
+                direction_y[y_index] != direction_y[y_index + 1]) {
+              // Disable dual processing if the second block of the pair does
+              // not have the same direction.
+              dual_cdef = 0;
+            }
+
+            // Disable dual processing if the second block of the pair is a
+            // skip.
+            if (direction_y[y_index + 1] == kCdefSkip) {
+              dual_cdef = 0;
+            }
+          }
+
+          uint16_t* cdef_src = cdef_block + plane * kCdefUnitSizeWithBorders *
+                                                kCdefUnitSizeWithBorders;
+          cdef_src += kCdefBorder * kCdefUnitSizeWithBorders + kCdefBorder;
+          cdef_src +=
+              (MultiplyBy4(row4x4 - row4x4_start) >> subsampling_y) *
+                  kCdefUnitSizeWithBorders +
+              (MultiplyBy4(column4x4 - column4x4_start) >> subsampling_x);
+          dsp_.cdef_filter(cdef_src, kCdefUnitSizeWithBorders,
+                           block_width << dual_cdef, block_height,
+                           uv_primary_strength, uv_secondary_strength,
+                           frame_header_.cdef.damping - 1, direction,
+                           cdef_buffer, cdef_stride);
+        }
+        // When dual_cdef is set, the above cdef_filter() will process 2 blocks,
+        // so adjust the pointers and indexes for 2 blocks.
+        cdef_buffer_base += column_step[plane] << dual_cdef;
+        src_buffer_base += column_step[plane] << dual_cdef;
+        column4x4 += kStep4x4 << dual_cdef;
+        y_index += 1 << dual_cdef;
+      } while (column4x4 < column4x4_start + block_width4x4);
+
+      cdef_buffer_row_base[plane] += cdef_buffer_row_base_stride[plane];
+      src_buffer_row_base[plane] += src_buffer_row_base_stride[plane];
+      row4x4 += kStep4x4;
+    } while (row4x4 < row4x4_start + block_height4x4);
+  }
 }
 
 void PostFilter::ApplyCdefForOneSuperBlockRowHelper(int row4x4,
