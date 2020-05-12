@@ -28,7 +28,7 @@ void PostFilter::ApplyLoopRestorationForOneUnit(
   const int unit_y = y + row;
   const int current_process_unit_width =
       std::min(plane_unit_size, plane_width - unit_x);
-  uint8_t* cdef_unit_buffer =
+  const uint8_t* cdef_unit_buffer =
       cdef_buffer + unit_y * cdef_buffer_stride + unit_x * pixel_size_;
   const int unit_column =
       std::min(unit_x / plane_unit_size, num_horizontal_units - 1);
@@ -47,44 +47,49 @@ void PostFilter::ApplyLoopRestorationForOneUnit(
     return;
   }
 
+  const ptrdiff_t block_buffer_stride =
+      kRestorationUnitWidthWithBorders * sizeof(Pixel);
   // The SIMD implementation of wiener filter (currently WienerFilter_SSE4_1())
   // over-reads 6 bytes, so add 6 extra bytes at the end of block_buffer for 8
   // bit.
   alignas(alignof(uint16_t)) uint8_t
-      block_buffer[kRestorationUnitHeightWithBorders *
-                       kRestorationUnitWidthWithBorders * sizeof(Pixel) +
+      block_buffer[kRestorationUnitHeightWithBorders * block_buffer_stride +
                    ((sizeof(Pixel) == 1) ? 6 : 0)];
-  const ptrdiff_t block_buffer_stride =
-      kRestorationUnitWidthWithBorders * pixel_size_;
   RestorationBuffer restoration_buffer;
-  const int deblock_buffer_units = 64 >> subsampling_y_[plane];
-  uint8_t* const deblock_buffer = deblock_buffer_.data(plane);
-  const int deblock_buffer_stride = deblock_buffer_.stride(plane);
-  const int deblock_unit_y =
-      std::max(MultiplyBy4(Ceil(unit_y, deblock_buffer_units)) - 4, 0);
-  uint8_t* deblock_unit_buffer =
-      (deblock_buffer != nullptr)
-          ? deblock_buffer + deblock_unit_y * deblock_buffer_stride +
-                unit_x * pixel_size_
-          : nullptr;
+  const uint8_t* source;
+  ptrdiff_t source_stride;
+  if (DoCdef()) {
+    const int deblock_buffer_units = 64 >> subsampling_y_[plane];
+    const uint8_t* const deblock_buffer = deblock_buffer_.data(plane);
+    assert(deblock_buffer != nullptr);
+    const int deblock_buffer_stride = deblock_buffer_.stride(plane);
+    const int deblock_unit_y =
+        std::max(MultiplyBy4(Ceil(unit_y, deblock_buffer_units)) - 4, 0);
+    const uint8_t* const deblock_unit_buffer =
+        deblock_buffer + deblock_unit_y * deblock_buffer_stride +
+        unit_x * pixel_size_;
+    PrepareLoopRestorationBlock<Pixel>(
+        true, cdef_unit_buffer, cdef_buffer_stride, deblock_unit_buffer,
+        deblock_buffer_stride, block_buffer, block_buffer_stride,
+        current_process_unit_width, current_process_unit_height, unit_y == 0,
+        unit_y + current_process_unit_height >= plane_height);
+    source = block_buffer + kRestorationBorder * block_buffer_stride +
+             kRestorationBorder * pixel_size_;
+    source_stride = kRestorationUnitWidthWithBorders;
+  } else {
+    source = cdef_unit_buffer;
+    source_stride = cdef_buffer_stride / sizeof(Pixel);
+  }
   assert(type == kLoopRestorationTypeSgrProj ||
          type == kLoopRestorationTypeWiener);
   const dsp::LoopRestorationFunc restoration_func =
       dsp_.loop_restorations[type - 2];
-  PrepareLoopRestorationBlock<Pixel>(
-      DoCdef(), cdef_unit_buffer, cdef_buffer_stride, deblock_unit_buffer,
-      deblock_buffer_stride, block_buffer, block_buffer_stride,
-      current_process_unit_width, current_process_unit_height, unit_y == 0,
-      unit_y + current_process_unit_height >= plane_height);
-  restoration_func(reinterpret_cast<const uint8_t*>(
-                       block_buffer + kRestorationBorder * block_buffer_stride +
-                       kRestorationBorder * pixel_size_),
-                   &(*loop_restored_window)[row][column],
+  restoration_func(source, &(*loop_restored_window)[row][column],
                    restoration_info_->loop_restoration_info(
                        static_cast<Plane>(plane), unit_id),
-                   kRestorationUnitWidthWithBorders,
-                   loop_restored_window->columns(), current_process_unit_width,
-                   current_process_unit_height, &restoration_buffer);
+                   source_stride, loop_restored_window->columns(),
+                   current_process_unit_width, current_process_unit_height,
+                   &restoration_buffer);
 }
 
 template <typename Pixel>
