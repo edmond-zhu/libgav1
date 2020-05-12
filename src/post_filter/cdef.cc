@@ -130,16 +130,19 @@ void PostFilter::PrepareCdefBlock(int block_width4x4, int block_height4x4,
     cdef_src += kCdefBorder;
 
     // Copy the top 2 rows.
-    for (int y = 0; y < kCdefBorder; ++y) {
-      if (is_frame_top) {
+    if (is_frame_top) {
+      for (int y = 0; y < kCdefBorder; ++y) {
         Memset(cdef_src - kCdefBorder, kCdefLargeValue,
                unit_width + 2 * kCdefBorder);
-      } else {
+        cdef_src += cdef_stride;
+      }
+    } else {
+      for (int y = 0; y < kCdefBorder; ++y) {
         CopyRowForCdef(src_buffer, block_width, unit_width, is_frame_left,
                        is_frame_right, cdef_src);
         src_buffer += src_stride;
+        cdef_src += cdef_stride;
       }
-      cdef_src += cdef_stride;
     }
 
     // Copy the body.
@@ -153,17 +156,20 @@ void PostFilter::PrepareCdefBlock(int block_width4x4, int block_height4x4,
 
     // Copy the bottom 2 rows.
     y = 0;
-    do {
-      if (is_frame_bottom) {
+    if (is_frame_bottom) {
+      do {
         Memset(cdef_src - kCdefBorder, kCdefLargeValue,
                unit_width + 2 * kCdefBorder);
-      } else {
+        cdef_src += cdef_stride;
+      } while (++y < kCdefBorder + unit_height - block_height);
+    } else {
+      do {
         CopyRowForCdef(src_buffer, block_width, unit_width, is_frame_left,
                        is_frame_right, cdef_src);
         src_buffer += src_stride;
-      }
-      cdef_src += cdef_stride;
-    } while (++y < kCdefBorder + unit_height - block_height);
+        cdef_src += cdef_stride;
+      } while (++y < kCdefBorder + unit_height - block_height);
+    }
   }
 }
 
