@@ -96,10 +96,10 @@ void PostFilter::PrepareCdefBlock(int block_width4x4, int block_height4x4,
                                   int row4x4, int column4x4,
                                   uint16_t* cdef_source, ptrdiff_t cdef_stride,
                                   const bool y_plane) {
-  const int max_planes = y_plane ? 1 : planes_;
-  int plane = y_plane ? kPlaneY : kPlaneU;
+  assert(y_plane || planes_ == kMaxPlanes);
+  const int max_planes = y_plane ? 1 : kMaxPlanes;
 
-  for (; plane < max_planes; ++plane) {
+  for (int plane = y_plane ? kPlaneY : kPlaneU; plane < max_planes; ++plane) {
     uint16_t* cdef_src = cdef_source + plane * kCdefUnitSizeWithBorders *
                                            kCdefUnitSizeWithBorders;
     const int8_t subsampling_x = subsampling_x_[plane];
