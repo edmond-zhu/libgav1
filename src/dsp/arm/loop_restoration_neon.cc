@@ -148,9 +148,10 @@ void WienerFilter_NEON(const void* const source, void* const dest,
                              filter_vertical);
   if (number_zero_coefficients == 0) {
     // 7-tap
-    src -= kCenterTap * source_stride + kCenterTap;
-    int y = height + kSubPixelTaps - 2;
+    src -= (kCenterTap - 1) * source_stride + kCenterTap;
+    int y = height + kSubPixelTaps - 4;
     do {
+      wiener_buffer += width;
       int x = 0;
       do {
         // This is just as fast as an 8x8 transpose but avoids over-reading
@@ -174,10 +175,16 @@ void WienerFilter_NEON(const void* const source, void* const dest,
         x += 8;
       } while (x < width);
       src += source_stride;
-      wiener_buffer += width;
     } while (--y != 0);
-
+    // Because the top row of |source| is a duplicate of the second row, and the
+    // bottom row of |source| is a duplicate of its above row, we can duplicate
+    // the top and bottom row of |wiener_buffer| accordingly.
+    memcpy(wiener_buffer + width, wiener_buffer,
+           sizeof(*wiener_buffer) * width);
     wiener_buffer = reinterpret_cast<int16_t*>(buffer->wiener_buffer);
+    memcpy(wiener_buffer, wiener_buffer + width,
+           sizeof(*wiener_buffer) * width);
+
     y = height;
     do {
       int x = 0;

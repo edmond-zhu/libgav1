@@ -78,11 +78,11 @@ void WienerFilter_SSE4_1(const void* source, void* const dest,
   const auto* src = static_cast<const uint8_t*>(source);
   auto* dst = static_cast<uint8_t*>(dest);
   const ptrdiff_t buffer_stride = (width + 7) & ~7;
-  auto* wiener_buffer = buffer->wiener_buffer;
+  auto* wiener_buffer = buffer->wiener_buffer + buffer_stride;
   // horizontal filtering.
   PopulateWienerCoefficients(restoration_info, WienerInfo::kHorizontal, filter);
   const int center_tap = 3;
-  src -= center_tap * source_stride + center_tap;
+  src -= (center_tap - 1) * source_stride + center_tap;
 
   const int horizontal_rounding =
       1 << (8 + kWienerFilterBits - kInterRoundBitsHorizontal - 1);
@@ -100,7 +100,7 @@ void WienerFilter_SSE4_1(const void* source, void* const dest,
   const __m128i v_offset_shift =
       _mm_cvtsi32_si128(7 - kInterRoundBitsHorizontal);
 
-  int y = 0;
+  int y = height + kSubPixelTaps - 4;
   do {
     int x = 0;
     do {
@@ -148,9 +148,16 @@ void WienerFilter_SSE4_1(const void* source, void* const dest,
     } while (x < width);
     src += source_stride;
     wiener_buffer += buffer_stride;
-  } while (++y < height + kSubPixelTaps - 2);
-
+  } while (--y != 0);
+  // Because the top row of |source| is a duplicate of the second row, and the
+  // bottom row of |source| is a duplicate of its above row, we can duplicate
+  // the top and bottom row of |wiener_buffer| accordingly.
+  memcpy(wiener_buffer, wiener_buffer - buffer_stride,
+         sizeof(*wiener_buffer) * width);
   wiener_buffer = buffer->wiener_buffer;
+  memcpy(wiener_buffer, wiener_buffer + buffer_stride,
+         sizeof(*wiener_buffer) * width);
+
   // vertical filtering.
   PopulateWienerCoefficients(restoration_info, WienerInfo::kVertical, filter);
 

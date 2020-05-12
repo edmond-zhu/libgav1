@@ -163,7 +163,7 @@ inline void WienerHorizontal(const Pixel* source, const ptrdiff_t source_stride,
                              const int width, const int height,
                              const int16_t* const filter,
                              const int number_zero_coefficients,
-                             uint16_t* wiener_buffer) {
+                             uint16_t** wiener_buffer) {
   constexpr int kCenterTap = (kSubPixelTaps - 1) / 2;
   constexpr int kRoundBitsHorizontal = (bitdepth == 12)
                                            ? kInterRoundBitsHorizontal12bpp
@@ -182,10 +182,10 @@ inline void WienerHorizontal(const Pixel* source, const ptrdiff_t source_stride,
       }
       sum += filter[kCenterTap] * source[x + kCenterTap];
       const int rounded_sum = RightShiftWithRounding(sum, kRoundBitsHorizontal);
-      wiener_buffer[x] = static_cast<uint16_t>(Clip3(rounded_sum, 0, limit));
+      (*wiener_buffer)[x] = static_cast<uint16_t>(Clip3(rounded_sum, 0, limit));
     } while (++x < width);
     source += source_stride;
-    wiener_buffer += width;
+    *wiener_buffer += width;
   } while (--y != 0);
 }
 
@@ -251,35 +251,43 @@ void LoopRestorationFuncs_C<bitdepth, Pixel>::WienerFilter(
       CountZeroCoefficients(filter_horizontal);
   const int number_zero_coefficients_vertical =
       CountZeroCoefficients(filter_vertical);
+  const int number_rows_to_skip =
+      std::max(number_zero_coefficients_vertical, 1);
 
   // horizontal filtering.
   const auto* src = static_cast<const Pixel*>(source);
-  src -= (kCenterTap - number_zero_coefficients_vertical) * source_stride +
-         kCenterTap;
-  auto* const wiener_buffer =
-      buffer->wiener_buffer + number_zero_coefficients_vertical * width;
+  src -= (kCenterTap - number_rows_to_skip) * source_stride + kCenterTap;
+  auto* wiener_buffer = buffer->wiener_buffer + number_rows_to_skip * width;
   const int height_horizontal =
-      height + kSubPixelTaps - 2 - 2 * number_zero_coefficients_vertical;
+      height + kSubPixelTaps - 2 - 2 * number_rows_to_skip;
+
   if (number_zero_coefficients_horizontal == 0) {
     WienerHorizontal<bitdepth, Pixel>(src, source_stride, width,
                                       height_horizontal, filter_horizontal, 0,
-                                      wiener_buffer);
+                                      &wiener_buffer);
   } else if (number_zero_coefficients_horizontal == 1) {
     WienerHorizontal<bitdepth, Pixel>(src, source_stride, width,
                                       height_horizontal, filter_horizontal, 1,
-                                      wiener_buffer);
+                                      &wiener_buffer);
   } else if (number_zero_coefficients_horizontal == 2) {
     WienerHorizontal<bitdepth, Pixel>(src, source_stride, width,
                                       height_horizontal, filter_horizontal, 2,
-                                      wiener_buffer);
+                                      &wiener_buffer);
   } else {
     WienerHorizontal<bitdepth, Pixel>(src, source_stride, width,
                                       height_horizontal, filter_horizontal, 3,
-                                      wiener_buffer);
+                                      &wiener_buffer);
   }
 
   // vertical filtering.
   if (number_zero_coefficients_vertical == 0) {
+    // Because the top row of |source| is a duplicate of the second row, and the
+    // bottom row of |source| is a duplicate of its above row, we can duplicate
+    // the top and bottom row of |wiener_buffer| accordingly.
+    memcpy(wiener_buffer, wiener_buffer - width,
+           sizeof(*wiener_buffer) * width);
+    memcpy(buffer->wiener_buffer, buffer->wiener_buffer + width,
+           sizeof(*wiener_buffer) * width);
     WienerVertical<bitdepth, Pixel>(buffer->wiener_buffer, width, height,
                                     filter_vertical, 0, dest, dest_stride);
   } else if (number_zero_coefficients_vertical == 1) {
