@@ -31,6 +31,9 @@
 namespace libgav1 {
 namespace {
 
+// Import all the constants in the anonymous namespace.
+#include "src/post_filter/deblock_thresholds.inc"
+
 // Row indices of deblocked pixels needed by loop restoration. This is used to
 // populate the |deblock_buffer_| when cdef is on. The first dimension is
 // subsampling_y.
@@ -144,6 +147,8 @@ PostFilter::PostFilter(const ObuFrameHeader& frame_header,
                                                          : kMaxPlanes),
       pixel_size_(static_cast<int>((bitdepth_ == 8) ? sizeof(uint8_t)
                                                     : sizeof(uint16_t))),
+      inner_thresh_(kInnerThresh[frame_header.loop_filter.sharpness]),
+      outer_thresh_(kOuterThresh[frame_header.loop_filter.sharpness]),
       cdef_index_(frame_scratch_buffer->cdef_index),
       inter_transform_sizes_(frame_scratch_buffer->inter_transform_sizes),
       threaded_window_buffer_(
@@ -160,9 +165,6 @@ PostFilter::PostFilter(const ObuFrameHeader& frame_header,
       window_buffer_height_(GetWindowBufferHeight(thread_pool_, frame_header)) {
   const int8_t zero_delta_lf[kFrameLfCount] = {};
   ComputeDeblockFilterLevels(zero_delta_lf, deblock_filter_levels_);
-  if (DoDeblock()) {
-    InitDeblockFilterParams();
-  }
   if (DoSuperRes()) {
     for (int plane = 0; plane < planes_; ++plane) {
       const int downscaled_width =

@@ -334,9 +334,6 @@ class PostFilter {
     }
     return (plane == kPlaneY) ? dsp::kLoopFilterSize14 : dsp::kLoopFilterSize6;
   }
-  void InitDeblockFilterParams();  // Part of 7.14.4.
-  void GetDeblockFilterParams(uint8_t level, int* outer_thresh,
-                              int* inner_thresh, int* hev_thresh) const;
   bool GetHorizontalDeblockFilterEdgeInfo(Plane plane, int row4x4,
                                           int column4x4, int8_t subsampling_x,
                                           int8_t subsampling_y, uint8_t* level,
@@ -493,9 +490,8 @@ class PostFilter {
   const int8_t subsampling_y_[kMaxPlanes];
   const int8_t planes_;
   const int pixel_size_;
-  uint8_t inner_thresh_[kMaxLoopFilterValue + 1] = {};
-  uint8_t outer_thresh_[kMaxLoopFilterValue + 1] = {};
-  uint8_t hev_thresh_[kMaxLoopFilterValue + 1] = {};
+  const uint8_t* const inner_thresh_;
+  const uint8_t* const outer_thresh_;
   // This stores the deblocking filter levels assuming that the delta is zero.
   // This will be used by all superblocks whose delta is zero (without having to
   // recompute them). The dimensions (in order) are: segment_id, level_index

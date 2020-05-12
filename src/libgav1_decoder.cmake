@@ -41,6 +41,7 @@ list(APPEND libgav1_decoder_sources
             "${libgav1_source}/obu_parser.h"
             "${libgav1_source}/post_filter/cdef.cc"
             "${libgav1_source}/post_filter/deblock.cc"
+            "${libgav1_source}/post_filter/deblock_thresholds.inc"
             "${libgav1_source}/post_filter/loop_restoration.cc"
             "${libgav1_source}/post_filter/post_filter.cc"
             "${libgav1_source}/post_filter/super_res.cc"

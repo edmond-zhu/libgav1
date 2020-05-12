@@ -19,6 +19,8 @@
 namespace libgav1 {
 namespace {
 
+constexpr uint8_t HevThresh(int level) { return DivideBy16(level); }
+
 // 7.14.5.
 void ComputeDeblockFilterLevelsHelper(
     const ObuFrameHeader& frame_header, int segment_id, int level_index,
@@ -83,31 +85,6 @@ void PostFilter::ComputeDeblockFilterLevels(
       }
     }
   }
-}
-
-void PostFilter::InitDeblockFilterParams() {
-  const int8_t sharpness = frame_header_.loop_filter.sharpness;
-  assert(0 <= sharpness && sharpness < 8);
-  const int shift = DivideBy4(sharpness + 3);  // ceil(sharpness / 4.0)
-  for (int level = 0; level <= kMaxLoopFilterValue; ++level) {
-    uint8_t limit = level >> shift;
-    if (sharpness > 0) {
-      limit = Clip3(limit, 1, 9 - sharpness);
-    } else {
-      limit = std::max(limit, static_cast<uint8_t>(1));
-    }
-    inner_thresh_[level] = limit;
-    outer_thresh_[level] = 2 * (level + 2) + limit;
-    hev_thresh_[level] = level >> 4;
-  }
-}
-
-void PostFilter::GetDeblockFilterParams(uint8_t level, int* outer_thresh,
-                                        int* inner_thresh,
-                                        int* hev_thresh) const {
-  *outer_thresh = outer_thresh_[level];
-  *inner_thresh = inner_thresh_[level];
-  *hev_thresh = hev_thresh_[level];
 }
 
 bool PostFilter::GetHorizontalDeblockFilterEdgeInfo(const Plane plane,
@@ -248,16 +225,11 @@ void PostFilter::HorizontalDeblockFilter(Plane plane, int row4x4_start,
           plane, row4x4_start + row4x4, column4x4_start + column4x4,
           subsampling_x, subsampling_y, &level, &row_step, &filter_length);
       if (need_filter) {
-        int outer_thresh;
-        int inner_thresh;
-        int hev_thresh;
-        GetDeblockFilterParams(level, &outer_thresh, &inner_thresh,
-                               &hev_thresh);
         const dsp::LoopFilterSize size =
             GetLoopFilterSize(plane, filter_length);
         const dsp::LoopFilterFunc filter_func = dsp_.loop_filters[size][type];
-        filter_func(src_row, src_stride, outer_thresh, inner_thresh,
-                    hev_thresh);
+        filter_func(src_row, src_stride, outer_thresh_[level],
+                    inner_thresh_[level], HevThresh(level));
       }
       // TODO(chengchen): use shifts instead of multiplication.
       src_row += row_step * src_stride;
@@ -297,16 +269,11 @@ void PostFilter::VerticalDeblockFilter(Plane plane, int row4x4_start,
           subsampling_x, subsampling_y, bp, &level, &column_step,
           &filter_length);
       if (need_filter) {
-        int outer_thresh;
-        int inner_thresh;
-        int hev_thresh;
-        GetDeblockFilterParams(level, &outer_thresh, &inner_thresh,
-                               &hev_thresh);
         const dsp::LoopFilterSize size =
             GetLoopFilterSize(plane, filter_length);
         const dsp::LoopFilterFunc filter_func = dsp_.loop_filters[size][type];
-        filter_func(src_row, src_stride, outer_thresh, inner_thresh,
-                    hev_thresh);
+        filter_func(src_row, src_stride, outer_thresh_[level],
+                    inner_thresh_[level], HevThresh(level));
       }
       src_row += column_step * pixel_size_;
       column_step = DivideBy4(column_step << subsampling_x);
