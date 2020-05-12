@@ -334,13 +334,19 @@ void DoCdef(const uint16_t* src, const ptrdiff_t src_stride, const int height,
   int16x8_t primary_damping_shift, secondary_damping_shift;
 
   // FloorLog2() requires input to be > 0.
+  // 8-bit damping range: Y: [3, 6], UV: [2, 5].
   if (enable_primary) {
+    // primary_strength: [0, 15] -> FloorLog2: [0, 3] so a clamp is necessary
+    // for UV filtering.
     primary_damping_shift =
         vdupq_n_s16(-std::max(0, damping - FloorLog2(primary_strength)));
   }
   if (enable_secondary) {
+    // secondary_strength: [0, 4] -> FloorLog2: [0, 2] so no clamp to 0 is
+    // necessary.
+    assert(damping - FloorLog2(secondary_strength) >= 0);
     secondary_damping_shift =
-        vdupq_n_s16(-std::max(0, damping - FloorLog2(secondary_strength)));
+        vdupq_n_s16(-(damping - FloorLog2(secondary_strength)));
   }
 
   const int primary_tap_0 = kCdefPrimaryTaps[primary_strength & 1][0];
