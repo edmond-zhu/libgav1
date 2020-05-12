@@ -98,32 +98,33 @@ void PostFilter::PrepareCdefBlock(int block_width4x4, int block_height4x4,
                                   const bool y_plane) {
   assert(y_plane || planes_ == kMaxPlanes);
   const int max_planes = y_plane ? 1 : kMaxPlanes;
+  const int8_t subsampling_x = y_plane ? 0 : subsampling_x_[kPlaneU];
+  const int8_t subsampling_y = y_plane ? 0 : subsampling_y_[kPlaneU];
+  const int start_x = MultiplyBy4(column4x4) >> subsampling_x;
+  const int start_y = MultiplyBy4(row4x4) >> subsampling_y;
+  const int plane_width = RightShiftWithRounding(width_, subsampling_x);
+  const int plane_height = RightShiftWithRounding(height_, subsampling_y);
+  const int block_width = MultiplyBy4(block_width4x4) >> subsampling_x;
+  const int block_height = MultiplyBy4(block_height4x4) >> subsampling_y;
+  // unit_width, unit_height are the same as block_width, block_height unless
+  // it reaches the frame boundary, where block_width < 64 or
+  // block_height < 64. unit_width, unit_height guarantee we build blocks on
+  // a multiple of 8.
+  const int unit_width = Align(block_width, 8 >> subsampling_x);
+  const int unit_height = Align(block_height, 8 >> subsampling_y);
+  const bool is_frame_left = column4x4 == 0;
+  const bool is_frame_right = start_x + block_width >= plane_width;
+  const bool is_frame_top = row4x4 == 0;
+  const bool is_frame_bottom = start_y + block_height >= plane_height;
+  const int y_offset = is_frame_top ? 0 : kCdefBorder;
 
   for (int plane = y_plane ? kPlaneY : kPlaneU; plane < max_planes; ++plane) {
     uint16_t* cdef_src = cdef_source + plane * kCdefUnitSizeWithBorders *
                                            kCdefUnitSizeWithBorders;
-    const int8_t subsampling_x = subsampling_x_[plane];
-    const int8_t subsampling_y = subsampling_y_[plane];
-    const int start_x = MultiplyBy4(column4x4) >> subsampling_x;
-    const int start_y = MultiplyBy4(row4x4) >> subsampling_y;
-    const int plane_width = RightShiftWithRounding(width_, subsampling_x);
-    const int plane_height = RightShiftWithRounding(height_, subsampling_y);
-    const int block_width = MultiplyBy4(block_width4x4) >> subsampling_x;
-    const int block_height = MultiplyBy4(block_height4x4) >> subsampling_y;
-    // unit_width, unit_height are the same as block_width, block_height unless
-    // it reaches the frame boundary, where block_width < 64 or
-    // block_height < 64. unit_width, unit_height guarantee we build blocks on
-    // a multiple of 8.
-    const int unit_width = Align(block_width, 8 >> subsampling_x);
-    const int unit_height = Align(block_height, 8 >> subsampling_y);
-    const bool is_frame_left = column4x4 == 0;
-    const bool is_frame_right = start_x + block_width >= plane_width;
-    const bool is_frame_top = row4x4 == 0;
-    const bool is_frame_bottom = start_y + block_height >= plane_height;
     const int src_stride = frame_buffer_.stride(plane) / sizeof(Pixel);
     const Pixel* src_buffer =
         reinterpret_cast<const Pixel*>(source_buffer_[plane]) +
-        (start_y - (is_frame_top ? 0 : kCdefBorder)) * src_stride + start_x;
+        (start_y - y_offset) * src_stride + start_x;
 
     // All the copying code will use negative indices for populating the left
     // border. So the starting point is set to kCdefBorder.
