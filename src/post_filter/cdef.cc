@@ -114,8 +114,8 @@ void PostFilter::PrepareCdefBlock(int block_width4x4, int block_height4x4,
     // it reaches the frame boundary, where block_width < 64 or
     // block_height < 64. unit_width, unit_height guarantee we build blocks on
     // a multiple of 8.
-    const int unit_width = Align(block_width, (subsampling_x > 0) ? 4 : 8);
-    const int unit_height = Align(block_height, (subsampling_y > 0) ? 4 : 8);
+    const int unit_width = Align(block_width, 8 >> subsampling_x);
+    const int unit_height = Align(block_height, 8 >> subsampling_y);
     const bool is_frame_left = column4x4 == 0;
     const bool is_frame_right = start_x + block_width >= plane_width;
     const bool is_frame_top = row4x4 == 0;
