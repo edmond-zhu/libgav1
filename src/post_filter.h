@@ -325,15 +325,6 @@ class PostFilter {
   int GetDeblockUnitId(int row_unit, int column_unit) const {
     return row_unit * num_64x64_blocks_per_row_ + column_unit;
   }
-  static dsp::LoopFilterSize GetLoopFilterSize(Plane plane, int step) {
-    if (step == 4) {
-      return dsp::kLoopFilterSize4;
-    }
-    if (step == 8) {
-      return (plane == kPlaneY) ? dsp::kLoopFilterSize8 : dsp::kLoopFilterSize6;
-    }
-    return (plane == kPlaneY) ? dsp::kLoopFilterSize14 : dsp::kLoopFilterSize6;
-  }
   bool GetHorizontalDeblockFilterEdgeInfo(Plane plane, int row4x4,
                                           int column4x4, int8_t subsampling_x,
                                           int8_t subsampling_y, uint8_t* level,

@@ -21,6 +21,31 @@ namespace {
 
 constexpr uint8_t HevThresh(int level) { return DivideBy16(level); }
 
+// GetLoopFilterSize* functions depend on this exact ordering of the
+// LoopFilterSize enums.
+static_assert(dsp::kLoopFilterSize4 == 0, "");
+static_assert(dsp::kLoopFilterSize6 == 1, "");
+static_assert(dsp::kLoopFilterSize8 == 2, "");
+static_assert(dsp::kLoopFilterSize14 == 3, "");
+
+dsp::LoopFilterSize GetLoopFilterSizeY(int filter_length) {
+  // |filter_length| must be a power of 2.
+  assert((filter_length & (filter_length - 1)) == 0);
+  // This code is the branch free equivalent of:
+  //   if (filter_length == 4) return kLoopFilterSize4;
+  //   if (filter_length == 8) return kLoopFilterSize8;
+  //   return kLoopFilterSize14;
+  return static_cast<dsp::LoopFilterSize>(
+      MultiplyBy2(static_cast<int>(filter_length > 4)) +
+      static_cast<int>(filter_length > 8));
+}
+
+constexpr dsp::LoopFilterSize GetLoopFilterSizeUV(int filter_length) {
+  // For U & V planes, size is kLoopFilterSize4 if |filter_length| is 4,
+  // otherwise size is kLoopFilterSize6.
+  return static_cast<dsp::LoopFilterSize>(filter_length != 4);
+}
+
 // 7.14.5.
 void ComputeDeblockFilterLevelsHelper(
     const ObuFrameHeader& frame_header, int segment_id, int level_index,
@@ -226,7 +251,8 @@ void PostFilter::HorizontalDeblockFilter(Plane plane, int row4x4_start,
           subsampling_x, subsampling_y, &level, &row_step, &filter_length);
       if (need_filter) {
         const dsp::LoopFilterSize size =
-            GetLoopFilterSize(plane, filter_length);
+            (plane == kPlaneY) ? GetLoopFilterSizeY(filter_length)
+                               : GetLoopFilterSizeUV(filter_length);
         const dsp::LoopFilterFunc filter_func = dsp_.loop_filters[size][type];
         filter_func(src_row, src_stride, outer_thresh_[level],
                     inner_thresh_[level], HevThresh(level));
@@ -270,7 +296,8 @@ void PostFilter::VerticalDeblockFilter(Plane plane, int row4x4_start,
           &filter_length);
       if (need_filter) {
         const dsp::LoopFilterSize size =
-            GetLoopFilterSize(plane, filter_length);
+            (plane == kPlaneY) ? GetLoopFilterSizeY(filter_length)
+                               : GetLoopFilterSizeUV(filter_length);
         const dsp::LoopFilterFunc filter_func = dsp_.loop_filters[size][type];
         filter_func(src_row, src_stride, outer_thresh_[level],
                     inner_thresh_[level], HevThresh(level));
