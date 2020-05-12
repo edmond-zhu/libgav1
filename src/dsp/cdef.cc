@@ -128,9 +128,16 @@ void CdefFilter_C(const void* const source, const ptrdiff_t source_stride,
   assert(block_width == 4 || block_width == 8);
   assert(block_height == 4 || block_height == 8);
   assert(direction >= 0 && direction <= 7);
+  constexpr int coeff_shift = bitdepth - 8;
+  // Section 5.9.19. CDEF params syntax.
+  assert(primary_strength >= 0 && primary_strength <= 15 << coeff_shift);
+  assert(secondary_strength >= 0 && secondary_strength <= 4 << coeff_shift &&
+         secondary_strength != 3 << coeff_shift);
+  // damping is decreased by 1 for chroma.
+  assert((damping >= 3 && damping <= 6 + coeff_shift) ||
+         (damping >= 2 && damping <= 5 + coeff_shift));
   static constexpr int kCdefSecondaryTaps[2] = {kCdefSecondaryTap0,
                                                 kCdefSecondaryTap1};
-  const int coeff_shift = bitdepth - 8;
   const auto* src = static_cast<const uint16_t*>(source);
   auto* dst = static_cast<Pixel*>(dest);
   const ptrdiff_t dst_stride = dest_stride / sizeof(Pixel);
