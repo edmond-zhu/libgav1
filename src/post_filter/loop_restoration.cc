@@ -69,7 +69,7 @@ void PostFilter::ApplyLoopRestorationForOneUnit(
         deblock_buffer + deblock_unit_y * deblock_buffer_stride +
         unit_x * pixel_size_;
     PrepareLoopRestorationBlock<Pixel>(
-        true, cdef_unit_buffer, cdef_buffer_stride, deblock_unit_buffer,
+        cdef_unit_buffer, cdef_buffer_stride, deblock_unit_buffer,
         deblock_buffer_stride, block_buffer, block_buffer_stride,
         current_process_unit_width, current_process_unit_height, unit_y == 0,
         unit_y + current_process_unit_height >= plane_height);
