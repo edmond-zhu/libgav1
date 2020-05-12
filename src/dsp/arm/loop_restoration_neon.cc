@@ -1004,26 +1004,21 @@ inline void BoxFilterProcess(const uint8_t* const src,
   // names for the next step.
   uint16_t* ab_ptr = temp;
 
-  // The first phase needs a radius of 2 context values. The second phase needs
-  // a context of radius 1 values. This means we start at (-3, -3).
-  const uint8_t* const src_pre_process = src - 3 - 3 * src_stride;
+  const uint8_t* const src_pre_process = src - 2 * src_stride - 3;
   // Calculate intermediate results, including two-pixel border, for example, if
   // unit size is 64x64, we calculate 68x68 pixels.
   {
     const uint8_t* column = src_pre_process;
     uint8x8_t row[5];
     uint16x8_t row_sq[5];
-    row[0] = vld1_u8(column);
-    column += src_stride;
-    row[1] = vld1_u8(column);
+    row[0] = row[1] = vld1_u8(column);
     column += src_stride;
     row[2] = vld1_u8(column);
 
-    row_sq[0] = vmull_u8(row[0], row[0]);
-    row_sq[1] = vmull_u8(row[1], row[1]);
+    row_sq[0] = row_sq[1] = vmull_u8(row[1], row[1]);
     row_sq[2] = vmull_u8(row[2], row[2]);
 
-    int y = 0;
+    int y = (height + 2) >> 1;
     do {
       column += src_stride;
       row[3] = vld1_u8(column);
@@ -1045,8 +1040,15 @@ inline void BoxFilterProcess(const uint8_t* const src,
       row_sq[1] = row_sq[3];
       row_sq[2] = row_sq[4];
       ab_ptr += 24;
-      y += 2;
-    } while (y < height + 2);
+    } while (--y != 0);
+
+    if ((height & 1) != 0) {
+      column += src_stride;
+      row[3] = row[4] = vld1_u8(column);
+      row_sq[3] = row_sq[4] = vmull_u8(row[3], row[3]);
+      BoxFilterPreProcess4<5, 0>(row + 0, row_sq + 0, s[0], ab_ptr + 0);
+      BoxFilterPreProcess4<3, 1>(row + 1, row_sq + 1, s[1], ab_ptr + 8);
+    }
   }
 
   const int16_t w0 = restoration_info.sgr_proj_info.multiplier[0];
@@ -1086,9 +1088,7 @@ inline void BoxFilterProcess(const uint8_t* const src,
     const uint8_t* column = src_pre_process + x + 4;
     uint8x16_t row[5];
     uint16x8x2_t row_sq[5];
-    row[0] = vld1q_u8(column);
-    column += src_stride;
-    row[1] = vld1q_u8(column);
+    row[0] = row[1] = vld1q_u8(column);
     column += src_stride;
     row[2] = vld1q_u8(column);
     column += src_stride;
@@ -1096,10 +1096,10 @@ inline void BoxFilterProcess(const uint8_t* const src,
     column += src_stride;
     row[4] = vld1q_u8(column);
 
-    row_sq[0].val[0] = vmull_u8(vget_low_u8(row[0]), vget_low_u8(row[0]));
-    row_sq[0].val[1] = vmull_u8(vget_high_u8(row[0]), vget_high_u8(row[0]));
-    row_sq[1].val[0] = vmull_u8(vget_low_u8(row[1]), vget_low_u8(row[1]));
-    row_sq[1].val[1] = vmull_u8(vget_high_u8(row[1]), vget_high_u8(row[1]));
+    row_sq[0].val[0] = row_sq[1].val[0] =
+        vmull_u8(vget_low_u8(row[1]), vget_low_u8(row[1]));
+    row_sq[0].val[1] = row_sq[1].val[1] =
+        vmull_u8(vget_high_u8(row[1]), vget_high_u8(row[1]));
     row_sq[2].val[0] = vmull_u8(vget_low_u8(row[2]), vget_low_u8(row[2]));
     row_sq[2].val[1] = vmull_u8(vget_high_u8(row[2]), vget_high_u8(row[2]));
     row_sq[3].val[0] = vmull_u8(vget_low_u8(row[3]), vget_low_u8(row[3]));
@@ -1139,8 +1139,7 @@ inline void BoxFilterProcess(const uint8_t* const src,
     // Calculate one output line. Add in the line from the previous pass and
     // output one even row. Sum the new line and output the odd row. Carry the
     // new row into the next pass.
-    int y = 0;
-    do {
+    for (int y = height >> 1; y != 0; --y) {
       ab_ptr += 24;
       b2[0][0] = vld1q_u16(ab_ptr);
       a2[0][0] = vget_low_u8(vreinterpretq_u8_u16(b2[0][0]));
@@ -1199,9 +1198,42 @@ inline void BoxFilterProcess(const uint8_t* const src,
       sum343_b[0] = sum343_b[2];
       sum343_b[1] = sum343_b[3];
       sum444_b[0] = sum444_b[2];
+    }
+    if ((height & 1) != 0) {
+      ab_ptr += 24;
+      b2[0][0] = vld1q_u16(ab_ptr);
+      a2[0][0] = vget_low_u8(vreinterpretq_u8_u16(b2[0][0]));
+      b2[1][0] = vld1q_u16(ab_ptr + 8);
+      a2[1][0] = vget_low_u8(vreinterpretq_u8_u16(b2[1][0]));
 
-      y += 2;
-    } while (y < height);
+      row[0] = row[2];
+      row[1] = row[3];
+      row[2] = row[4];
+
+      row_sq[0] = row_sq[2];
+      row_sq[1] = row_sq[3];
+      row_sq[2] = row_sq[4];
+
+      column += src_stride;
+      row[3] = row[4] = vld1q_u8(column);
+
+      row_sq[3].val[0] = row_sq[4].val[0] =
+          vmull_u8(vget_low_u8(row[3]), vget_low_u8(row[3]));
+      row_sq[3].val[1] = row_sq[4].val[1] =
+          vmull_u8(vget_high_u8(row[3]), vget_high_u8(row[3]));
+
+      BoxFilterPreProcess8<5, 0>(row, row_sq, s[0], &a2[0][1], &b2[0][1],
+                                 ab_ptr);
+      BoxFilterPreProcess8<3, 1>(row + 1, row_sq + 1, s[1], &a2[1][1],
+                                 &b2[1][1], ab_ptr + 8);
+
+      int16x8_t p[2];
+      const uint8x8_t src0 = vld1_u8(src_ptr);
+      p[0] = BoxFilterPass1(src0, a2[0], b2[0], sum565_a, sum565_b);
+      p[1] = BoxFilterPass2(src0, a2[1], b2[1], sum343_a, sum444_a, sum343_b,
+                            sum444_b);
+      SelfGuidedDoubleMultiplier(src0, p, w0_v, w1_v, w2_v, dst_ptr);
+    }
     x += 8;
   } while (x < width);
 }
@@ -1256,26 +1288,21 @@ inline void BoxFilterProcessPass1(const uint8_t* const src,
   // names for the next step.
   uint16_t* ab_ptr = temp;
 
-  // The first phase needs a radius of 2 context values. The second phase needs
-  // a context of radius 1 values. This means we start at (-3, -3).
-  const uint8_t* const src_pre_process = src - 3 - 3 * src_stride;
+  const uint8_t* const src_pre_process = src - 2 * src_stride - 3;
   // Calculate intermediate results, including two-pixel border, for example, if
   // unit size is 64x64, we calculate 68x68 pixels.
   {
     const uint8_t* column = src_pre_process;
     uint8x8_t row[5];
     uint16x8_t row_sq[5];
-    row[0] = vld1_u8(column);
-    column += src_stride;
-    row[1] = vld1_u8(column);
+    row[0] = row[1] = vld1_u8(column);
     column += src_stride;
     row[2] = vld1_u8(column);
 
-    row_sq[0] = vmull_u8(row[0], row[0]);
-    row_sq[1] = vmull_u8(row[1], row[1]);
+    row_sq[0] = row_sq[1] = vmull_u8(row[1], row[1]);
     row_sq[2] = vmull_u8(row[2], row[2]);
 
-    int y = 0;
+    int y = (height + 2) >> 1;
     do {
       column += src_stride;
       row[3] = vld1_u8(column);
@@ -1295,8 +1322,14 @@ inline void BoxFilterProcessPass1(const uint8_t* const src,
       row_sq[1] = row_sq[3];
       row_sq[2] = row_sq[4];
       ab_ptr += 8;
-      y += 2;
-    } while (y < height + 2);
+    } while (--y != 0);
+
+    if ((height & 1) != 0) {
+      column += src_stride;
+      row[3] = row[4] = vld1_u8(column);
+      row_sq[3] = row_sq[4] = vmull_u8(row[3], row[3]);
+      BoxFilterPreProcess4<5, 0>(row, row_sq, s, ab_ptr);
+    }
   }
 
   const int16_t w0 = restoration_info.sgr_proj_info.multiplier[0];
@@ -1330,9 +1363,7 @@ inline void BoxFilterProcessPass1(const uint8_t* const src,
     const uint8_t* column = src_pre_process + x + 4;
     uint8x16_t row[5];
     uint16x8x2_t row_sq[5];
-    row[0] = vld1q_u8(column);
-    column += src_stride;
-    row[1] = vld1q_u8(column);
+    row[0] = row[1] = vld1q_u8(column);
     column += src_stride;
     row[2] = vld1q_u8(column);
     column += src_stride;
@@ -1340,10 +1371,10 @@ inline void BoxFilterProcessPass1(const uint8_t* const src,
     column += src_stride;
     row[4] = vld1q_u8(column);
 
-    row_sq[0].val[0] = vmull_u8(vget_low_u8(row[0]), vget_low_u8(row[0]));
-    row_sq[0].val[1] = vmull_u8(vget_high_u8(row[0]), vget_high_u8(row[0]));
-    row_sq[1].val[0] = vmull_u8(vget_low_u8(row[1]), vget_low_u8(row[1]));
-    row_sq[1].val[1] = vmull_u8(vget_high_u8(row[1]), vget_high_u8(row[1]));
+    row_sq[0].val[0] = row_sq[1].val[0] =
+        vmull_u8(vget_low_u8(row[1]), vget_low_u8(row[1]));
+    row_sq[0].val[1] = row_sq[1].val[1] =
+        vmull_u8(vget_high_u8(row[1]), vget_high_u8(row[1]));
     row_sq[2].val[0] = vmull_u8(vget_low_u8(row[2]), vget_low_u8(row[2]));
     row_sq[2].val[1] = vmull_u8(vget_high_u8(row[2]), vget_high_u8(row[2]));
     row_sq[3].val[0] = vmull_u8(vget_low_u8(row[3]), vget_low_u8(row[3]));
@@ -1366,8 +1397,7 @@ inline void BoxFilterProcessPass1(const uint8_t* const src,
     // Calculate one output line. Add in the line from the previous pass and
     // output one even row. Sum the new line and output the odd row. Carry the
     // new row into the next pass.
-    int y = 0;
-    do {
+    for (int y = height >> 1; y != 0; --y) {
       ab_ptr += 8;
       b2[0] = vld1q_u16(ab_ptr);
       a2[0] = vget_low_u8(vreinterpretq_u8_u16(b2[0]));
@@ -1407,8 +1437,34 @@ inline void BoxFilterProcessPass1(const uint8_t* const src,
 
       sum565_a[0] = sum565_a[1];
       sum565_b[0] = sum565_b[1];
-      y += 2;
-    } while (y < height);
+    }
+    if ((height & 1) != 0) {
+      ab_ptr += 8;
+      b2[0] = vld1q_u16(ab_ptr);
+      a2[0] = vget_low_u8(vreinterpretq_u8_u16(b2[0]));
+
+      row[0] = row[2];
+      row[1] = row[3];
+      row[2] = row[4];
+
+      row_sq[0] = row_sq[2];
+      row_sq[1] = row_sq[3];
+      row_sq[2] = row_sq[4];
+
+      column += src_stride;
+      row[3] = row[4] = vld1q_u8(column);
+
+      row_sq[3].val[0] = row_sq[4].val[0] =
+          vmull_u8(vget_low_u8(row[3]), vget_low_u8(row[3]));
+      row_sq[3].val[1] = row_sq[4].val[1] =
+          vmull_u8(vget_high_u8(row[3]), vget_high_u8(row[3]));
+
+      BoxFilterPreProcess8<5, 0>(row, row_sq, s, &a2[1], &b2[1], ab_ptr);
+
+      const uint8x8_t src0 = vld1_u8(src_ptr);
+      const int16x8_t p0 = BoxFilterPass1(src0, a2, b2, sum565_a, sum565_b);
+      SelfGuidedSingleMultiplier(src0, p0, w0, w1, dst_ptr);
+    }
     x += 8;
   } while (x < width);
 }
@@ -1550,9 +1606,8 @@ inline void BoxFilterProcessPass2(const uint8_t* src,
 }
 
 // If |width| is non-multiple of 8, up to 7 more pixels are written to |dest| in
-// the end of each row. If |height| is odd and |radius_pass_0| is non-zero, 1
-// more row of pixels is written to |dest|. It is safe to overwrite the output
-// as it will not be part of the visible frame.
+// the end of each row. It is safe to overwrite the output as it will not be
+// part of the visible frame.
 void SelfGuidedFilter_NEON(const void* const source, void* const dest,
                            const RestorationUnitInfo& restoration_info,
                            const ptrdiff_t source_stride,

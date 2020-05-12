@@ -990,25 +990,20 @@ inline void BoxFilterProcess(const uint8_t* const src,
   // names for the next step.
   uint16_t* ab_ptr = temp;
 
-  // The first phase needs a radius of 2 context values. The second phase needs
-  // a context of radius 1 values. This means we start at (-3, -3).
-  const uint8_t* const src_pre_process = src - 3 - 3 * src_stride;
+  const uint8_t* const src_pre_process = src - 2 * src_stride - 3;
   // Calculate intermediate results, including two-pixel border, for example, if
   // unit size is 64x64, we calculate 68x68 pixels.
   {
     const uint8_t* column = src_pre_process;
     __m128i row[5], row_sq[5];
-    row[0] = LoadLo8Msan(column, 2 - width);
-    column += src_stride;
-    row[1] = LoadLo8Msan(column, 2 - width);
+    row[0] = row[1] = LoadLo8Msan(column, 2 - width);
     column += src_stride;
     row[2] = LoadLo8Msan(column, 2 - width);
 
-    row_sq[0] = VmullLo8(row[0], row[0]);
-    row_sq[1] = VmullLo8(row[1], row[1]);
+    row_sq[0] = row_sq[1] = VmullLo8(row[1], row[1]);
     row_sq[2] = VmullLo8(row[2], row[2]);
 
-    int y = 0;
+    int y = (height + 2) >> 1;
     do {
       column += src_stride;
       row[3] = LoadLo8Msan(column, 2 - width);
@@ -1030,8 +1025,14 @@ inline void BoxFilterProcess(const uint8_t* const src,
       row_sq[1] = row_sq[3];
       row_sq[2] = row_sq[4];
       ab_ptr += 24;
-      y += 2;
-    } while (y < height + 2);
+    } while (--y != 0);
+    if ((height & 1) != 0) {
+      column += src_stride;
+      row[3] = row[4] = LoadLo8Msan(column, 2 - width);
+      row_sq[3] = row_sq[4] = VmullLo8(row[3], row[3]);
+      BoxFilterPreProcess4<5, 0>(row + 0, row_sq + 0, s[0], ab_ptr + 0);
+      BoxFilterPreProcess4<3, 1>(row + 1, row_sq + 1, s[1], ab_ptr + 8);
+    }
   }
 
   const int16_t w0 = restoration_info.sgr_proj_info.multiplier[0];
@@ -1067,9 +1068,7 @@ inline void BoxFilterProcess(const uint8_t* const src,
 
     const uint8_t* column = src_pre_process + x + 4;
     __m128i row[5], row_sq[5][2];
-    row[0] = LoadUnaligned16Msan(column, x + 14 - width);
-    column += src_stride;
-    row[1] = LoadUnaligned16Msan(column, x + 14 - width);
+    row[0] = row[1] = LoadUnaligned16Msan(column, x + 14 - width);
     column += src_stride;
     row[2] = LoadUnaligned16Msan(column, x + 14 - width);
     column += src_stride;
@@ -1077,10 +1076,8 @@ inline void BoxFilterProcess(const uint8_t* const src,
     column += src_stride;
     row[4] = LoadUnaligned16Msan(column, x + 14 - width);
 
-    row_sq[0][0] = VmullLo8(row[0], row[0]);
-    row_sq[0][1] = VmullHi8(row[0], row[0]);
-    row_sq[1][0] = VmullLo8(row[1], row[1]);
-    row_sq[1][1] = VmullHi8(row[1], row[1]);
+    row_sq[0][0] = row_sq[1][0] = VmullLo8(row[1], row[1]);
+    row_sq[0][1] = row_sq[1][1] = VmullHi8(row[1], row[1]);
     row_sq[2][0] = VmullLo8(row[2], row[2]);
     row_sq[2][1] = VmullHi8(row[2], row[2]);
     row_sq[3][0] = VmullLo8(row[3], row[3]);
@@ -1119,8 +1116,7 @@ inline void BoxFilterProcess(const uint8_t* const src,
     // Calculate one output line. Add in the line from the previous pass and
     // output one even row. Sum the new line and output the odd row. Carry the
     // new row into the next pass.
-    int y = 0;
-    do {
+    for (int y = height >> 1; y != 0; --y) {
       ab_ptr += 24;
       a2[0] = b2[0][0] = LoadAligned16(ab_ptr);
       a2[1] = b2[1][0] = LoadAligned16(ab_ptr + 8);
@@ -1175,9 +1171,37 @@ inline void BoxFilterProcess(const uint8_t* const src,
       sum343_b[0][0] = sum343_b[2][0], sum343_b[0][1] = sum343_b[2][1];
       sum343_b[1][0] = sum343_b[3][0], sum343_b[1][1] = sum343_b[3][1];
       sum444_b[0][0] = sum444_b[2][0], sum444_b[0][1] = sum444_b[2][1];
+    }
+    if ((height & 1) != 0) {
+      ab_ptr += 24;
+      a2[0] = b2[0][0] = LoadAligned16(ab_ptr);
+      a2[1] = b2[1][0] = LoadAligned16(ab_ptr + 8);
 
-      y += 2;
-    } while (y < height);
+      row[0] = row[2];
+      row[1] = row[3];
+      row[2] = row[4];
+
+      row_sq[0][0] = row_sq[2][0], row_sq[0][1] = row_sq[2][1];
+      row_sq[1][0] = row_sq[3][0], row_sq[1][1] = row_sq[3][1];
+      row_sq[2][0] = row_sq[4][0], row_sq[2][1] = row_sq[4][1];
+
+      column += src_stride;
+      row[3] = row[4] = LoadUnaligned16Msan(column, x + 14 - width);
+
+      row_sq[3][0] = row_sq[4][0] = VmullLo8(row[3], row[3]);
+      row_sq[3][1] = row_sq[4][1] = VmullHi8(row[3], row[3]);
+
+      BoxFilterPreProcess8<5, 0>(row, row_sq, s[0], &a2[0], &b2[0][1], ab_ptr);
+      BoxFilterPreProcess8<3, 1>(row + 1, row_sq + 1, s[1], &a2[1], &b2[1][1],
+                                 ab_ptr + 8);
+
+      __m128i p[2];
+      const __m128i src0 = LoadLo8(src_ptr);
+      p[0] = BoxFilterPass1(src0, a2[0], b2[0], sum565_a, sum565_b);
+      p[1] = BoxFilterPass2(src0, a2[1], b2[1], sum343_a, sum444_a, sum343_b,
+                            sum444_b);
+      SelfGuidedDoubleMultiplier(src0, p, w0_v, w1_v, w2_v, dst_ptr);
+    }
     x += 8;
   } while (x < width);
 }
@@ -1232,25 +1256,20 @@ inline void BoxFilterProcessPass1(const uint8_t* const src,
   // names for the next step.
   uint16_t* ab_ptr = temp;
 
-  // The first phase needs a radius of 2 context values. The second phase needs
-  // a context of radius 1 values. This means we start at (-3, -3).
-  const uint8_t* const src_pre_process = src - 3 - 3 * src_stride;
+  const uint8_t* const src_pre_process = src - 2 * src_stride - 3;
   // Calculate intermediate results, including two-pixel border, for example, if
   // unit size is 64x64, we calculate 68x68 pixels.
   {
     const uint8_t* column = src_pre_process;
     __m128i row[5], row_sq[5];
-    row[0] = LoadLo8Msan(column, 2 - width);
-    column += src_stride;
-    row[1] = LoadLo8Msan(column, 2 - width);
+    row[0] = row[1] = LoadLo8Msan(column, 2 - width);
     column += src_stride;
     row[2] = LoadLo8Msan(column, 2 - width);
 
-    row_sq[0] = VmullLo8(row[0], row[0]);
-    row_sq[1] = VmullLo8(row[1], row[1]);
+    row_sq[0] = row_sq[1] = VmullLo8(row[1], row[1]);
     row_sq[2] = VmullLo8(row[2], row[2]);
 
-    int y = 0;
+    int y = (height + 2) >> 1;
     do {
       column += src_stride;
       row[3] = LoadLo8Msan(column, 2 - width);
@@ -1270,8 +1289,13 @@ inline void BoxFilterProcessPass1(const uint8_t* const src,
       row_sq[1] = row_sq[3];
       row_sq[2] = row_sq[4];
       ab_ptr += 8;
-      y += 2;
-    } while (y < height + 2);
+    } while (--y != 0);
+    if ((height & 1) != 0) {
+      column += src_stride;
+      row[3] = row[4] = LoadLo8Msan(column, 2 - width);
+      row_sq[3] = row_sq[4] = VmullLo8(row[3], row[3]);
+      BoxFilterPreProcess4<5, 0>(row, row_sq, s, ab_ptr);
+    }
   }
 
   const int16_t w0 = restoration_info.sgr_proj_info.multiplier[0];
@@ -1301,9 +1325,7 @@ inline void BoxFilterProcessPass1(const uint8_t* const src,
 
     const uint8_t* column = src_pre_process + x + 4;
     __m128i row[5], row_sq[5][2];
-    row[0] = LoadUnaligned16Msan(column, x + 14 - width);
-    column += src_stride;
-    row[1] = LoadUnaligned16Msan(column, x + 14 - width);
+    row[0] = row[1] = LoadUnaligned16Msan(column, x + 14 - width);
     column += src_stride;
     row[2] = LoadUnaligned16Msan(column, x + 14 - width);
     column += src_stride;
@@ -1311,10 +1333,8 @@ inline void BoxFilterProcessPass1(const uint8_t* const src,
     column += src_stride;
     row[4] = LoadUnaligned16Msan(column, x + 14 - width);
 
-    row_sq[0][0] = VmullLo8(row[0], row[0]);
-    row_sq[0][1] = VmullHi8(row[0], row[0]);
-    row_sq[1][0] = VmullLo8(row[1], row[1]);
-    row_sq[1][1] = VmullHi8(row[1], row[1]);
+    row_sq[0][0] = row_sq[1][0] = VmullLo8(row[1], row[1]);
+    row_sq[0][1] = row_sq[1][1] = VmullHi8(row[1], row[1]);
     row_sq[2][0] = VmullLo8(row[2], row[2]);
     row_sq[2][1] = VmullHi8(row[2], row[2]);
     row_sq[3][0] = VmullLo8(row[3], row[3]);
@@ -1337,8 +1357,7 @@ inline void BoxFilterProcessPass1(const uint8_t* const src,
     // Calculate one output line. Add in the line from the previous pass and
     // output one even row. Sum the new line and output the odd row. Carry the
     // new row into the next pass.
-    int y = 0;
-    do {
+    for (int y = height >> 1; y != 0; --y) {
       ab_ptr += 8;
       a2[0] = b2[0] = LoadAligned16(ab_ptr);
 
@@ -1377,8 +1396,31 @@ inline void BoxFilterProcessPass1(const uint8_t* const src,
 
       sum565_a[0] = sum565_a[1];
       sum565_b[0][0] = sum565_b[1][0], sum565_b[0][1] = sum565_b[1][1];
-      y += 2;
-    } while (y < height);
+    }
+    if ((height & 1) != 0) {
+      ab_ptr += 8;
+      a2[0] = b2[0] = LoadAligned16(ab_ptr);
+
+      row[0] = row[2];
+      row[1] = row[3];
+      row[2] = row[4];
+
+      row_sq[0][0] = row_sq[2][0], row_sq[0][1] = row_sq[2][1];
+      row_sq[1][0] = row_sq[3][0], row_sq[1][1] = row_sq[3][1];
+      row_sq[2][0] = row_sq[4][0], row_sq[2][1] = row_sq[4][1];
+
+      column += src_stride;
+      row[3] = row[4] = LoadUnaligned16Msan(column, x + 14 - width);
+
+      row_sq[3][0] = row_sq[4][0] = VmullLo8(row[3], row[3]);
+      row_sq[3][1] = row_sq[4][1] = VmullHi8(row[3], row[3]);
+
+      BoxFilterPreProcess8<5, 0>(row, row_sq, s, &a2[0], &b2[1], ab_ptr);
+
+      const __m128i src0 = LoadLo8(src_ptr);
+      const __m128i p0 = BoxFilterPass1(src0, a2[0], b2, sum565_a, sum565_b);
+      SelfGuidedSingleMultiplier(src0, p0, w0, w1, dst_ptr);
+    }
     x += 8;
   } while (x < width);
 }
@@ -1396,7 +1438,7 @@ inline void BoxFilterProcessPass2(const uint8_t* src,
   // unit size is 64x64, we calculate 66x66 pixels.
   // Because of the vectors this calculates start in blocks of 4 so we actually
   // get 68 values.
-  const uint8_t* const src_top_left_corner = src - 2 - 2 * src_stride;
+  const uint8_t* const src_top_left_corner = src - 2 * src_stride - 2;
   {
     const uint8_t* column = src_top_left_corner;
     __m128i row[3], row_sq[3];
@@ -1513,9 +1555,8 @@ inline void BoxFilterProcessPass2(const uint8_t* src,
 }
 
 // If |width| is non-multiple of 8, up to 7 more pixels are written to |dest| in
-// the end of each row. If |height| is odd and |radius_pass_0| is non-zero, 1
-// more row of pixels is written to |dest|. It is safe to overwrite the output
-// as it will not be part of the visible frame.
+// the end of each row. It is safe to overwrite the output as it will not be
+// part of the visible frame.
 void SelfGuidedFilter_SSE4_1(const void* const source, void* const dest,
                              const RestorationUnitInfo& restoration_info,
                              const ptrdiff_t source_stride,

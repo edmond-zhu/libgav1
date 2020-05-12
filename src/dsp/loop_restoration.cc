@@ -342,6 +342,49 @@ inline void CalculateIntermediate(const uint32_t s, uint32_t a,
   intermediate->b = RightShiftWithRounding(b2, kSgrProjReciprocalBits);
 }
 
+template <int bitdepth, typename Pixel>
+LIBGAV1_ALWAYS_INLINE void BoxFilterPreProcessTop(
+    const Pixel* src, const ptrdiff_t stride, const int width, const uint32_t s,
+    SgrIntermediateBuffer* intermediate) {
+  uint32_t a = 0;
+  uint32_t b = 0;
+  for (int dx = 0; dx < 5; ++dx) {
+    const Pixel source = src[dx];
+    a += source * source;
+    b += source;
+  }
+  a += a;
+  b += b;
+  for (int dy = 1; dy < 4; ++dy) {
+    for (int dx = 0; dx < 5; ++dx) {
+      const Pixel source = src[dy * stride + dx];
+      a += source * source;
+      b += source;
+    }
+  }
+  CalculateIntermediate<bitdepth>(s, a, b, 25, intermediate);
+  int x = width - 1;
+  do {
+    {
+      const Pixel source0 = src[0];
+      const Pixel source1 = src[5];
+      a += 2 * (source1 * source1 - source0 * source0);
+      b += 2 * (source1 - source0);
+    }
+    int dy = 1;
+    do {
+      const Pixel source0 = src[dy * stride];
+      const Pixel source1 = src[dy * stride + 5];
+      a -= source0 * source0;
+      a += source1 * source1;
+      b -= source0;
+      b += source1;
+    } while (++dy < 4);
+    src++;
+    CalculateIntermediate<bitdepth>(s, a, b, 25, ++intermediate);
+  } while (--x != 0);
+}
+
 template <int bitdepth, typename Pixel, int size>
 LIBGAV1_ALWAYS_INLINE void BoxFilterPreProcess(
     const Pixel* src, const ptrdiff_t stride, const int width, const uint32_t s,
@@ -370,6 +413,49 @@ LIBGAV1_ALWAYS_INLINE void BoxFilterPreProcess(
     } while (++dy < size);
     src++;
     CalculateIntermediate<bitdepth>(s, a, b, n, ++intermediate);
+  } while (--x != 0);
+}
+
+template <int bitdepth, typename Pixel>
+LIBGAV1_ALWAYS_INLINE void BoxFilterPreProcessBottom(
+    const Pixel* src, const ptrdiff_t stride, const int width, const uint32_t s,
+    SgrIntermediateBuffer* intermediate) {
+  uint32_t a = 0;
+  uint32_t b = 0;
+  for (int dx = 0; dx < 5; ++dx) {
+    const Pixel source = src[3 * stride + dx];
+    a += source * source;
+    b += source;
+  }
+  a += a;
+  b += b;
+  for (int dy = 0; dy < 3; ++dy) {
+    for (int dx = 0; dx < 5; ++dx) {
+      const Pixel source = src[dy * stride + dx];
+      a += source * source;
+      b += source;
+    }
+  }
+  CalculateIntermediate<bitdepth>(s, a, b, 25, intermediate);
+  int x = width - 1;
+  do {
+    {
+      const Pixel source0 = src[3 * stride + 0];
+      const Pixel source1 = src[3 * stride + 5];
+      a += 2 * (source1 * source1 - source0 * source0);
+      b += 2 * (source1 - source0);
+    }
+    int dy = 0;
+    do {
+      const Pixel source0 = src[dy * stride];
+      const Pixel source1 = src[dy * stride + 5];
+      a -= source0 * source0;
+      a += source1 * source1;
+      b -= source0;
+      b += source1;
+    } while (++dy < 3);
+    src++;
+    CalculateIntermediate<bitdepth>(s, a, b, 25, ++intermediate);
   } while (--x != 0);
 }
 
@@ -470,14 +556,13 @@ inline void LoopRestorationFuncs_C<bitdepth, Pixel>::BoxFilterProcess(
   intermediate1[1] = intermediate1[0] + kIntermediateStride,
   intermediate1[2] = intermediate1[1] + kIntermediateStride,
   intermediate1[3] = intermediate1[2] + kIntermediateStride;
-  BoxFilterPreProcess<bitdepth, Pixel, 5>(src - 3 * src_stride - 3, src_stride,
+  BoxFilterPreProcessTop<bitdepth, Pixel>(src - 2 * src_stride - 3, src_stride,
                                           width + 2, s0, intermediate0[0]);
   BoxFilterPreProcess<bitdepth, Pixel, 3>(src - 2 * src_stride - 2, src_stride,
                                           width + 2, s1, intermediate1[0]);
   BoxFilterPreProcess<bitdepth, Pixel, 3>(src - 1 * src_stride - 2, src_stride,
                                           width + 2, s1, intermediate1[1]);
-  int y = (height + 1) >> 1;
-  do {
+  for (int y = height >> 1; y != 0; --y) {
     BoxFilterPreProcess<bitdepth, Pixel, 5>(src - src_stride - 3, src_stride,
                                             width + 2, s0, intermediate0[1]);
     BoxFilterPreProcess<bitdepth, Pixel, 3>(src - 2, src_stride, width + 2, s1,
@@ -502,7 +587,22 @@ inline void LoopRestorationFuncs_C<bitdepth, Pixel>::BoxFilterProcess(
     std::swap(intermediate0[0], intermediate0[1]);
     std::swap(intermediate1[0], intermediate1[2]);
     std::swap(intermediate1[1], intermediate1[3]);
-  } while (--y != 0);
+  }
+  if ((height & 1) != 0) {
+    BoxFilterPreProcessBottom<bitdepth, Pixel>(src - src_stride - 3, src_stride,
+                                               width + 2, s0, intermediate0[1]);
+    BoxFilterPreProcess<bitdepth, Pixel, 3>(src - 2, src_stride, width + 2, s1,
+                                            intermediate1[2]);
+    int x = 0;
+    do {
+      int p[2][2];
+      BoxFilterPass1<Pixel>(src[x], src[src_stride + x], intermediate0, x,
+                            p[0]);
+      p[1][0] = BoxFilterPass2<Pixel>(src[x], intermediate1, x);
+      dst[x] = SelfGuidedDoubleMultiplier<bitdepth, Pixel>(src[x], p[0][0],
+                                                           p[1][0], w0, w1, w2);
+    } while (++x < width);
+  }
 }
 
 template <int bitdepth, typename Pixel>
@@ -518,10 +618,9 @@ inline void LoopRestorationFuncs_C<bitdepth, Pixel>::BoxFilterProcessPass1(
   assert(s != 0);
   intermediate[0] = buffer->intermediate;
   intermediate[1] = intermediate[0] + kIntermediateStride;
-  BoxFilterPreProcess<bitdepth, Pixel, 5>(src - 3 * src_stride - 3, src_stride,
+  BoxFilterPreProcessTop<bitdepth, Pixel>(src - 2 * src_stride - 3, src_stride,
                                           width + 2, s, intermediate[0]);
-  int y = (height + 1) >> 1;
-  do {
+  for (int y = height >> 1; y != 0; --y) {
     BoxFilterPreProcess<bitdepth, Pixel, 5>(src - src_stride - 3, src_stride,
                                             width + 2, s, intermediate[1]);
     int x = 0;
@@ -536,7 +635,20 @@ inline void LoopRestorationFuncs_C<bitdepth, Pixel>::BoxFilterProcessPass1(
     src += 2 * src_stride;
     dst += 2 * dst_stride;
     std::swap(intermediate[0], intermediate[1]);
-  } while (--y != 0);
+  }
+  if ((height & 1) != 0) {
+    BoxFilterPreProcessBottom<bitdepth, Pixel>(src - src_stride - 3, src_stride,
+                                               width + 2, s, intermediate[1]);
+    int x = 0;
+    do {
+      int p[2];
+      BoxFilterPass1<Pixel>(src[x], src[src_stride + x], intermediate, x, p);
+      dst[x] =
+          SelfGuidedSingleMultiplier<bitdepth, Pixel>(src[x], p[0], w0, w1);
+      dst[dst_stride + x] = SelfGuidedSingleMultiplier<bitdepth, Pixel>(
+          src[src_stride + x], p[1], w0, w1);
+    } while (++x < width);
+  }
 }
 
 template <int bitdepth, typename Pixel>
@@ -576,9 +688,6 @@ inline void LoopRestorationFuncs_C<bitdepth, Pixel>::BoxFilterProcessPass2(
   } while (--y != 0);
 }
 
-// If |height| is odd and |radius_pass_0| is non-zero, 1 more row of pixels is
-// written to |dest|. It is safe to overwrite the output as it will not be part
-// of the visible frame.
 template <int bitdepth, typename Pixel>
 void LoopRestorationFuncs_C<bitdepth, Pixel>::SelfGuidedFilter(
     const void* const source, void* const dest,
