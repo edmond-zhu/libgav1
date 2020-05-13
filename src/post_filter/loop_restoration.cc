@@ -44,7 +44,7 @@ void PostFilter::PrepareLoopRestorationBlock(
                          kRestorationBorder;
   const auto* deblock_ptr =
       reinterpret_cast<const Pixel*>(deblock_buffer) - kRestorationBorder;
-  auto* dst = reinterpret_cast<Pixel*>(dest) + dest_stride;
+  auto* dst = reinterpret_cast<Pixel*>(dest);
   int h = height;
   // Top 2 rows.
   if (frame_top_border) {
@@ -121,11 +121,14 @@ void PostFilter::ApplyLoopRestorationForOneUnit(
   const ptrdiff_t block_buffer_stride =
       kRestorationUnitWidthWithBorders * sizeof(Pixel);
   // The SIMD implementation of wiener filter (currently WienerFilter_SSE4_1())
-  // over-reads 6 bytes, so add 6 extra bytes at the end of block_buffer for 8
-  // bit.
+  // over-reads 6 bytes, and the SIMD implementation of self-guided filter
+  // (currently SelfGuidedFilter_SSE4_1()) over-reads up to 7 bytes, so add 7
+  // extra bytes at the end of block_buffer for 8 bit. 7 byte over-reads happen
+  // when |current_process_unit_width| equals |kRestorationUnitWidth| - 7, and
+  // the radius of the first pass in sfg is 0.
   alignas(alignof(uint16_t)) uint8_t
       block_buffer[kRestorationUnitHeightWithBorders * block_buffer_stride +
-                   ((sizeof(Pixel) == 1) ? 6 : 0)];
+                   ((sizeof(Pixel) == 1) ? 7 : 0)];
   RestorationBuffer restoration_buffer;
   const uint8_t* source;
   ptrdiff_t source_stride;
@@ -144,7 +147,7 @@ void PostFilter::ApplyLoopRestorationForOneUnit(
         deblock_buffer_stride, block_buffer, block_buffer_stride,
         current_process_unit_width, current_process_unit_height, unit_y == 0,
         unit_y + current_process_unit_height >= plane_height);
-    source = block_buffer + kRestorationBorder * block_buffer_stride +
+    source = block_buffer + (kRestorationBorder - 1) * block_buffer_stride +
              kRestorationBorder * pixel_size_;
     source_stride = kRestorationUnitWidthWithBorders;
   } else {

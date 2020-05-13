@@ -109,7 +109,7 @@ enum {
   kRestorationUnitHeight = 64,
   kRestorationUnitWidth = 256,
   kRestorationUnitHeightWithBorders =
-      kRestorationUnitHeight + 2 * kRestorationBorder,
+      kRestorationUnitHeight + 2 * (kRestorationBorder - 1),
   kRestorationUnitWidthWithBorders =
       kRestorationUnitWidth + 2 * kRestorationBorder,
   kSuperResFilterBits = 6,
