@@ -149,6 +149,8 @@ PostFilter::PostFilter(const ObuFrameHeader& frame_header,
                                                     : sizeof(uint16_t))),
       inner_thresh_(kInnerThresh[frame_header.loop_filter.sharpness]),
       outer_thresh_(kOuterThresh[frame_header.loop_filter.sharpness]),
+      needs_chroma_deblock_(frame_header.loop_filter.level[kPlaneU + 1] != 0 ||
+                            frame_header.loop_filter.level[kPlaneV + 1] != 0),
       cdef_index_(frame_scratch_buffer->cdef_index),
       inter_transform_sizes_(frame_scratch_buffer->inter_transform_sizes),
       threaded_window_buffer_(

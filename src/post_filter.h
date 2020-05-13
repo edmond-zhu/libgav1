@@ -250,25 +250,12 @@ class PostFilter {
  private:
   // The type of the HorizontalDeblockFilter and VerticalDeblockFilter member
   // functions.
-  using DeblockFilter = void (PostFilter::*)(Plane plane, int row4x4_start,
+  using DeblockFilter = void (PostFilter::*)(int row4x4_start,
                                              int column4x4_start);
   // The lookup table for picking the deblock filter, according to deblock
   // filter type.
   const DeblockFilter deblock_filter_func_[2] = {
       &PostFilter::VerticalDeblockFilter, &PostFilter::HorizontalDeblockFilter};
-
-  // The type of GetVerticalDeblockFilterEdgeInfo* member functions.
-  using DeblockVerticalEdgeInfo = bool (PostFilter::*)(
-      const Plane plane, int row4x4, int column4x4, const int8_t subsampling_x,
-      const int8_t subsampling_y, BlockParameters* const* bp_ptr,
-      uint8_t* level, int* step, int* filter_length) const;
-  // The lookup table for picking the GetVerticalDeblockEdgeInfo based on the
-  // plane.
-  const DeblockVerticalEdgeInfo deblock_vertical_edge_info_[kMaxPlanes] = {
-      &PostFilter::GetVerticalDeblockFilterEdgeInfo,
-      &PostFilter::GetVerticalDeblockFilterEdgeInfoUV,
-      &PostFilter::GetVerticalDeblockFilterEdgeInfoUV,
-  };
 
   // Functions common to all post filters.
 
@@ -325,26 +312,26 @@ class PostFilter {
   int GetDeblockUnitId(int row_unit, int column_unit) const {
     return row_unit * num_64x64_blocks_per_row_ + column_unit;
   }
-  bool GetHorizontalDeblockFilterEdgeInfo(Plane plane, int row4x4,
-                                          int column4x4, int8_t subsampling_x,
-                                          int8_t subsampling_y, uint8_t* level,
-                                          int* step, int* filter_length) const;
+  bool GetHorizontalDeblockFilterEdgeInfo(int row4x4, int column4x4,
+                                          uint8_t* level, int* step,
+                                          int* filter_length) const;
+  void GetHorizontalDeblockFilterEdgeInfoUV(
+      int row4x4, int column4x4, bool* need_filter_u, bool* need_filter_v,
+      uint8_t* level_u, uint8_t* level_v, int* step, int* filter_length) const;
   bool GetVerticalDeblockFilterEdgeInfo(Plane plane, int row4x4, int column4x4,
                                         int8_t subsampling_x,
                                         int8_t subsampling_y,
                                         BlockParameters* const* bp_ptr,
                                         uint8_t* level, int* step,
                                         int* filter_length) const;
-  bool GetVerticalDeblockFilterEdgeInfoUV(Plane plane, int row4x4,
-                                          int column4x4, int8_t subsampling_x,
-                                          int8_t subsampling_y,
+  void GetVerticalDeblockFilterEdgeInfoUV(int row4x4, int column4x4,
                                           BlockParameters* const* bp_ptr,
-                                          uint8_t* level, int* step,
+                                          bool* need_filter_u,
+                                          bool* need_filter_v, uint8_t* level_u,
+                                          uint8_t* level_v, int* step,
                                           int* filter_length) const;
-  void HorizontalDeblockFilter(Plane plane, int row4x4_start,
-                               int column4x4_start);
-  void VerticalDeblockFilter(Plane plane, int row4x4_start,
-                             int column4x4_start);
+  void HorizontalDeblockFilter(int row4x4_start, int column4x4_start);
+  void VerticalDeblockFilter(int row4x4_start, int column4x4_start);
   // HorizontalDeblockFilter and VerticalDeblockFilter must have the correct
   // signature.
   static_assert(std::is_same<decltype(&PostFilter::HorizontalDeblockFilter),
@@ -483,6 +470,7 @@ class PostFilter {
   const int pixel_size_;
   const uint8_t* const inner_thresh_;
   const uint8_t* const outer_thresh_;
+  const bool needs_chroma_deblock_;
   // This stores the deblocking filter levels assuming that the delta is zero.
   // This will be used by all superblocks whose delta is zero (without having to
   // recompute them). The dimensions (in order) are: segment_id, level_index
