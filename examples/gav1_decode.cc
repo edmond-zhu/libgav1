@@ -43,6 +43,7 @@ struct Options {
   uint8_t post_filter_mask = 0x1f;
   int threads = 1;
   bool frame_parallel = false;
+  bool output_all_layers = false;
   int limit = 0;
   int skip = 0;
   int verbose = 0;
@@ -69,6 +70,7 @@ void PrintHelp(FILE* const fout) {
   fprintf(fout, "  --y4m (Default false).\n");
   fprintf(fout, "  --raw (Default true).\n");
   fprintf(fout, "  -v logging verbosity, can be used multiple times.\n");
+  fprintf(fout, "  --all_layers.\n");
   fprintf(fout, "  --post_filter_mask <integer> (Default 0x1f).\n");
   fprintf(fout,
           "   Mask indicating which post filters should be applied to the"
@@ -114,6 +116,8 @@ void ParseOptions(int argc, char* argv[], Options* const options) {
       options->threads = value;
     } else if (strcmp(argv[i], "--frame_parallel") == 0) {
       options->frame_parallel = true;
+    } else if (strcmp(argv[i], "--all_layers") == 0) {
+      options->output_all_layers = true;
     } else if (strcmp(argv[i], "--limit") == 0) {
       if (++i >= argc || !absl::SimpleAtoi(argv[i], &value) || value < 0) {
         fprintf(stderr, "Missing/Invalid value for --limit.\n");
@@ -227,6 +231,7 @@ int main(int argc, char* argv[]) {
   settings.post_filter_mask = options.post_filter_mask;
   settings.threads = options.threads;
   settings.frame_parallel = options.frame_parallel;
+  settings.output_all_layers = options.output_all_layers;
   settings.blocking_dequeue = true;
   settings.callback_private_data = &input_buffers;
   settings.release_input_buffer = ReleaseInputBuffer;
@@ -259,6 +264,7 @@ int main(int argc, char* argv[]) {
   InputBuffer* input_buffer = nullptr;
   int enqueued = 0;
   bool limit_reached = false;
+  bool dequeue_complete = false;
   const absl::Time decode_loop_start = absl::Now();
   do {
     if (input_buffer == nullptr && !file_reader->IsEndOfFile() &&
@@ -313,45 +319,48 @@ int main(int argc, char* argv[]) {
       return EXIT_FAILURE;
     }
     --enqueued;
-    if (buffer != nullptr) {
-      ++decoded_frames;
-      if (options.verbose > 1) {
-        fprintf(stderr, "buffer dequeued\n");
-      }
+    if (buffer == nullptr) {
+      dequeue_complete = true;
+      continue;
+    }
+    ++decoded_frames;
+    if (options.verbose > 1) {
+      fprintf(stderr, "buffer dequeued\n");
+    }
 
-      if (options.output_file_name != nullptr && file_writer == nullptr) {
-        libgav1::FileWriter::Y4mParameters y4m_parameters;
-        y4m_parameters.width = buffer->displayed_width[0];
-        y4m_parameters.height = buffer->displayed_height[0];
-        y4m_parameters.frame_rate_numerator = file_reader->frame_rate();
-        y4m_parameters.frame_rate_denominator = file_reader->time_scale();
-        y4m_parameters.chroma_sample_position = buffer->chroma_sample_position;
-        y4m_parameters.image_format = buffer->image_format;
-        y4m_parameters.bitdepth = static_cast<size_t>(buffer->bitdepth);
-        file_writer = libgav1::FileWriter::Open(options.output_file_name,
-                                                options.output_file_type,
-                                                &y4m_parameters);
-        if (file_writer == nullptr) {
-          fprintf(stderr, "Cannot open output file!\n");
-          return EXIT_FAILURE;
-        }
-      }
-
-      if (!limit_reached && file_writer != nullptr &&
-          !file_writer->WriteFrame(*buffer)) {
-        fprintf(stderr, "Error writing output file.\n");
+    if (options.output_file_name != nullptr && file_writer == nullptr) {
+      libgav1::FileWriter::Y4mParameters y4m_parameters;
+      y4m_parameters.width = buffer->displayed_width[0];
+      y4m_parameters.height = buffer->displayed_height[0];
+      y4m_parameters.frame_rate_numerator = file_reader->frame_rate();
+      y4m_parameters.frame_rate_denominator = file_reader->time_scale();
+      y4m_parameters.chroma_sample_position = buffer->chroma_sample_position;
+      y4m_parameters.image_format = buffer->image_format;
+      y4m_parameters.bitdepth = static_cast<size_t>(buffer->bitdepth);
+      file_writer = libgav1::FileWriter::Open(
+          options.output_file_name, options.output_file_type, &y4m_parameters);
+      if (file_writer == nullptr) {
+        fprintf(stderr, "Cannot open output file!\n");
         return EXIT_FAILURE;
       }
-      if (options.limit > 0 && options.limit == decoded_frames) {
-        limit_reached = true;
-        if (input_buffer != nullptr) {
-          input_buffers.ReleaseInputBuffer(input_buffer);
-        }
-        input_buffer = nullptr;
-      }
     }
+
+    if (!limit_reached && file_writer != nullptr &&
+        !file_writer->WriteFrame(*buffer)) {
+      fprintf(stderr, "Error writing output file.\n");
+      return EXIT_FAILURE;
+    }
+    if (options.limit > 0 && options.limit == decoded_frames) {
+      limit_reached = true;
+      if (input_buffer != nullptr) {
+        input_buffers.ReleaseInputBuffer(input_buffer);
+      }
+      input_buffer = nullptr;
+    }
+    dequeue_complete = false;
   } while (input_buffer != nullptr ||
-           (!file_reader->IsEndOfFile() && !limit_reached) || enqueued > 0);
+           (!file_reader->IsEndOfFile() && !limit_reached) || enqueued > 0 ||
+           !dequeue_complete);
   timing.dequeue = absl::Now() - decode_loop_start - timing.input;
 
   if (options.verbose > 0) {

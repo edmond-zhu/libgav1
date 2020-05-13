@@ -48,6 +48,8 @@ namespace {
 
 constexpr int kMaxBlockWidth4x4 = 32;
 constexpr int kMaxBlockHeight4x4 = 32;
+// There can be a maximum of 4 spatial layers and 8 temporal layers.
+constexpr int kMaxLayers = 32;
 
 // Computes the bottom border size in pixels. If CDEF, loop restoration or
 // SuperRes is enabled, adds extra border pixels to facilitate those steps to
@@ -144,6 +146,10 @@ DecoderImpl::~DecoderImpl() {
 StatusCode DecoderImpl::Init() {
   if (!GenerateWedgeMask(&wedge_masks_)) {
     LIBGAV1_DLOG(ERROR, "GenerateWedgeMask() failed.");
+    return kStatusOutOfMemory;
+  }
+  if (!output_frames_.Init(kMaxLayers)) {
+    LIBGAV1_DLOG(ERROR, "output_frames_.Init() failed.");
     return kStatusOutOfMemory;
   }
   return kStatusOk;
@@ -250,14 +256,31 @@ StatusCode DecoderImpl::DequeueFrame(const DecoderBuffer** out_ptr) {
   }
   const TemporalUnit& temporal_unit = temporal_units_.Front();
   if (!IsFrameParallel()) {
-    // DequeueFrame() is a blocking call in this case. Just decode the next
-    // available temporal unit and return.
+    // If |output_frames_| queue is not empty, then return the first frame from
+    // that queue.
+    if (!output_frames_.Empty()) {
+      RefCountedBufferPtr frame = std::move(output_frames_.Front());
+      output_frames_.Pop();
+      buffer_.user_private_data = temporal_unit.user_private_data;
+      if (output_frames_.Empty()) {
+        temporal_units_.Pop();
+      }
+      const StatusCode status = CopyFrameToOutputBuffer(frame);
+      if (status != kStatusOk) {
+        return status;
+      }
+      *out_ptr = &buffer_;
+      return kStatusOk;
+    }
+    // Decode the next available temporal unit and return.
     const StatusCode status = DecodeTemporalUnit(temporal_unit, out_ptr);
     if (settings_.release_input_buffer != nullptr) {
       settings_.release_input_buffer(settings_.callback_private_data,
                                      temporal_unit.buffer_private_data);
     }
-    temporal_units_.Pop();
+    if (output_frames_.Empty()) {
+      temporal_units_.Pop();
+    }
     return status;
   }
   {
@@ -472,7 +495,6 @@ StatusCode DecoderImpl::DecodeTemporalUnit(const TemporalUnit& temporal_unit,
     obu->set_sequence_header(sequence_header_);
   }
   RefCountedBufferPtr current_frame;
-  RefCountedBufferPtr displayable_frame;
   StatusCode status;
   std::unique_ptr<FrameScratchBuffer> frame_scratch_buffer =
       frame_scratch_buffer_pool_.Get();
@@ -527,32 +549,28 @@ StatusCode DecoderImpl::DecodeTemporalUnit(const TemporalUnit& temporal_unit,
                                  obu->frame_header().refresh_frame_flags);
     if (obu->frame_header().show_frame ||
         obu->frame_header().show_existing_frame) {
-      if (displayable_frame != nullptr) {
-        // This can happen if there are multiple spatial/temporal layers. We
-        // don't care about it for now, so simply return the last displayable
-        // frame.
-        // TODO(b/129153372): Add support for outputting multiple
-        // spatial/temporal layers.
-        LIBGAV1_DLOG(
-            WARNING,
-            "More than one displayable frame found. Using the last one.");
+      if (!output_frames_.Empty() && !settings_.output_all_layers) {
+        assert(output_frames_.Size() == 1);
+        output_frames_.Pop();
       }
-      displayable_frame = std::move(current_frame);
       RefCountedBufferPtr film_grain_frame;
       status = ApplyFilmGrain(
-          obu->sequence_header(), obu->frame_header(), displayable_frame,
+          obu->sequence_header(), obu->frame_header(), current_frame,
           &film_grain_frame,
           frame_scratch_buffer->threading_strategy.film_grain_thread_pool());
       if (status != kStatusOk) return status;
-      displayable_frame = std::move(film_grain_frame);
+      film_grain_frame->set_spatial_id(obu->frame_header().spatial_id);
+      film_grain_frame->set_temporal_id(obu->frame_header().temporal_id);
+      output_frames_.Push(std::move(film_grain_frame));
     }
   }
-  if (displayable_frame == nullptr) {
+  if (output_frames_.Empty()) {
     // No displayable frame in the temporal unit. Not an error.
     *out_ptr = nullptr;
     return kStatusOk;
   }
-  status = CopyFrameToOutputBuffer(displayable_frame);
+  status = CopyFrameToOutputBuffer(std::move(output_frames_.Front()));
+  output_frames_.Pop();
   if (status != kStatusOk) {
     return status;
   }
@@ -622,6 +640,8 @@ StatusCode DecoderImpl::CopyFrameToOutputBuffer(
     buffer_.displayed_width[plane] = 0;
     buffer_.displayed_height[plane] = 0;
   }
+  buffer_.spatial_id = frame->spatial_id();
+  buffer_.temporal_id = frame->temporal_id();
   buffer_.buffer_private_data = frame->buffer_private_data();
   output_frame_ = frame;
   return kStatusOk;

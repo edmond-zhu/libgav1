@@ -2151,6 +2151,9 @@ bool ObuParser::ParseFrameParameters() {
 }
 
 bool ObuParser::ParseFrameHeader() {
+  assert(!obu_headers_.empty());
+  frame_header_.spatial_id = obu_headers_.back().spatial_id;
+  frame_header_.temporal_id = obu_headers_.back().temporal_id;
   // Section 6.8.1: It is a requirement of bitstream conformance that a
   // sequence header OBU has been received before a frame header OBU.
   if (!has_sequence_header_) return false;

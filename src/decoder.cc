@@ -37,6 +37,7 @@ Libgav1StatusCode Libgav1DecoderCreate(const Libgav1DecoderSettings* settings,
   cxx_settings.release_frame_buffer = settings->release_frame_buffer;
   cxx_settings.release_input_buffer = settings->release_input_buffer;
   cxx_settings.callback_private_data = settings->callback_private_data;
+  cxx_settings.output_all_layers = settings->output_all_layers != 0;
   cxx_settings.post_filter_mask = settings->post_filter_mask;
 
   const Libgav1StatusCode status = cxx_decoder->Init(&cxx_settings);

@@ -252,8 +252,14 @@ class DecoderImpl : public Allocable {
   DecoderState state_;
 
   DecoderBuffer buffer_ = {};
-  // output_frame_ holds a reference to the output frame on behalf of buffer_.
+  // |output_frame_| holds a reference to the output frame on behalf of
+  // |buffer_|.
   RefCountedBufferPtr output_frame_;
+
+  // Queue of output frames that are to be returned in the DequeueFrame() calls.
+  // If |settings_.output_all_layers| is false, this queue will never contain
+  // more than 1 element.
+  Queue<RefCountedBufferPtr> output_frames_;
 
   BufferPool buffer_pool_;
   WedgeMaskArray wedge_masks_;
