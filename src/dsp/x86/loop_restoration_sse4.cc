@@ -996,6 +996,8 @@ inline void BoxFilterProcess(const uint8_t* const src,
   {
     const uint8_t* column = src_pre_process;
     __m128i row[5], row_sq[5];
+    // Need min(4, |width|) + 6 pixels, but we read 8 pixels.
+    // Mask 2 - min(4, |width|) extra pixels.
     row[0] = row[1] = LoadLo8Msan(column, 2 - width);
     column += src_stride;
     row[2] = LoadLo8Msan(column, 2 - width);
@@ -1068,6 +1070,8 @@ inline void BoxFilterProcess(const uint8_t* const src,
 
     const uint8_t* column = src_pre_process + x + 4;
     __m128i row[5], row_sq[5][2];
+    // Need |width| + 2 pixels, but we read max(|x|) + 16 pixels.
+    // Mask max(|x|) + 14 - |width| extra pixels.
     row[0] = row[1] = LoadUnaligned16Msan(column, x + 14 - width);
     column += src_stride;
     row[2] = LoadUnaligned16Msan(column, x + 14 - width);
@@ -1262,6 +1266,8 @@ inline void BoxFilterProcessPass1(const uint8_t* const src,
   {
     const uint8_t* column = src_pre_process;
     __m128i row[5], row_sq[5];
+    // Need min(4, |width|) + 6 pixels, but we read 8 pixels.
+    // Mask 2 - min(4, |width|) extra pixels.
     row[0] = row[1] = LoadLo8Msan(column, 2 - width);
     column += src_stride;
     row[2] = LoadLo8Msan(column, 2 - width);
@@ -1325,6 +1331,8 @@ inline void BoxFilterProcessPass1(const uint8_t* const src,
 
     const uint8_t* column = src_pre_process + x + 4;
     __m128i row[5], row_sq[5][2];
+    // Need |width| + 2 pixels, but we read max(|x|) + 16 pixels.
+    // Mask max(|x|) + 14 - |width| extra pixels.
     row[0] = row[1] = LoadUnaligned16Msan(column, x + 14 - width);
     column += src_stride;
     row[2] = LoadUnaligned16Msan(column, x + 14 - width);
@@ -1442,6 +1450,8 @@ inline void BoxFilterProcessPass2(const uint8_t* src,
   {
     const uint8_t* column = src_top_left_corner;
     __m128i row[3], row_sq[3];
+    // Need min(4, |width|) + 4 pixels, but we read 8 pixels.
+    // Mask 4 - min(4, |width|) extra pixels.
     row[0] = LoadLo8Msan(column, 4 - width);
     column += src_stride;
     row[1] = LoadLo8Msan(column, 4 - width);
@@ -1477,6 +1487,8 @@ inline void BoxFilterProcessPass2(const uint8_t* src,
 
     const uint8_t* column = src_top_left_corner + x + 4;
     __m128i row[3], row_sq[3][2];
+    // Need |width| pixels, but we read max(|x|) + 16 pixels.
+    // Mask max(|x|) + 16 - |width| extra pixels.
     row[0] = LoadUnaligned16Msan(column, x + 16 - width);
     column += src_stride;
     row[1] = LoadUnaligned16Msan(column, x + 16 - width);
