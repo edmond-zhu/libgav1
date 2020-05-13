@@ -169,6 +169,24 @@ class PostFilter {
   bool DoDeblock() const {
     return DoDeblock(frame_header_, do_post_filter_mask_);
   }
+
+  // This function takes the cdef filtered buffer and the deblocked buffer to
+  // prepare a block as input for loop restoration.
+  // In striped loop restoration:
+  // The filtering needs to fetch the area of size (width + 6) x (height + 4),
+  // in which (width + 6) x height area is from cdef filtered frame
+  // (cdef_buffer). Top 2 rows and bottom 2 rows are from deblocked frame
+  // (deblock_buffer). Special cases are: (1). when it is the top border, the
+  // top 2 rows are from cdef filtered frame. (2). when it is the bottom border,
+  // the bottom 2 rows are from cdef filtered frame. This function is called
+  // only when cdef is applied for this frame.
+  template <typename Pixel>
+  static void PrepareLoopRestorationBlock(
+      const uint8_t* cdef_buffer, ptrdiff_t cdef_stride,
+      const uint8_t* deblock_buffer, ptrdiff_t deblock_stride, uint8_t* dest,
+      ptrdiff_t dest_stride, const int width, const int height,
+      const bool frame_top_border, const bool frame_bottom_border);
+
   uint8_t GetZeroDeltaDeblockFilterLevel(int segment_id, int level_index,
                                          ReferenceFrameType type,
                                          int mode_id) const {
@@ -547,72 +565,6 @@ class PostFilter {
   template <int bitdepth, typename Pixel>
   friend class PostFilterHelperFuncTest;
 };
-
-template <typename Pixel>
-void CopyTwoRows(const Pixel* src, const ptrdiff_t src_stride, Pixel** dst,
-                 const ptrdiff_t dst_stride, const int width) {
-  for (int i = 0; i < kRestorationBorder - 1; ++i) {
-    memcpy(*dst, src, sizeof(Pixel) * width);
-    src += src_stride;
-    *dst += dst_stride;
-  }
-}
-
-// This function takes the cdef filtered buffer and the deblocked buffer to
-// prepare a block as input for loop restoration.
-// In striped loop restoration:
-// The filtering needs to fetch the area of size (width + 6) x (height + 4),
-// in which (width + 6) x height area is from cdef filtered frame (cdef_buffer).
-// Top 2 rows and bottom 2 rows are from deblocked frame (deblock_buffer).
-// Special cases are:
-// (1). when it is the top border, the top 2 rows are from cdef filtered frame.
-// (2). when it is the bottom border, the bottom 2 rows are from cdef filtered
-// frame.
-// This function is called only when cdef is applied for this frame.
-template <typename Pixel>
-void PrepareLoopRestorationBlock(const uint8_t* cdef_buffer,
-                                 ptrdiff_t cdef_stride,
-                                 const uint8_t* deblock_buffer,
-                                 ptrdiff_t deblock_stride, uint8_t* dest,
-                                 ptrdiff_t dest_stride, const int width,
-                                 const int height, const bool frame_top_border,
-                                 const bool frame_bottom_border) {
-  cdef_stride /= sizeof(Pixel);
-  deblock_stride /= sizeof(Pixel);
-  dest_stride /= sizeof(Pixel);
-  const auto* cdef_ptr = reinterpret_cast<const Pixel*>(cdef_buffer) -
-                         (kRestorationBorder - 1) * cdef_stride -
-                         kRestorationBorder;
-  const auto* deblock_ptr =
-      reinterpret_cast<const Pixel*>(deblock_buffer) - kRestorationBorder;
-  auto* dst = reinterpret_cast<Pixel*>(dest) + dest_stride;
-  int h = height;
-  // Top 2 rows.
-  if (frame_top_border) {
-    h += kRestorationBorder - 1;
-  } else {
-    CopyTwoRows<Pixel>(deblock_ptr, deblock_stride, &dst, dest_stride,
-                       width + 2 * kRestorationBorder);
-    cdef_ptr += (kRestorationBorder - 1) * cdef_stride;
-    // If |frame_top_border| is true, then we are in the first superblock row,
-    // so in that case, do not increment |deblock_ptr| since we don't store
-    // anything from the first superblock row into |deblock_buffer|.
-    deblock_ptr += 4 * deblock_stride;
-  }
-  if (frame_bottom_border) h += kRestorationBorder - 1;
-  // Main body.
-  do {
-    memcpy(dst, cdef_ptr, sizeof(Pixel) * (width + 2 * kRestorationBorder));
-    cdef_ptr += cdef_stride;
-    dst += dest_stride;
-  } while (--h != 0);
-  // Bottom 2 rows.
-  if (!frame_bottom_border) {
-    deblock_ptr += (kRestorationBorder - 1) * deblock_stride;
-    CopyTwoRows<Pixel>(deblock_ptr, deblock_stride, &dst, dest_stride,
-                       width + 2 * kRestorationBorder);
-  }
-}
 
 }  // namespace libgav1
 
