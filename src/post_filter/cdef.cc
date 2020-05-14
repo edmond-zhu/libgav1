@@ -352,7 +352,7 @@ void PostFilter::ApplyCdefForOneUnit(uint16_t* cdef_block, const int index,
         uint8_t* const cdef_buffer = cdef_buffer_base;
         const int src_stride = frame_buffer_.stride(plane);
         const uint8_t* const src_buffer = src_buffer_base;
-        const bool skip = direction_y[y_index] & kCdefSkip;
+        const bool skip = (direction_y[y_index] & kCdefSkip) != 0;
         int dual_cdef = 0;
 
         if (skip) {  // No cdef filtering.
