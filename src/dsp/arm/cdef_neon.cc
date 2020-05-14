@@ -505,13 +505,12 @@ void DoCdef(const uint16_t* src, const ptrdiff_t src_stride, const int height,
 
 // Filters the source block. It doesn't check whether the candidate pixel is
 // inside the frame. However it requires the source input to be padded with a
-// constant large value if at the boundary. The input must be uint16_t.
-void CdefFilter_NEON(const void* const source, const ptrdiff_t source_stride,
+// constant large value (kCdefLargeValue) if at the boundary.
+void CdefFilter_NEON(const uint16_t* src, const ptrdiff_t src_stride,
                      const int block_width, const int block_height,
                      const int primary_strength, const int secondary_strength,
                      const int damping, const int direction, void* const dest,
                      const ptrdiff_t dest_stride) {
-  const auto* src = static_cast<const uint16_t*>(source);
   auto* dst = static_cast<uint8_t*>(dest);
 
   // TODO(slavarnway): Change dsp->cdef_filter to dsp->cdef_filter[2][2]. This
@@ -519,34 +518,34 @@ void CdefFilter_NEON(const void* const source, const ptrdiff_t source_stride,
   if (secondary_strength > 0) {
     if (primary_strength > 0) {
       if (block_width == 8) {
-        DoCdef<8>(src, source_stride, block_height, direction, primary_strength,
+        DoCdef<8>(src, src_stride, block_height, direction, primary_strength,
                   secondary_strength, damping, dst, dest_stride);
       } else {
         assert(block_width == 4);
-        DoCdef<4>(src, source_stride, block_height, direction, primary_strength,
+        DoCdef<4>(src, src_stride, block_height, direction, primary_strength,
                   secondary_strength, damping, dst, dest_stride);
       }
     } else {
       if (block_width == 8) {
         DoCdef<8, /*enable_primary=*/false>(
-            src, source_stride, block_height, direction, primary_strength,
+            src, src_stride, block_height, direction, primary_strength,
             secondary_strength, damping, dst, dest_stride);
       } else {
         assert(block_width == 4);
         DoCdef<4, /*enable_primary=*/false>(
-            src, source_stride, block_height, direction, primary_strength,
+            src, src_stride, block_height, direction, primary_strength,
             secondary_strength, damping, dst, dest_stride);
       }
     }
   } else {
     if (block_width == 8) {
       DoCdef<8, /*enable_primary=*/true, /*enable_secondary=*/false>(
-          src, source_stride, block_height, direction, primary_strength,
+          src, src_stride, block_height, direction, primary_strength,
           secondary_strength, damping, dst, dest_stride);
     } else {
       assert(block_width == 4);
       DoCdef<4, /*enable_primary=*/true, /*enable_secondary=*/false>(
-          src, source_stride, block_height, direction, primary_strength,
+          src, src_stride, block_height, direction, primary_strength,
           secondary_strength, damping, dst, dest_stride);
     }
   }

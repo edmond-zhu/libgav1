@@ -118,9 +118,9 @@ int Constrain(int diff, int threshold, int damping) {
 
 // Filters the source block. It doesn't check whether the candidate pixel is
 // inside the frame. However it requires the source input to be padded with a
-// constant large value if at the boundary. And the input should be uint16_t.
+// constant large value (kCdefLargeValue) if at the boundary.
 template <int bitdepth, typename Pixel>
-void CdefFilter_C(const void* const source, const ptrdiff_t source_stride,
+void CdefFilter_C(const uint16_t* src, const ptrdiff_t src_stride,
                   const int block_width, const int block_height,
                   const int primary_strength, const int secondary_strength,
                   const int damping, const int direction, void* const dest,
@@ -138,7 +138,6 @@ void CdefFilter_C(const void* const source, const ptrdiff_t source_stride,
          (damping >= 2 && damping <= 5 + coeff_shift));
   static constexpr int kCdefSecondaryTaps[2] = {kCdefSecondaryTap0,
                                                 kCdefSecondaryTap1};
-  const auto* src = static_cast<const uint16_t*>(source);
   auto* dst = static_cast<Pixel*>(dest);
   const ptrdiff_t dst_stride = dest_stride / sizeof(Pixel);
   int y = 0;
@@ -154,7 +153,7 @@ void CdefFilter_C(const void* const source, const ptrdiff_t source_stride,
         for (const int& sign : signs) {
           int dy = sign * kCdefDirections[direction][k][0];
           int dx = sign * kCdefDirections[direction][k][1];
-          uint16_t value = src[dy * source_stride + dx + x];
+          uint16_t value = src[dy * src_stride + dx + x];
           // Note: the summation can ignore the condition check in SIMD
           // implementation, because Constrain() will return 0 when
           // value == kCdefLargeValue.
@@ -164,11 +163,12 @@ void CdefFilter_C(const void* const source, const ptrdiff_t source_stride,
             max_value = std::max(value, max_value);
             min_value = std::min(value, min_value);
           }
+
           static constexpr int offsets[] = {-2, 2};
           for (const int& offset : offsets) {
             dy = sign * kCdefDirections[direction + offset][k][0];
             dx = sign * kCdefDirections[direction + offset][k][1];
-            value = src[dy * source_stride + dx + x];
+            value = src[dy * src_stride + dx + x];
             // Note: the summation can ignore the condition check in SIMD
             // implementation.
             if (value != kCdefLargeValue) {
@@ -186,7 +186,7 @@ void CdefFilter_C(const void* const source, const ptrdiff_t source_stride,
           pixel_value + ((8 + sum - (sum < 0)) >> 4), min_value, max_value));
     } while (++x < block_width);
 
-    src += source_stride;
+    src += src_stride;
     dst += dst_stride;
   } while (++y < block_height);
 }

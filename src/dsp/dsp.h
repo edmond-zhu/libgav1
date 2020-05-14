@@ -328,16 +328,18 @@ using CdefDirectionFunc = void (*)(const void* src, ptrdiff_t stride,
                                    int* direction, int* variance);
 
 // Cdef filtering function signature. Section 7.15.3.
-// |source| is a pointer to the input block. |source_stride| is given in bytes.
+// |source| is a pointer to the input block padded with kCdefLargeValue if at a
+// frame border. |source_stride| is given in units of uint16_t.
 // |block_width|, |block_height| are the width/height of the input block.
 // |primary_strength|, |secondary_strength|, and |damping| are Cdef filtering
 // parameters.
 // |direction| is the filtering direction.
 // |dest| is the output buffer. |dest_stride| is given in bytes.
-using CdefFilteringFunc = void (*)(const void* source, ptrdiff_t source_stride,
-                                   int block_width, int block_height,
-                                   int primary_strength, int secondary_strength,
-                                   int damping, int direction, void* dest,
+using CdefFilteringFunc = void (*)(const uint16_t* source,
+                                   ptrdiff_t source_stride, int block_width,
+                                   int block_height, int primary_strength,
+                                   int secondary_strength, int damping,
+                                   int direction, void* dest,
                                    ptrdiff_t dest_stride);
 
 // Upscaling process function signature. Section 7.16.
