@@ -547,14 +547,6 @@ class PostFilter {
   // Tracks the progress of the post filters.
   int progress_row_ = -1;
 
-  // A small buffer to hold input source image block for loop restoration.
-  // Its size is one processing unit size + borders.
-  // Self-guided filter needs an extra one-pixel border.
-  // Wiener filter needs extended border of three pixels.
-  // Therefore the size of the buffer is 70x70 pixels.
-  alignas(alignof(uint16_t)) uint8_t
-      block_buffer_[kRestorationUnitHeightWithBorders *
-                    kRestorationUnitWidthWithBorders * sizeof(uint16_t)];
   // A block buffer to hold the input that is converted to uint16_t before
   // cdef filtering. Only used in single threaded case.
   uint16_t cdef_block_[kCdefUnitSizeWithBorders * kCdefUnitSizeWithBorders * 3];
