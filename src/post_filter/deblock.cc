@@ -46,6 +46,14 @@ constexpr dsp::LoopFilterSize GetLoopFilterSizeUV(int filter_length) {
   return static_cast<dsp::LoopFilterSize>(filter_length != 4);
 }
 
+// Returns true if skip and is_inter are true for the current block and the
+// current row4x4/column4x4 is not in a block boundary. If we are at a block
+// boundary, then |bp| and |bp_prev| will not be equal.
+constexpr bool SkipFilter(const BlockParameters* const bp,
+                          const BlockParameters* const bp_prev) {
+  return bp->skip && bp->is_inter && bp == bp_prev;
+}
+
 // 7.14.5.
 void ComputeDeblockFilterLevelsHelper(
     const ObuFrameHeader& frame_header, int segment_id, int level_index,
@@ -130,13 +138,7 @@ bool PostFilter::GetHorizontalDeblockFilterEdgeInfo(int row4x4, int column4x4,
     if (level_prev == 0) return false;
     *level = level_prev;
   }
-
-  const int prediction_masks = kBlockHeightPixels[bp->size] - 1;
-  const int pixel_position = MultiplyBy4(row4x4);
-  const bool is_border = (pixel_position & prediction_masks) == 0;
-  const bool skip = bp->skip && bp->is_inter;
-  const bool skip_prev = bp_prev->skip && bp_prev->is_inter;
-  if (skip && skip_prev && !is_border) return false;
+  if (SkipFilter(bp, bp_prev)) return false;
   const int step_prev =
       kTransformHeight[inter_transform_sizes_[row4x4_prev][column4x4]];
   *filter_length = std::min(*step, step_prev);
@@ -197,14 +199,7 @@ void PostFilter::GetHorizontalDeblockFilterEdgeInfoUV(
 
   if (!*need_filter_u && !*need_filter_v) return;
 
-  const BlockSize size =
-      kPlaneResidualSize[bp->size][subsampling_x][subsampling_y];
-  const int prediction_masks = kBlockHeightPixels[size] - 1;
-  const int pixel_position = MultiplyBy4(row4x4 >> subsampling_y);
-  const bool is_border = (pixel_position & prediction_masks) == 0;
-  const bool skip = bp->skip && bp->is_inter;
-  const bool skip_prev = bp_prev->skip && bp_prev->is_inter;
-  if (skip && skip_prev && !is_border) {
+  if (SkipFilter(bp, bp_prev)) {
     *need_filter_u = false;
     *need_filter_v = false;
     return;
@@ -234,12 +229,7 @@ bool PostFilter::GetVerticalDeblockFilterEdgeInfo(
     *level = level_prev;
   }
 
-  const int prediction_masks = kBlockWidthPixels[bp->size] - 1;
-  const int pixel_position = MultiplyBy4(column4x4);
-  const bool is_border = (pixel_position & prediction_masks) == 0;
-  const bool skip = bp->skip && bp->is_inter;
-  const bool skip_prev = bp_prev->skip && bp_prev->is_inter;
-  if (skip && skip_prev && !is_border) return false;
+  if (SkipFilter(bp, bp_prev)) return false;
   const int step_prev =
       kTransformWidth[inter_transform_sizes_[row4x4][column4x4_prev]];
   *filter_length = std::min(*step, step_prev);
@@ -298,14 +288,7 @@ void PostFilter::GetVerticalDeblockFilterEdgeInfoUV(
 
   if (!*need_filter_u && !*need_filter_v) return;
 
-  const BlockSize size =
-      kPlaneResidualSize[bp->size][subsampling_x][subsampling_y];
-  const int prediction_masks = kBlockWidthPixels[size] - 1;
-  const int pixel_position = MultiplyBy4(column4x4 >> subsampling_x);
-  const bool is_border = (pixel_position & prediction_masks) == 0;
-  const bool skip = bp->skip && bp->is_inter;
-  const bool skip_prev = bp_prev->skip && bp_prev->is_inter;
-  if (skip && skip_prev && !is_border) {
+  if (SkipFilter(bp, bp_prev)) {
     *need_filter_u = false;
     *need_filter_v = false;
     return;
