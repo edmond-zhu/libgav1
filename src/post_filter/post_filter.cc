@@ -204,7 +204,7 @@ PostFilter::PostFilter(const ObuFrameHeader& frame_header,
       if (DoRestoration() &&
           loop_restoration_.type[plane] != kLoopRestorationTypeNone) {
         horizontal_shift += frame_buffer_.alignment();
-        vertical_shift += kRestorationVerticalBorder;
+        vertical_shift += kRestorationVerticalBorder - 1;
         superres_buffer_[plane] +=
             vertical_shift * frame_buffer_.stride(plane) +
             horizontal_shift * pixel_size_;
@@ -348,12 +348,12 @@ void PostFilter::CopyBordersForOneSuperBlockRow(int row4x4, int sb4x4,
                                  ? kRestorationHorizontalBorder
                                  : frame_buffer_.right_border(plane);
     const int top_border =
-        (row == 0) ? (for_loop_restoration ? kRestorationVerticalBorder
+        (row == 0) ? (for_loop_restoration ? kRestorationVerticalBorder - 1
                                            : frame_buffer_.top_border(plane))
                    : 0;
     const int bottom_border =
         copy_bottom
-            ? (for_loop_restoration ? kRestorationVerticalBorder
+            ? (for_loop_restoration ? kRestorationVerticalBorder - 1
                                     : frame_buffer_.bottom_border(plane))
             : 0;
 #if LIBGAV1_MAX_BITDEPTH >= 10
