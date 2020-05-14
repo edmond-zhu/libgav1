@@ -20,7 +20,7 @@ namespace {
 template <typename Pixel>
 void CopyTwoRows(const Pixel* src, const ptrdiff_t src_stride, Pixel** dst,
                  const ptrdiff_t dst_stride, const int width) {
-  for (int i = 0; i < kRestorationVerticalBorder - 1; ++i) {
+  for (int i = 0; i < kRestorationVerticalBorder; ++i) {
     memcpy(*dst, src, sizeof(Pixel) * width);
     src += src_stride;
     *dst += dst_stride;
@@ -40,7 +40,7 @@ void PostFilter::PrepareLoopRestorationBlock(
   deblock_stride /= sizeof(Pixel);
   dest_stride /= sizeof(Pixel);
   const auto* cdef_ptr = reinterpret_cast<const Pixel*>(cdef_buffer) -
-                         (kRestorationVerticalBorder - 1) * cdef_stride -
+                         kRestorationVerticalBorder * cdef_stride -
                          kRestorationHorizontalBorder;
   const auto* deblock_ptr = reinterpret_cast<const Pixel*>(deblock_buffer) -
                             kRestorationHorizontalBorder;
@@ -48,17 +48,17 @@ void PostFilter::PrepareLoopRestorationBlock(
   int h = height;
   // Top 2 rows.
   if (frame_top_border) {
-    h += kRestorationVerticalBorder - 1;
+    h += kRestorationVerticalBorder;
   } else {
     CopyTwoRows<Pixel>(deblock_ptr, deblock_stride, &dst, dest_stride,
                        width + 2 * kRestorationHorizontalBorder);
-    cdef_ptr += (kRestorationVerticalBorder - 1) * cdef_stride;
+    cdef_ptr += kRestorationVerticalBorder * cdef_stride;
     // If |frame_top_border| is true, then we are in the first superblock row,
     // so in that case, do not increment |deblock_ptr| since we don't store
     // anything from the first superblock row into |deblock_buffer|.
     deblock_ptr += 4 * deblock_stride;
   }
-  if (frame_bottom_border) h += kRestorationVerticalBorder - 1;
+  if (frame_bottom_border) h += kRestorationVerticalBorder;
   // Main body.
   do {
     memcpy(dst, cdef_ptr,
@@ -68,7 +68,7 @@ void PostFilter::PrepareLoopRestorationBlock(
   } while (--h != 0);
   // Bottom 2 rows.
   if (!frame_bottom_border) {
-    deblock_ptr += (kRestorationVerticalBorder - 1) * deblock_stride;
+    deblock_ptr += kRestorationVerticalBorder * deblock_stride;
     CopyTwoRows<Pixel>(deblock_ptr, deblock_stride, &dst, dest_stride,
                        width + 2 * kRestorationHorizontalBorder);
   }
@@ -148,8 +148,7 @@ void PostFilter::ApplyLoopRestorationForOneUnit(
         deblock_buffer_stride, block_buffer, block_buffer_stride,
         current_process_unit_width, current_process_unit_height, unit_y == 0,
         unit_y + current_process_unit_height >= plane_height);
-    source = block_buffer +
-             (kRestorationVerticalBorder - 1) * block_buffer_stride +
+    source = block_buffer + kRestorationVerticalBorder * block_buffer_stride +
              kRestorationHorizontalBorder * pixel_size_;
     source_stride = kRestorationUnitWidthWithBorders;
   } else {
@@ -292,10 +291,10 @@ void PostFilter::ApplyLoopRestorationThreaded() {
         RightShiftWithRounding(upscaled_width_, subsampling_x_[plane]);
     const int plane_height =
         RightShiftWithRounding(height_, subsampling_y_[plane]);
-    ExtendFrameBoundary(
-        src_buffer, plane_width, plane_height, src_stride,
-        kRestorationHorizontalBorder, kRestorationHorizontalBorder,
-        kRestorationVerticalBorder - 1, kRestorationVerticalBorder - 1);
+    ExtendFrameBoundary(src_buffer, plane_width, plane_height, src_stride,
+                        kRestorationHorizontalBorder,
+                        kRestorationHorizontalBorder,
+                        kRestorationVerticalBorder, kRestorationVerticalBorder);
 
     const int num_workers = thread_pool_->num_threads();
     for (int y = 0; y < plane_height; y += window_buffer_height_) {

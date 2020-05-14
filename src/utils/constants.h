@@ -60,7 +60,7 @@ enum {
   // Padding on left and right side of a restoration block.
   kRestorationHorizontalBorder = 3,
   // Padding on top and bottom side of a restoration block.
-  kRestorationVerticalBorder = 3,
+  kRestorationVerticalBorder = 2,
   kCdefBorder = 2,             // Padding on each side of a cdef block.
   kConvolveBorderLeftTop = 3,  // Left/top padding of a convolve block.
   // Right/bottom padding of a convolve block. This needs to be 4 at minimum,
@@ -112,7 +112,7 @@ enum {
   kRestorationUnitHeight = 64,
   kRestorationUnitWidth = 256,
   kRestorationUnitHeightWithBorders =
-      kRestorationUnitHeight + 2 * (kRestorationVerticalBorder - 1),
+      kRestorationUnitHeight + 2 * kRestorationVerticalBorder,
   kRestorationUnitWidthWithBorders =
       kRestorationUnitWidth + 2 * kRestorationHorizontalBorder,
   kSuperResFilterBits = 6,
