@@ -148,8 +148,8 @@ StatusCode DecoderImpl::Init() {
     LIBGAV1_DLOG(ERROR, "GenerateWedgeMask() failed.");
     return kStatusOutOfMemory;
   }
-  if (!output_frames_.Init(kMaxLayers)) {
-    LIBGAV1_DLOG(ERROR, "output_frames_.Init() failed.");
+  if (!output_frame_queue_.Init(kMaxLayers)) {
+    LIBGAV1_DLOG(ERROR, "output_frame_queue_.Init() failed.");
     return kStatusOutOfMemory;
   }
   return kStatusOk;
@@ -256,13 +256,13 @@ StatusCode DecoderImpl::DequeueFrame(const DecoderBuffer** out_ptr) {
   }
   const TemporalUnit& temporal_unit = temporal_units_.Front();
   if (!IsFrameParallel()) {
-    // If |output_frames_| queue is not empty, then return the first frame from
+    // If |output_frame_queue_| is not empty, then return the first frame from
     // that queue.
-    if (!output_frames_.Empty()) {
-      RefCountedBufferPtr frame = std::move(output_frames_.Front());
-      output_frames_.Pop();
+    if (!output_frame_queue_.Empty()) {
+      RefCountedBufferPtr frame = std::move(output_frame_queue_.Front());
+      output_frame_queue_.Pop();
       buffer_.user_private_data = temporal_unit.user_private_data;
-      if (output_frames_.Empty()) {
+      if (output_frame_queue_.Empty()) {
         temporal_units_.Pop();
       }
       const StatusCode status = CopyFrameToOutputBuffer(frame);
@@ -278,7 +278,7 @@ StatusCode DecoderImpl::DequeueFrame(const DecoderBuffer** out_ptr) {
       settings_.release_input_buffer(settings_.callback_private_data,
                                      temporal_unit.buffer_private_data);
     }
-    if (output_frames_.Empty()) {
+    if (output_frame_queue_.Empty()) {
       temporal_units_.Pop();
     }
     return status;
@@ -494,7 +494,6 @@ StatusCode DecoderImpl::DecodeTemporalUnit(const TemporalUnit& temporal_unit,
   if (has_sequence_header_) {
     obu->set_sequence_header(sequence_header_);
   }
-  RefCountedBufferPtr current_frame;
   StatusCode status;
   std::unique_ptr<FrameScratchBuffer> frame_scratch_buffer =
       frame_scratch_buffer_pool_.Get();
@@ -508,6 +507,7 @@ StatusCode DecoderImpl::DecodeTemporalUnit(const TemporalUnit& temporal_unit,
       &frame_scratch_buffer_pool_, &frame_scratch_buffer);
 
   while (obu->HasData()) {
+    RefCountedBufferPtr current_frame;
     status = obu->ParseOneFrame(&current_frame);
     if (status != kStatusOk) {
       LIBGAV1_DLOG(ERROR, "Failed to parse OBU.");
@@ -549,9 +549,13 @@ StatusCode DecoderImpl::DecodeTemporalUnit(const TemporalUnit& temporal_unit,
                                  obu->frame_header().refresh_frame_flags);
     if (obu->frame_header().show_frame ||
         obu->frame_header().show_existing_frame) {
-      if (!output_frames_.Empty() && !settings_.output_all_layers) {
-        assert(output_frames_.Size() == 1);
-        output_frames_.Pop();
+      if (!output_frame_queue_.Empty() && !settings_.output_all_layers) {
+        // There is more than one displayable frame in the current operating
+        // point and |settings_.output_all_layers| is false. In this case, we
+        // simply return the last displayable frame as the output frame and
+        // ignore the rest.
+        assert(output_frame_queue_.Size() == 1);
+        output_frame_queue_.Pop();
       }
       RefCountedBufferPtr film_grain_frame;
       status = ApplyFilmGrain(
@@ -561,16 +565,16 @@ StatusCode DecoderImpl::DecodeTemporalUnit(const TemporalUnit& temporal_unit,
       if (status != kStatusOk) return status;
       film_grain_frame->set_spatial_id(obu->frame_header().spatial_id);
       film_grain_frame->set_temporal_id(obu->frame_header().temporal_id);
-      output_frames_.Push(std::move(film_grain_frame));
+      output_frame_queue_.Push(std::move(film_grain_frame));
     }
   }
-  if (output_frames_.Empty()) {
+  if (output_frame_queue_.Empty()) {
     // No displayable frame in the temporal unit. Not an error.
     *out_ptr = nullptr;
     return kStatusOk;
   }
-  status = CopyFrameToOutputBuffer(std::move(output_frames_.Front()));
-  output_frames_.Pop();
+  status = CopyFrameToOutputBuffer(std::move(output_frame_queue_.Front()));
+  output_frame_queue_.Pop();
   if (status != kStatusOk) {
     return status;
   }

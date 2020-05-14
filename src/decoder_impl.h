@@ -259,7 +259,7 @@ class DecoderImpl : public Allocable {
   // Queue of output frames that are to be returned in the DequeueFrame() calls.
   // If |settings_.output_all_layers| is false, this queue will never contain
   // more than 1 element.
-  Queue<RefCountedBufferPtr> output_frames_;
+  Queue<RefCountedBufferPtr> output_frame_queue_;
 
   BufferPool buffer_pool_;
   WedgeMaskArray wedge_masks_;
