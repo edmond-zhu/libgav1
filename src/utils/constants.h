@@ -57,7 +57,10 @@ enum {
   kRestorationTypeSymbolCount = 3,
   kSgrProjParamsBits = 4,
   kSgrProjPrecisionBits = 7,
-  kRestorationBorder = 3,      // Padding on each side of a restoration block.
+  // Padding on left and right side of a restoration block.
+  kRestorationHorizontalBorder = 3,
+  // Padding on top and bottom side of a restoration block.
+  kRestorationVerticalBorder = 3,
   kCdefBorder = 2,             // Padding on each side of a cdef block.
   kConvolveBorderLeftTop = 3,  // Left/top padding of a convolve block.
   // Right/bottom padding of a convolve block. This needs to be 4 at minimum,
@@ -103,15 +106,15 @@ enum {
   kProjectionMvClamp = (1 << 14) - 1,  // == 16383
   kProjectionMvMaxHorizontalOffset = 8,
   kCdefUnitSize = 64,
-  kCdefUnitSizeWithBorders = kCdefUnitSize + 2 * kRestorationBorder,
+  kCdefUnitSizeWithBorders = kCdefUnitSize + 2 * kRestorationHorizontalBorder,
   kRestorationUnitOffset = 8,
   // Loop restoration's processing unit size is fixed as 64x64.
   kRestorationUnitHeight = 64,
   kRestorationUnitWidth = 256,
   kRestorationUnitHeightWithBorders =
-      kRestorationUnitHeight + 2 * (kRestorationBorder - 1),
+      kRestorationUnitHeight + 2 * (kRestorationVerticalBorder - 1),
   kRestorationUnitWidthWithBorders =
-      kRestorationUnitWidth + 2 * kRestorationBorder,
+      kRestorationUnitWidth + 2 * kRestorationHorizontalBorder,
   kSuperResFilterBits = 6,
   kSuperResFilterShifts = 1 << kSuperResFilterBits,
   kSuperResFilterTaps = 8,

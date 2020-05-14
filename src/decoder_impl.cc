@@ -58,7 +58,7 @@ int GetBottomBorderPixels(const bool do_cdef, const bool do_restoration,
                           const bool do_superres) {
   int border = kBorderPixels;
   if (do_cdef) border += 2 * kCdefBorder;
-  if (do_restoration) border += 2 * kRestorationBorder;
+  if (do_restoration) border += 2 * kRestorationVerticalBorder;
   if (do_superres) border += 2 * kSuperResVerticalBorder;
   return border;
 }

@@ -214,13 +214,13 @@ void PostFilter::SetupDeblockBuffer(int row4x4_start, int sb4x4) {
       for (int i = 0; i < 4; ++i) {
 #if LIBGAV1_MAX_BITDEPTH >= 10
         if (bitdepth_ >= 10) {
-          ExtendLine<uint16_t>(src, plane_width, kRestorationBorder,
-                               kRestorationBorder);
+          ExtendLine<uint16_t>(src, plane_width, kRestorationHorizontalBorder,
+                               kRestorationHorizontalBorder);
         } else  // NOLINT.
 #endif
         {
-          ExtendLine<uint8_t>(src, plane_width, kRestorationBorder,
-                              kRestorationBorder);
+          ExtendLine<uint8_t>(src, plane_width, kRestorationHorizontalBorder,
+                              kRestorationHorizontalBorder);
         }
         src += deblock_buffer_.stride(plane);
       }
