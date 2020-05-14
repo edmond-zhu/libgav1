@@ -184,7 +184,7 @@ void PostFilter::ApplyCdefForOneUnit(uint16_t* cdef_block, const int index,
   static constexpr int kStep4x4 = 2;
 
   const int window_buffer_plane_size =
-      window_buffer_width_ * window_buffer_height_ * pixel_size_;
+      window_buffer_width_ * window_buffer_height_ * sizeof(Pixel);
   int cdef_buffer_row_base_stride[kMaxPlanes];
   int cdef_buffer_stride[kMaxPlanes];
   uint8_t* cdef_buffer_row_base[kMaxPlanes];
@@ -201,10 +201,10 @@ void PostFilter::ApplyCdefForOneUnit(uint16_t* cdef_block, const int index,
         cdef_buffer_stride[plane] * (kStep >> subsampling_y_[plane]);
     src_buffer_row_base[plane] = source_buffer_[plane] +
                                  start_y * frame_buffer_.stride(plane) +
-                                 start_x * pixel_size_;
+                                 start_x * sizeof(Pixel);
     src_buffer_row_base_stride[plane] =
         frame_buffer_.stride(plane) * (kStep >> subsampling_y_[plane]);
-    column_step[plane] = (kStep >> subsampling_x_[plane]) * pixel_size_;
+    column_step[plane] = (kStep >> subsampling_x_[plane]) * sizeof(Pixel);
   }
 
   if (index == -1) {
@@ -213,7 +213,7 @@ void PostFilter::ApplyCdefForOneUnit(uint16_t* cdef_block, const int index,
                  cdef_buffer_row_base[plane], cdef_buffer_stride[plane],
                  MultiplyBy4(block_width4x4) >> subsampling_x_[plane],
                  MultiplyBy4(block_height4x4) >> subsampling_y_[plane],
-                 pixel_size_);
+                 sizeof(Pixel));
     }
     return;
   }
@@ -260,7 +260,7 @@ void PostFilter::ApplyCdefForOneUnit(uint16_t* cdef_block, const int index,
       if (skip) {  // No cdef filtering.
         direction_y[y_index] = kCdefSkip;
         CopyPixels(src_buffer, src_stride, cdef_buffer, cdef_stride,
-                   block_width, block_height, pixel_size_);
+                   block_width, block_height, sizeof(Pixel));
       } else {
         // Zero out residual skip flag.
         direction_y[y_index] = 0;
@@ -281,7 +281,7 @@ void PostFilter::ApplyCdefForOneUnit(uint16_t* cdef_block, const int index,
 
         if ((primary_strength | y_secondary_strength) == 0) {
           CopyPixels(src_buffer, src_stride, cdef_buffer, cdef_stride,
-                     block_width, block_height, pixel_size_);
+                     block_width, block_height, sizeof(Pixel));
         } else {
           uint16_t* cdef_src = cdef_block + kPlaneY * kCdefUnitSizeWithBorders *
                                                 kCdefUnitSizeWithBorders;
@@ -326,7 +326,7 @@ void PostFilter::ApplyCdefForOneUnit(uint16_t* cdef_block, const int index,
                  cdef_buffer_row_base[plane], cdef_buffer_stride[plane],
                  MultiplyBy4(block_width4x4) >> subsampling_x_[plane],
                  MultiplyBy4(block_height4x4) >> subsampling_y_[plane],
-                 pixel_size_);
+                 sizeof(Pixel));
     }
     return;
   }
@@ -357,7 +357,7 @@ void PostFilter::ApplyCdefForOneUnit(uint16_t* cdef_block, const int index,
 
         if (skip) {  // No cdef filtering.
           CopyPixels(src_buffer, src_stride, cdef_buffer, cdef_stride,
-                     block_width, block_height, pixel_size_);
+                     block_width, block_height, sizeof(Pixel));
         } else {
           // Make sure block pair is not out of bounds.
           if (column4x4 + (kStep4x4 * 2) <= column4x4_start + block_width4x4) {
@@ -491,7 +491,7 @@ void PostFilter::ApplyCdefThreaded() {
   assert((window_buffer_height_ & 63) == 0);
   const int num_workers = thread_pool_->num_threads();
   const int window_buffer_plane_size =
-      window_buffer_width_ * window_buffer_height_ * pixel_size_;
+      window_buffer_width_ * window_buffer_height_ * sizeof(Pixel);
   const int window_buffer_height4x4 = DivideBy4(window_buffer_height_);
   for (int row4x4 = 0; row4x4 < frame_header_.rows4x4;
        row4x4 += window_buffer_height4x4) {
@@ -534,9 +534,9 @@ void PostFilter::ApplyCdefThreaded() {
         copy_height = MultiplyBy4(copy_height) >> subsampling_y_[plane];
         CopyPlane<Pixel>(
             threaded_window_buffer_ + plane * window_buffer_plane_size,
-            window_buffer_width_ * pixel_size_, copy_width, copy_height,
+            window_buffer_width_ * sizeof(Pixel), copy_width, copy_height,
             cdef_buffer_[plane] + plane_row * src_stride +
-                plane_column * pixel_size_,
+                plane_column * sizeof(Pixel),
             src_stride);
       }
     }

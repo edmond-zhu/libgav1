@@ -101,7 +101,7 @@ void PostFilter::ApplyLoopRestorationForOneUnit(
   const int current_process_unit_width =
       std::min(plane_unit_size, plane_width - unit_x);
   const uint8_t* cdef_unit_buffer =
-      cdef_buffer + unit_y * cdef_buffer_stride + unit_x * pixel_size_;
+      cdef_buffer + unit_y * cdef_buffer_stride + unit_x * sizeof(Pixel);
   const int unit_column =
       std::min(unit_x / plane_unit_size, num_horizontal_units - 1);
   const int unit_id = unit_row * num_horizontal_units + unit_column;
@@ -112,7 +112,8 @@ void PostFilter::ApplyLoopRestorationForOneUnit(
   if (type == kLoopRestorationTypeNone) {
     Pixel* dest = &(*loop_restored_window)[row][column];
     for (int k = 0; k < current_process_unit_height; ++k) {
-      memcpy(dest, cdef_unit_buffer, current_process_unit_width * pixel_size_);
+      memcpy(dest, cdef_unit_buffer,
+             current_process_unit_width * sizeof(Pixel));
       dest += loop_restored_window->columns();
       cdef_unit_buffer += cdef_buffer_stride;
     }
@@ -142,14 +143,14 @@ void PostFilter::ApplyLoopRestorationForOneUnit(
         std::max(MultiplyBy4(Ceil(unit_y, deblock_buffer_units)) - 4, 0);
     const uint8_t* const deblock_unit_buffer =
         deblock_buffer + deblock_unit_y * deblock_buffer_stride +
-        unit_x * pixel_size_;
+        unit_x * sizeof(Pixel);
     PrepareLoopRestorationBlock<Pixel>(
         cdef_unit_buffer, cdef_buffer_stride, deblock_unit_buffer,
         deblock_buffer_stride, block_buffer, block_buffer_stride,
         current_process_unit_width, current_process_unit_height, unit_y == 0,
         unit_y + current_process_unit_height >= plane_height);
     source = block_buffer + kRestorationVerticalBorder * block_buffer_stride +
-             kRestorationHorizontalBorder * pixel_size_;
+             kRestorationHorizontalBorder * sizeof(Pixel);
     source_stride = kRestorationUnitWidthWithBorders;
   } else {
     source = cdef_unit_buffer;
@@ -181,7 +182,7 @@ void PostFilter::ApplyLoopRestorationForSuperBlock(
   Array2DView<Pixel> loop_restored_window(
       current_process_unit_height, stride / sizeof(Pixel),
       reinterpret_cast<Pixel*>(loop_restoration_buffer_[plane] + y * stride +
-                               x * pixel_size_));
+                               x * sizeof(Pixel)));
   ApplyLoopRestorationForOneUnit<Pixel>(
       superres_buffer_[plane], stride, plane, plane_height, x, y, 0, 0,
       unit_row, current_process_unit_height, plane_unit_size,
@@ -363,11 +364,12 @@ void PostFilter::ApplyLoopRestorationThreaded() {
         // Wait for all jobs of current window to finish.
         pending_jobs.Wait();
         // Copy |threaded_window_buffer_| to output frame.
-        CopyPlane<Pixel>(
-            threaded_window_buffer_, window_buffer_width_ * pixel_size_,
-            actual_window_width, actual_window_height,
-            loop_restoration_buffer_[plane] + y * src_stride + x * pixel_size_,
-            src_stride);
+        CopyPlane<Pixel>(threaded_window_buffer_,
+                         window_buffer_width_ * sizeof(Pixel),
+                         actual_window_width, actual_window_height,
+                         loop_restoration_buffer_[plane] + y * src_stride +
+                             x * sizeof(Pixel),
+                         src_stride);
       }
       if (y == 0) y -= unit_height_offset;
     }
