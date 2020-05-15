@@ -265,6 +265,11 @@ class PostFilter {
     return std::min(adjusted_frame_height, window_height);
   }
 
+  template <typename Pixel>
+  static void ExtendFrame(void* frame_start, int width, int height,
+                          ptrdiff_t stride, int left, int right, int top,
+                          int bottom);
+
  private:
   // The type of the HorizontalDeblockFilter and VerticalDeblockFilter member
   // functions.

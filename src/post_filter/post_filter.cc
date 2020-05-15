@@ -40,6 +40,8 @@ namespace {
 constexpr int kDeblockedRowsForLoopRestoration[2][4] = {{54, 55, 56, 57},
                                                         {26, 27, 28, 29}};
 
+}  // namespace
+
 // The following example illustrates how ExtendFrame() extends a frame.
 // Suppose the frame width is 8 and height is 4, and left, right, top, and
 // bottom are all equal to 3.
@@ -69,10 +71,11 @@ constexpr int kDeblockedRowsForLoopRestoration[2][4] = {{54, 55, 56, 57},
 // ExtendFrame() first extends the rows to the left and to the right[1]. Then
 // it copies the extended last row to the bottom borders[2]. Finally it copies
 // the extended first row to the top borders[3].
+// static
 template <typename Pixel>
-void ExtendFrame(uint8_t* const frame_start, const int width, const int height,
-                 ptrdiff_t stride, const int left, const int right,
-                 const int top, const int bottom) {
+void PostFilter::ExtendFrame(void* const frame_start, const int width,
+                             const int height, ptrdiff_t stride, const int left,
+                             const int right, const int top, const int bottom) {
   auto* const start = reinterpret_cast<Pixel*>(frame_start);
   const Pixel* src = start;
   Pixel* dst = start - left;
@@ -80,7 +83,7 @@ void ExtendFrame(uint8_t* const frame_start, const int width, const int height,
   // Copy to left and right borders.
   for (int y = 0; y < height; ++y) {
     Memset(dst, src[0], left);
-    Memset(dst + (left + width), src[width - 1], right);
+    Memset(dst + left + width, src[width - 1], right);
     src += stride;
     dst += stride;
   }
@@ -123,7 +126,19 @@ void ExtendFrame(uint8_t* const frame_start, const int width, const int height,
   }
 }
 
-}  // namespace
+template void PostFilter::ExtendFrame<uint8_t>(void* const frame_start,
+                                               const int width,
+                                               const int height,
+                                               ptrdiff_t stride, const int left,
+                                               const int right, const int top,
+                                               const int bottom);
+
+#if LIBGAV1_MAX_BITDEPTH >= 10
+template void PostFilter::ExtendFrame<uint16_t>(
+    void* const frame_start, const int width, const int height,
+    ptrdiff_t stride, const int left, const int right, const int top,
+    const int bottom);
+#endif
 
 PostFilter::PostFilter(const ObuFrameHeader& frame_header,
                        const ObuSequenceHeader& sequence_header,
@@ -356,15 +371,8 @@ void PostFilter::CopyBordersForOneSuperBlockRow(int row4x4, int sb4x4,
             ? (for_loop_restoration ? kRestorationVerticalBorder
                                     : frame_buffer_.bottom_border(plane))
             : 0;
-#if LIBGAV1_MAX_BITDEPTH >= 10
-    if (bitdepth_ >= 10) {
-      ExtendFrame<uint16_t>(start, plane_width, num_rows, stride, left_border,
-                            right_border, top_border, bottom_border);
-      continue;
-    }
-#endif
-    ExtendFrame<uint8_t>(start, plane_width, num_rows, stride, left_border,
-                         right_border, top_border, bottom_border);
+    ExtendFrameBoundary(start, plane_width, num_rows, stride, left_border,
+                        right_border, top_border, bottom_border);
   }
 }
 
