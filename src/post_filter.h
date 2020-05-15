@@ -341,9 +341,7 @@ class PostFilter {
   void GetHorizontalDeblockFilterEdgeInfoUV(
       int row4x4, int column4x4, bool* need_filter_u, bool* need_filter_v,
       uint8_t* level_u, uint8_t* level_v, int* step, int* filter_length) const;
-  bool GetVerticalDeblockFilterEdgeInfo(Plane plane, int row4x4, int column4x4,
-                                        int8_t subsampling_x,
-                                        int8_t subsampling_y,
+  bool GetVerticalDeblockFilterEdgeInfo(int row4x4, int column4x4,
                                         BlockParameters* const* bp_ptr,
                                         uint8_t* level, int* step,
                                         int* filter_length) const;
