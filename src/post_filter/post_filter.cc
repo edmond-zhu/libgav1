@@ -76,7 +76,7 @@ template <typename Pixel>
 void PostFilter::ExtendFrame(void* const frame_start, const int width,
                              const int height, ptrdiff_t stride, const int left,
                              const int right, const int top, const int bottom) {
-  auto* const start = reinterpret_cast<Pixel*>(frame_start);
+  auto* const start = static_cast<Pixel*>(frame_start);
   const Pixel* src = start;
   Pixel* dst = start - left;
   stride /= sizeof(Pixel);
