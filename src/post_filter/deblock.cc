@@ -46,12 +46,13 @@ constexpr dsp::LoopFilterSize GetLoopFilterSizeUV(int filter_length) {
   return static_cast<dsp::LoopFilterSize>(filter_length != 4);
 }
 
-// Returns true if skip and is_inter are true for the current block and the
-// current row4x4/column4x4 is not in a block boundary. If we are at a block
-// boundary, then |bp| and |bp_prev| will not be equal.
-constexpr bool SkipFilter(const BlockParameters* const bp,
-                          const BlockParameters* const bp_prev) {
-  return bp->skip && bp->is_inter && bp == bp_prev;
+bool NonBlockBorderNeedsFilter(const BlockParameters& bp, int filter_id,
+                               uint8_t* const level) {
+  if (bp.deblock_filter_level[filter_id] == 0 || (bp.skip && bp.is_inter)) {
+    return false;
+  }
+  *level = bp.deblock_filter_level[filter_id];
+  return true;
 }
 
 // 7.14.5.
@@ -127,18 +128,23 @@ bool PostFilter::GetHorizontalDeblockFilterEdgeInfo(int row4x4, int column4x4,
   if (row4x4 == 0) return false;
 
   const BlockParameters* bp = block_parameters_.Find(row4x4, column4x4);
-  const uint8_t level_this = bp->deblock_filter_level[1];
   const int row4x4_prev = row4x4 - 1;
   assert(row4x4_prev >= 0);
   const BlockParameters* bp_prev =
       block_parameters_.Find(row4x4_prev, column4x4);
-  const uint8_t level_prev = bp_prev->deblock_filter_level[1];
-  *level = level_this;
-  if (level_this == 0) {
-    if (level_prev == 0) return false;
-    *level = level_prev;
+
+  if (bp == bp_prev) {
+    // Not a border.
+    if (!NonBlockBorderNeedsFilter(*bp, 1, level)) return false;
+  } else {
+    const uint8_t level_this = bp->deblock_filter_level[1];
+    *level = level_this;
+    if (level_this == 0) {
+      const uint8_t level_prev = bp_prev->deblock_filter_level[1];
+      if (level_prev == 0) return false;
+      *level = level_prev;
+    }
   }
-  if (SkipFilter(bp, bp_prev)) return false;
   const int step_prev =
       kTransformHeight[inter_transform_sizes_[row4x4_prev][column4x4]];
   *filter_length = std::min(*step, step_prev);
@@ -171,6 +177,21 @@ void PostFilter::GetHorizontalDeblockFilterEdgeInfoUV(
   const BlockParameters* bp_prev =
       block_parameters_.Find(row4x4_prev, column4x4);
 
+  if (bp == bp_prev) {
+    // Not a border.
+    const bool skip = bp->skip && bp->is_inter;
+    *need_filter_u =
+        *need_filter_u && bp->deblock_filter_level[filter_id_u] != 0 && !skip;
+    *need_filter_v =
+        *need_filter_v && bp->deblock_filter_level[filter_id_v] != 0 && !skip;
+    if (!*need_filter_u && !*need_filter_v) return;
+    *level_u = bp->deblock_filter_level[filter_id_u];
+    *level_v = bp->deblock_filter_level[filter_id_v];
+    *filter_length = *step;
+    return;
+  }
+
+  // It is a border.
   if (*need_filter_u) {
     const uint8_t level_u_this = bp->deblock_filter_level[filter_id_u];
     *level_u = level_u_this;
@@ -183,7 +204,6 @@ void PostFilter::GetHorizontalDeblockFilterEdgeInfoUV(
       }
     }
   }
-
   if (*need_filter_v) {
     const uint8_t level_v_this = bp->deblock_filter_level[filter_id_v];
     *level_v = level_v_this;
@@ -196,14 +216,7 @@ void PostFilter::GetHorizontalDeblockFilterEdgeInfoUV(
       }
     }
   }
-
   if (!*need_filter_u && !*need_filter_v) return;
-
-  if (SkipFilter(bp, bp_prev)) {
-    *need_filter_u = false;
-    *need_filter_v = false;
-    return;
-  }
   const int step_prev = kTransformHeight[bp_prev->uv_transform_size];
   *filter_length = std::min(*step, step_prev);
 }
@@ -216,18 +229,22 @@ bool PostFilter::GetVerticalDeblockFilterEdgeInfo(
   if (column4x4 == 0) return false;
 
   const int filter_id = 0;
-  const uint8_t level_this = bp->deblock_filter_level[filter_id];
   const int column4x4_prev = column4x4 - 1;
   assert(column4x4_prev >= 0);
   const BlockParameters* bp_prev = *(bp_ptr - 1);
-  const uint8_t level_prev = bp_prev->deblock_filter_level[filter_id];
-  *level = level_this;
-  if (level_this == 0) {
-    if (level_prev == 0) return false;
-    *level = level_prev;
+  if (bp == bp_prev) {
+    // Not a border.
+    if (!NonBlockBorderNeedsFilter(*bp, filter_id, level)) return false;
+  } else {
+    // It is a border.
+    const uint8_t level_this = bp->deblock_filter_level[filter_id];
+    *level = level_this;
+    if (level_this == 0) {
+      const uint8_t level_prev = bp_prev->deblock_filter_level[filter_id];
+      if (level_prev == 0) return false;
+      *level = level_prev;
+    }
   }
-
-  if (SkipFilter(bp, bp_prev)) return false;
   const int step_prev =
       kTransformWidth[inter_transform_sizes_[row4x4][column4x4_prev]];
   *filter_length = std::min(*step, step_prev);
@@ -258,6 +275,21 @@ void PostFilter::GetVerticalDeblockFilterEdgeInfoUV(
       kDeblockFilterLevelIndex[kPlaneV][kLoopFilterTypeVertical];
   const BlockParameters* bp_prev = *(bp_ptr - (1 << subsampling_x));
 
+  if (bp == bp_prev) {
+    // Not a border.
+    const bool skip = bp->skip && bp->is_inter;
+    *need_filter_u =
+        *need_filter_u && bp->deblock_filter_level[filter_id_u] != 0 && !skip;
+    *need_filter_v =
+        *need_filter_v && bp->deblock_filter_level[filter_id_v] != 0 && !skip;
+    if (!*need_filter_u && !*need_filter_v) return;
+    *level_u = bp->deblock_filter_level[filter_id_u];
+    *level_v = bp->deblock_filter_level[filter_id_v];
+    *filter_length = *step;
+    return;
+  }
+
+  // It is a border.
   if (*need_filter_u) {
     const uint8_t level_u_this = bp->deblock_filter_level[filter_id_u];
     *level_u = level_u_this;
@@ -270,7 +302,6 @@ void PostFilter::GetVerticalDeblockFilterEdgeInfoUV(
       }
     }
   }
-
   if (*need_filter_v) {
     const uint8_t level_v_this = bp->deblock_filter_level[filter_id_v];
     *level_v = level_v_this;
@@ -283,14 +314,7 @@ void PostFilter::GetVerticalDeblockFilterEdgeInfoUV(
       }
     }
   }
-
   if (!*need_filter_u && !*need_filter_v) return;
-
-  if (SkipFilter(bp, bp_prev)) {
-    *need_filter_u = false;
-    *need_filter_v = false;
-    return;
-  }
   const int step_prev = kTransformWidth[bp_prev->uv_transform_size];
   *filter_length = std::min(*step, step_prev);
 }
