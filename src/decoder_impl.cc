@@ -274,6 +274,11 @@ StatusCode DecoderImpl::DequeueFrame(const DecoderBuffer** out_ptr) {
     }
     // Decode the next available temporal unit and return.
     const StatusCode status = DecodeTemporalUnit(temporal_unit, out_ptr);
+    if (status != kStatusOk) {
+      // In case of failure, discard all the output frames that we may be
+      // holding on references to.
+      output_frame_queue_.Clear();
+    }
     if (settings_.release_input_buffer != nullptr) {
       settings_.release_input_buffer(settings_.callback_private_data,
                                      temporal_unit.buffer_private_data);
