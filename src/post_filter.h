@@ -420,30 +420,22 @@ class PostFilter {
   // Functions for the Loop Restoration filter.
 
   template <typename Pixel>
-  void ApplyLoopRestorationForOneUnit(uint8_t* cdef_buffer,
-                                      ptrdiff_t cdef_buffer_stride, Plane plane,
-                                      int plane_height, int x, int y, int row,
-                                      int column, int unit_row,
-                                      int current_process_unit_height,
-                                      int plane_unit_size,
-                                      int num_horizontal_units, int plane_width,
-                                      Array2DView<Pixel>* loop_restored_window);
+  void ApplyLoopRestorationForOneUnit(
+      const RestorationUnitInfo& restoration_info, const uint8_t* cdef_buffer,
+      ptrdiff_t cdef_buffer_stride, Plane plane, int plane_height, int y, int x,
+      int row, int column, int current_process_unit_height, int plane_unit_size,
+      int plane_width, Array2DView<Pixel>* loop_restored_window);
   template <typename Pixel>
-  void ApplyLoopRestorationForSuperBlock(Plane plane, int x, int y,
-                                         int unit_row,
-                                         int current_process_unit_height,
-                                         int process_unit_width);
+  void ApplyLoopRestorationForOneRowInWindow(
+      const uint8_t* cdef_buffer, Plane plane, int plane_height,
+      int plane_width, int y, int x, int row, int unit_row,
+      int current_process_unit_height, int plane_unit_size, int window_width,
+      Array2DView<Pixel>* loop_restored_window);
   // Applies loop restoration for the superblock row starting at |row4x4_start|
   // with a height of 4*|sb4x4|.
   void ApplyLoopRestorationForOneSuperBlockRow(int row4x4_start, int sb4x4);
   template <typename Pixel>
   void ApplyLoopRestorationThreaded();
-  template <typename Pixel>
-  void ApplyLoopRestorationForOneRowInWindow(
-      uint8_t* cdef_buffer, ptrdiff_t cdef_buffer_stride, Plane plane,
-      int plane_height, int plane_width, int x, int y, int row, int unit_row,
-      int current_process_unit_height, int plane_unit_size, int window_width,
-      int num_horizontal_units);
   // Note for ApplyLoopRestoration():
   // First, we must differentiate loop restoration processing unit from loop
   // restoration unit.
