@@ -278,10 +278,10 @@ void PostFilter::ApplyLoopRestorationThreaded() {
         RightShiftWithRounding(upscaled_width_, subsampling_x_[plane]);
     const int plane_height =
         RightShiftWithRounding(height_, subsampling_y_[plane]);
-    ExtendFrameBoundary(src_buffer, plane_width, plane_height, src_stride,
-                        kRestorationHorizontalBorder,
-                        kRestorationHorizontalBorder,
-                        kRestorationVerticalBorder, kRestorationVerticalBorder);
+    PostFilter::ExtendFrame<Pixel>(
+        src_buffer, plane_width, plane_height, src_stride,
+        kRestorationHorizontalBorder, kRestorationHorizontalBorder,
+        kRestorationVerticalBorder, kRestorationVerticalBorder);
 
     const int num_workers = thread_pool_->num_threads();
     for (int y = 0; y < plane_height; y += window_buffer_height_) {

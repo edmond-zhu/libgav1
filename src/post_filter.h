@@ -553,6 +553,30 @@ class PostFilter {
   friend class PostFilterHelperFuncTest;
 };
 
+extern template void PostFilter::ExtendFrame<uint8_t>(void* frame_start,
+                                                      int width, int height,
+                                                      ptrdiff_t stride,
+                                                      int left, int right,
+                                                      int top, int bottom);
+extern template void PostFilter::PrepareLoopRestorationBlock<uint8_t>(
+    const uint8_t* cdef_buffer, ptrdiff_t cdef_stride,
+    const uint8_t* deblock_buffer, ptrdiff_t deblock_stride, uint8_t* dest,
+    ptrdiff_t dest_stride, const int width, const int height,
+    const bool frame_top_border, const bool frame_bottom_border);
+
+#if LIBGAV1_MAX_BITDEPTH >= 10
+extern template void PostFilter::ExtendFrame<uint16_t>(void* frame_start,
+                                                       int width, int height,
+                                                       ptrdiff_t stride,
+                                                       int left, int right,
+                                                       int top, int bottom);
+extern template void PostFilter::PrepareLoopRestorationBlock<uint16_t>(
+    const uint8_t* cdef_buffer, ptrdiff_t cdef_stride,
+    const uint8_t* deblock_buffer, ptrdiff_t deblock_stride, uint8_t* dest,
+    ptrdiff_t dest_stride, const int width, const int height,
+    const bool frame_top_border, const bool frame_bottom_border);
+#endif
+
 }  // namespace libgav1
 
 #endif  // LIBGAV1_SRC_POST_FILTER_H_
