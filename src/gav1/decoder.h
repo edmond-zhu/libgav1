@@ -105,7 +105,11 @@ class LIBGAV1_PUBLIC Decoder {
   // Dequeues a decompressed frame. If there are enqueued compressed frames,
   // decodes one and sets |*out_ptr| to the last displayable frame in the
   // compressed frame. If there are no displayable frames available, sets
-  // |*out_ptr| to nullptr. Returns an error status if there is an error.
+  // |*out_ptr| to nullptr.
+  //
+  // Returns kStatusOk on success. Returns kStatusNothingToDequeue if there are
+  // no enqueued frames (in this case out_ptr will always be set to nullptr).
+  // Returns one of the other error statuses if there is an error.
   //
   // If |settings_.blocking_dequeue| is false and the decoder is operating in
   // frame parallel mode (|settings_.frame_parallel| is true and the video

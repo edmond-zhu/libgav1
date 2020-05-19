@@ -250,9 +250,9 @@ StatusCode DecoderImpl::DequeueFrame(const DecoderBuffer** out_ptr) {
   // using the previous output frame, so we can release it.
   ReleaseOutputFrame();
   if (temporal_units_.Empty()) {
-    // No input frames to decode. Not an error.
+    // No input frames to decode.
     *out_ptr = nullptr;
-    return kStatusOk;
+    return kStatusNothingToDequeue;
   }
   const TemporalUnit& temporal_unit = temporal_units_.Front();
   if (!IsFrameParallel()) {

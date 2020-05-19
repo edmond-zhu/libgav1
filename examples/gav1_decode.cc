@@ -262,9 +262,8 @@ int main(int argc, char* argv[]) {
   Timing timing = {};
   std::unique_ptr<libgav1::FileWriter> file_writer;
   InputBuffer* input_buffer = nullptr;
-  int enqueued = 0;
   bool limit_reached = false;
-  bool dequeue_complete = false;
+  bool dequeue_finished = false;
   const absl::Time decode_loop_start = absl::Now();
   do {
     if (input_buffer == nullptr && !file_reader->IsEndOfFile() &&
@@ -299,7 +298,6 @@ int main(int argc, char* argv[]) {
         if (options.verbose > 1) {
           fprintf(stderr, "enqueue frame (length %zu)\n", input_buffer->size());
         }
-        ++enqueued;
         input_buffer = nullptr;
         // Continue to enqueue frames until we get a kStatusTryAgain status.
         continue;
@@ -313,16 +311,18 @@ int main(int argc, char* argv[]) {
 
     const libgav1::DecoderBuffer* buffer;
     status = decoder.DequeueFrame(&buffer);
-    if (status != libgav1::kStatusOk) {
+    if (status != libgav1::kStatusOk &&
+        status != libgav1::kStatusNothingToDequeue) {
       fprintf(stderr, "Unable to dequeue frame: %s\n",
               libgav1::GetErrorString(status));
       return EXIT_FAILURE;
     }
-    --enqueued;
-    if (buffer == nullptr) {
-      dequeue_complete = true;
+    if (status == libgav1::kStatusNothingToDequeue) {
+      dequeue_finished = true;
       continue;
     }
+    dequeue_finished = false;
+    if (buffer == nullptr) continue;
     ++decoded_frames;
     if (options.verbose > 1) {
       fprintf(stderr, "buffer dequeued\n");
@@ -357,10 +357,9 @@ int main(int argc, char* argv[]) {
       }
       input_buffer = nullptr;
     }
-    dequeue_complete = false;
   } while (input_buffer != nullptr ||
-           (!file_reader->IsEndOfFile() && !limit_reached) || enqueued > 0 ||
-           !dequeue_complete);
+           (!file_reader->IsEndOfFile() && !limit_reached) ||
+           !dequeue_finished);
   timing.dequeue = absl::Now() - decode_loop_start - timing.input;
 
   if (options.verbose > 0) {
