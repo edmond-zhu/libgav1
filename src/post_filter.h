@@ -313,8 +313,8 @@ class PostFilter {
                MultiplyBy4(frame_header_.columns4x4);
   }
   template <typename Pixel>
-  void CopyPlane(const uint8_t* source, int source_stride, int width,
-                 int height, uint8_t* dest, int dest_stride) {
+  void CopyPlane(const uint8_t* source, ptrdiff_t source_stride, int width,
+                 int height, uint8_t* dest, ptrdiff_t dest_stride) {
     auto* dst = reinterpret_cast<Pixel*>(dest);
     const auto* src = reinterpret_cast<const Pixel*>(source);
     source_stride /= sizeof(Pixel);

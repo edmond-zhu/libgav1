@@ -263,9 +263,12 @@ void PostFilter::ApplyLoopRestorationThreaded() {
   const int plane_process_unit_height[kMaxPlanes] = {
       kRestorationUnitHeight, kRestorationUnitHeight >> subsampling_y_[kPlaneU],
       kRestorationUnitHeight >> subsampling_y_[kPlaneV]};
-  Array2DView<Pixel> loop_restored_window(
-      window_buffer_height_, window_buffer_width_,
-      reinterpret_cast<Pixel*>(threaded_window_buffer_));
+  Array2DView<Pixel> loop_restored_window;
+  if (!DoCdef()) {
+    loop_restored_window.Reset(
+        window_buffer_height_, window_buffer_width_,
+        reinterpret_cast<Pixel*>(threaded_window_buffer_));
+  }
 
   for (int plane = kPlaneY; plane < planes_; ++plane) {
     if (loop_restoration_.type[plane] == kLoopRestorationTypeNone) {
@@ -275,7 +278,7 @@ void PostFilter::ApplyLoopRestorationThreaded() {
     const int unit_height_offset =
         kRestorationUnitOffset >> subsampling_y_[plane];
     uint8_t* const src_buffer = superres_buffer_[plane];
-    const int src_stride = frame_buffer_.stride(plane);
+    const ptrdiff_t src_stride = frame_buffer_.stride(plane);
     const int plane_unit_size = loop_restoration_.unit_size[plane];
     const int num_vertical_units =
         restoration_info_->num_vertical_units(static_cast<Plane>(plane));
@@ -317,6 +320,13 @@ void PostFilter::ApplyLoopRestorationThreaded() {
         const int actual_window_width =
             std::min(window_buffer_width_, plane_width - x);
         assert(jobs_for_threadpool < vertical_units_per_window);
+        if (DoCdef()) {
+          loop_restored_window.Reset(
+              actual_window_height,
+              static_cast<int>(src_stride) / sizeof(Pixel),
+              reinterpret_cast<Pixel*>(loop_restoration_buffer_[plane] +
+                                       y * src_stride + x * sizeof(Pixel)));
+        }
         BlockingCounter pending_jobs(jobs_for_threadpool);
         int job_count = 0;
         int current_process_unit_height;
@@ -353,13 +363,15 @@ void PostFilter::ApplyLoopRestorationThreaded() {
         }
         // Wait for all jobs of current window to finish.
         pending_jobs.Wait();
-        // Copy |threaded_window_buffer_| to output frame.
-        CopyPlane<Pixel>(threaded_window_buffer_,
-                         window_buffer_width_ * sizeof(Pixel),
-                         actual_window_width, actual_window_height,
-                         loop_restoration_buffer_[plane] + y * src_stride +
-                             x * sizeof(Pixel),
-                         src_stride);
+        if (!DoCdef()) {
+          // Copy |threaded_window_buffer_| to output frame.
+          CopyPlane<Pixel>(threaded_window_buffer_,
+                           window_buffer_width_ * sizeof(Pixel),
+                           actual_window_width, actual_window_height,
+                           loop_restoration_buffer_[plane] + y * src_stride +
+                               x * sizeof(Pixel),
+                           src_stride);
+        }
       }
       if (y == 0) y -= unit_height_offset;
     }
