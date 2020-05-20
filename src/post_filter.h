@@ -182,9 +182,9 @@ class PostFilter {
   // only when cdef is applied for this frame.
   template <typename Pixel>
   static void PrepareLoopRestorationBlock(
-      const uint8_t* src_buffer, ptrdiff_t src_stride,
-      const uint8_t* deblock_buffer, ptrdiff_t deblock_stride, uint8_t* dest,
-      ptrdiff_t dest_stride, const int width, const int height,
+      const Pixel* src_buffer, ptrdiff_t src_stride,
+      const Pixel* deblock_buffer, ptrdiff_t deblock_stride, Pixel* dst,
+      ptrdiff_t dst_stride, const int width, const int height,
       const bool frame_top_border, const bool frame_bottom_border);
 
   uint8_t GetZeroDeltaDeblockFilterLevel(int segment_id, int level_index,
@@ -554,8 +554,8 @@ extern template void PostFilter::ExtendFrame<uint8_t>(void* frame_start,
                                                       int top, int bottom);
 extern template void PostFilter::PrepareLoopRestorationBlock<uint8_t>(
     const uint8_t* src_buffer, ptrdiff_t src_stride,
-    const uint8_t* deblock_buffer, ptrdiff_t deblock_stride, uint8_t* dest,
-    ptrdiff_t dest_stride, const int width, const int height,
+    const uint8_t* deblock_buffer, ptrdiff_t deblock_stride, uint8_t* dst,
+    ptrdiff_t dst_stride, const int width, const int height,
     const bool frame_top_border, const bool frame_bottom_border);
 
 #if LIBGAV1_MAX_BITDEPTH >= 10
@@ -565,9 +565,9 @@ extern template void PostFilter::ExtendFrame<uint16_t>(void* frame_start,
                                                        int left, int right,
                                                        int top, int bottom);
 extern template void PostFilter::PrepareLoopRestorationBlock<uint16_t>(
-    const uint8_t* src_buffer, ptrdiff_t src_stride,
-    const uint8_t* deblock_buffer, ptrdiff_t deblock_stride, uint8_t* dest,
-    ptrdiff_t dest_stride, const int width, const int height,
+    const uint16_t* src_buffer, ptrdiff_t src_stride,
+    const uint16_t* deblock_buffer, ptrdiff_t deblock_stride, uint16_t* dst,
+    ptrdiff_t dst_stride, const int width, const int height,
     const bool frame_top_border, const bool frame_bottom_border);
 #endif
 
