@@ -326,6 +326,7 @@ void CdefFilter_NEON(const uint16_t* src, const ptrdiff_t src_stride,
                      const ptrdiff_t dst_stride) {
   static_assert(width == 8 || width == 4, "");
   static_assert(enable_primary || enable_secondary, "");
+  constexpr bool clipping_required = enable_primary && enable_secondary;
   auto* dst = static_cast<uint8_t*>(dest);
   const uint16x8_t cdef_large_value_mask =
       vdupq_n_u16(static_cast<uint16_t>(~kCdefLargeValue));
@@ -375,21 +376,26 @@ void CdefFilter_NEON(const uint16_t* src, const ptrdiff_t src_stride,
         LoadDirection4(src, src_stride, primary_val, direction);
       }
 
-      min = vminq_u16(min, primary_val[0]);
-      min = vminq_u16(min, primary_val[1]);
-      min = vminq_u16(min, primary_val[2]);
-      min = vminq_u16(min, primary_val[3]);
+      if (clipping_required) {
+        min = vminq_u16(min, primary_val[0]);
+        min = vminq_u16(min, primary_val[1]);
+        min = vminq_u16(min, primary_val[2]);
+        min = vminq_u16(min, primary_val[3]);
 
-      // The source is 16 bits, however, we only really care about the lower
-      // 8 bits.  The upper 8 bits contain the "large" flag.  After the final
-      // primary max has been calculated, zero out the upper 8 bits.  Use this
-      // to find the "16 bit" max.
-      const uint8x16_t max_p01 = vmaxq_u8(vreinterpretq_u8_u16(primary_val[0]),
-                                          vreinterpretq_u8_u16(primary_val[1]));
-      const uint8x16_t max_p23 = vmaxq_u8(vreinterpretq_u8_u16(primary_val[2]),
-                                          vreinterpretq_u8_u16(primary_val[3]));
-      const uint16x8_t max_p = vreinterpretq_u16_u8(vmaxq_u8(max_p01, max_p23));
-      max = vmaxq_u16(max, vandq_u16(max_p, cdef_large_value_mask));
+        // The source is 16 bits, however, we only really care about the lower
+        // 8 bits.  The upper 8 bits contain the "large" flag.  After the final
+        // primary max has been calculated, zero out the upper 8 bits.  Use this
+        // to find the "16 bit" max.
+        const uint8x16_t max_p01 =
+            vmaxq_u8(vreinterpretq_u8_u16(primary_val[0]),
+                     vreinterpretq_u8_u16(primary_val[1]));
+        const uint8x16_t max_p23 =
+            vmaxq_u8(vreinterpretq_u8_u16(primary_val[2]),
+                     vreinterpretq_u8_u16(primary_val[3]));
+        const uint16x8_t max_p =
+            vreinterpretq_u16_u8(vmaxq_u8(max_p01, max_p23));
+        max = vmaxq_u16(max, vandq_u16(max_p, cdef_large_value_mask));
+      }
 
       sum = Constrain(primary_val[0], pixel, primary_threshold,
                       primary_damping_shift);
@@ -421,30 +427,32 @@ void CdefFilter_NEON(const uint16_t* src, const ptrdiff_t src_stride,
         LoadDirection4(src, src_stride, secondary_val + 4, direction - 2);
       }
 
-      min = vminq_u16(min, secondary_val[0]);
-      min = vminq_u16(min, secondary_val[1]);
-      min = vminq_u16(min, secondary_val[2]);
-      min = vminq_u16(min, secondary_val[3]);
-      min = vminq_u16(min, secondary_val[4]);
-      min = vminq_u16(min, secondary_val[5]);
-      min = vminq_u16(min, secondary_val[6]);
-      min = vminq_u16(min, secondary_val[7]);
+      if (clipping_required) {
+        min = vminq_u16(min, secondary_val[0]);
+        min = vminq_u16(min, secondary_val[1]);
+        min = vminq_u16(min, secondary_val[2]);
+        min = vminq_u16(min, secondary_val[3]);
+        min = vminq_u16(min, secondary_val[4]);
+        min = vminq_u16(min, secondary_val[5]);
+        min = vminq_u16(min, secondary_val[6]);
+        min = vminq_u16(min, secondary_val[7]);
 
-      const uint8x16_t max_s01 =
-          vmaxq_u8(vreinterpretq_u8_u16(secondary_val[0]),
-                   vreinterpretq_u8_u16(secondary_val[1]));
-      const uint8x16_t max_s23 =
-          vmaxq_u8(vreinterpretq_u8_u16(secondary_val[2]),
-                   vreinterpretq_u8_u16(secondary_val[3]));
-      const uint8x16_t max_s45 =
-          vmaxq_u8(vreinterpretq_u8_u16(secondary_val[4]),
-                   vreinterpretq_u8_u16(secondary_val[5]));
-      const uint8x16_t max_s67 =
-          vmaxq_u8(vreinterpretq_u8_u16(secondary_val[6]),
-                   vreinterpretq_u8_u16(secondary_val[7]));
-      const uint16x8_t max_s = vreinterpretq_u16_u8(
-          vmaxq_u8(vmaxq_u8(max_s01, max_s23), vmaxq_u8(max_s45, max_s67)));
-      max = vmaxq_u16(max, vandq_u16(max_s, cdef_large_value_mask));
+        const uint8x16_t max_s01 =
+            vmaxq_u8(vreinterpretq_u8_u16(secondary_val[0]),
+                     vreinterpretq_u8_u16(secondary_val[1]));
+        const uint8x16_t max_s23 =
+            vmaxq_u8(vreinterpretq_u8_u16(secondary_val[2]),
+                     vreinterpretq_u8_u16(secondary_val[3]));
+        const uint8x16_t max_s45 =
+            vmaxq_u8(vreinterpretq_u8_u16(secondary_val[4]),
+                     vreinterpretq_u8_u16(secondary_val[5]));
+        const uint8x16_t max_s67 =
+            vmaxq_u8(vreinterpretq_u8_u16(secondary_val[6]),
+                     vreinterpretq_u8_u16(secondary_val[7]));
+        const uint16x8_t max_s = vreinterpretq_u16_u8(
+            vmaxq_u8(vmaxq_u8(max_s01, max_s23), vmaxq_u8(max_s45, max_s67)));
+        max = vmaxq_u16(max, vandq_u16(max_s, cdef_large_value_mask));
+      }
 
       sum = vmlaq_n_s16(sum,
                         Constrain(secondary_val[0], pixel, secondary_threshold,
@@ -485,8 +493,10 @@ void CdefFilter_NEON(const uint16_t* src, const ptrdiff_t src_stride,
     sum = vaddq_s16(sum, sum_lt_0);
     sum = vshrq_n_s16(sum, 4);
     sum = vaddq_s16(sum, vreinterpretq_s16_u16(pixel));
-    sum = vminq_s16(sum, vreinterpretq_s16_u16(max));
-    sum = vmaxq_s16(sum, vreinterpretq_s16_u16(min));
+    if (clipping_required) {
+      sum = vminq_s16(sum, vreinterpretq_s16_u16(max));
+      sum = vmaxq_s16(sum, vreinterpretq_s16_u16(min));
+    }
 
     const uint8x8_t result = vqmovun_s16(sum);
     if (width == 8) {

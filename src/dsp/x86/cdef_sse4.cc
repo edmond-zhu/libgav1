@@ -341,6 +341,7 @@ void CdefFilter_SSE4_1(const uint16_t* src, const ptrdiff_t src_stride,
                        const ptrdiff_t dst_stride) {
   static_assert(width == 8 || width == 4, "Invalid CDEF width.");
   static_assert(enable_primary || enable_secondary, "");
+  constexpr bool clipping_required = enable_primary && enable_secondary;
   auto* dst = static_cast<uint8_t*>(dest);
   __m128i primary_damping_shift, secondary_damping_shift;
 
@@ -393,19 +394,21 @@ void CdefFilter_SSE4_1(const uint16_t* src, const ptrdiff_t src_stride,
         LoadDirection4(src, src_stride, primary_val, direction);
       }
 
-      min = _mm_min_epu16(min, primary_val[0]);
-      min = _mm_min_epu16(min, primary_val[1]);
-      min = _mm_min_epu16(min, primary_val[2]);
-      min = _mm_min_epu16(min, primary_val[3]);
+      if (clipping_required) {
+        min = _mm_min_epu16(min, primary_val[0]);
+        min = _mm_min_epu16(min, primary_val[1]);
+        min = _mm_min_epu16(min, primary_val[2]);
+        min = _mm_min_epu16(min, primary_val[3]);
 
-      // The source is 16 bits, however, we only really care about the lower
-      // 8 bits.  The upper 8 bits contain the "large" flag.  After the final
-      // primary max has been calculated, zero out the upper 8 bits.  Use this
-      // to find the "16 bit" max.
-      const __m128i max_p01 = _mm_max_epu8(primary_val[0], primary_val[1]);
-      const __m128i max_p23 = _mm_max_epu8(primary_val[2], primary_val[3]);
-      const __m128i max_p = _mm_max_epu8(max_p01, max_p23);
-      max = _mm_max_epu16(max, _mm_and_si128(max_p, cdef_large_value_mask));
+        // The source is 16 bits, however, we only really care about the lower
+        // 8 bits.  The upper 8 bits contain the "large" flag.  After the final
+        // primary max has been calculated, zero out the upper 8 bits.  Use this
+        // to find the "16 bit" max.
+        const __m128i max_p01 = _mm_max_epu8(primary_val[0], primary_val[1]);
+        const __m128i max_p23 = _mm_max_epu8(primary_val[2], primary_val[3]);
+        const __m128i max_p = _mm_max_epu8(max_p01, max_p23);
+        max = _mm_max_epu16(max, _mm_and_si128(max_p, cdef_large_value_mask));
+      }
 
       sum = ApplyConstrainAndTap(pixel, primary_val[0], primary_tap_0,
                                  primary_damping_shift, primary_threshold);
@@ -433,22 +436,28 @@ void CdefFilter_SSE4_1(const uint16_t* src, const ptrdiff_t src_stride,
         LoadDirection4(src, src_stride, secondary_val + 4, direction - 2);
       }
 
-      min = _mm_min_epu16(min, secondary_val[0]);
-      min = _mm_min_epu16(min, secondary_val[1]);
-      min = _mm_min_epu16(min, secondary_val[2]);
-      min = _mm_min_epu16(min, secondary_val[3]);
-      min = _mm_min_epu16(min, secondary_val[4]);
-      min = _mm_min_epu16(min, secondary_val[5]);
-      min = _mm_min_epu16(min, secondary_val[6]);
-      min = _mm_min_epu16(min, secondary_val[7]);
+      if (clipping_required) {
+        min = _mm_min_epu16(min, secondary_val[0]);
+        min = _mm_min_epu16(min, secondary_val[1]);
+        min = _mm_min_epu16(min, secondary_val[2]);
+        min = _mm_min_epu16(min, secondary_val[3]);
+        min = _mm_min_epu16(min, secondary_val[4]);
+        min = _mm_min_epu16(min, secondary_val[5]);
+        min = _mm_min_epu16(min, secondary_val[6]);
+        min = _mm_min_epu16(min, secondary_val[7]);
 
-      const __m128i max_s01 = _mm_max_epu8(secondary_val[0], secondary_val[1]);
-      const __m128i max_s23 = _mm_max_epu8(secondary_val[2], secondary_val[3]);
-      const __m128i max_s45 = _mm_max_epu8(secondary_val[4], secondary_val[5]);
-      const __m128i max_s67 = _mm_max_epu8(secondary_val[6], secondary_val[7]);
-      const __m128i max_s = _mm_max_epu8(_mm_max_epu8(max_s01, max_s23),
-                                         _mm_max_epu8(max_s45, max_s67));
-      max = _mm_max_epu16(max, _mm_and_si128(max_s, cdef_large_value_mask));
+        const __m128i max_s01 =
+            _mm_max_epu8(secondary_val[0], secondary_val[1]);
+        const __m128i max_s23 =
+            _mm_max_epu8(secondary_val[2], secondary_val[3]);
+        const __m128i max_s45 =
+            _mm_max_epu8(secondary_val[4], secondary_val[5]);
+        const __m128i max_s67 =
+            _mm_max_epu8(secondary_val[6], secondary_val[7]);
+        const __m128i max_s = _mm_max_epu8(_mm_max_epu8(max_s01, max_s23),
+                                           _mm_max_epu8(max_s45, max_s67));
+        max = _mm_max_epu16(max, _mm_and_si128(max_s, cdef_large_value_mask));
+      }
 
       sum = _mm_add_epi16(
           sum,
@@ -492,9 +501,11 @@ void CdefFilter_SSE4_1(const uint16_t* src, const ptrdiff_t src_stride,
     sum = _mm_srai_epi16(sum, 4);
     // pixel + ...
     sum = _mm_add_epi16(sum, pixel);
-    // Clip3
-    sum = _mm_min_epi16(sum, max);
-    sum = _mm_max_epi16(sum, min);
+    if (clipping_required) {
+      // Clip3
+      sum = _mm_min_epi16(sum, max);
+      sum = _mm_max_epi16(sum, min);
+    }
 
     const __m128i result = _mm_packus_epi16(sum, sum);
     if (width == 8) {

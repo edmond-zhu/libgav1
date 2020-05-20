@@ -139,6 +139,12 @@ void CdefFilter_C(const uint16_t* src, const ptrdiff_t src_stride,
   // damping is decreased by 1 for chroma.
   assert((damping >= 3 && damping <= 6 + coeff_shift) ||
          (damping >= 2 && damping <= 5 + coeff_shift));
+  // When only primary_strength or secondary_strength are non-zero the number
+  // of pixels inspected (4 for primary_strength, 8 for secondary_strength) and
+  // the taps used don't exceed the amount the sum is
+  // descaled by (16) so we can skip tracking and clipping to the minimum and
+  // maximum value observed.
+  constexpr bool clipping_required = enable_primary && enable_secondary;
   static constexpr int kCdefSecondaryTaps[2] = {kCdefSecondaryTap0,
                                                 kCdefSecondaryTap1};
   auto* dst = static_cast<Pixel*>(dest);
@@ -164,8 +170,10 @@ void CdefFilter_C(const uint16_t* src, const ptrdiff_t src_stride,
             if (value != kCdefLargeValue) {
               sum += Constrain(value - pixel_value, primary_strength, damping) *
                      kCdefPrimaryTaps[(primary_strength >> coeff_shift) & 1][k];
-              max_value = std::max(value, max_value);
-              min_value = std::min(value, min_value);
+              if (clipping_required) {
+                max_value = std::max(value, max_value);
+                min_value = std::min(value, min_value);
+              }
             }
           }
 
@@ -181,16 +189,23 @@ void CdefFilter_C(const uint16_t* src, const ptrdiff_t src_stride,
                 sum += Constrain(value - pixel_value, secondary_strength,
                                  damping) *
                        kCdefSecondaryTaps[k];
-                max_value = std::max(value, max_value);
-                min_value = std::min(value, min_value);
+                if (clipping_required) {
+                  max_value = std::max(value, max_value);
+                  min_value = std::min(value, min_value);
+                }
               }
             }
           }
         }
       }
 
-      dst[x] = static_cast<Pixel>(Clip3(
-          pixel_value + ((8 + sum - (sum < 0)) >> 4), min_value, max_value));
+      const int offset = (8 + sum - (sum < 0)) >> 4;
+      if (clipping_required) {
+        dst[x] = static_cast<Pixel>(
+            Clip3(pixel_value + offset, min_value, max_value));
+      } else {
+        dst[x] = static_cast<Pixel>(pixel_value + offset);
+      }
     } while (++x < block_width);
 
     src += src_stride;
