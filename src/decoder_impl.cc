@@ -57,8 +57,12 @@ constexpr int kMaxLayers = 32;
 int GetBottomBorderPixels(const bool do_cdef, const bool do_restoration,
                           const bool do_superres) {
   int border = kBorderPixels;
-  if (do_cdef) border += kCdefBorder;
-  if (do_restoration) border += kRestorationVerticalBorder;
+  if (do_cdef) {
+    border += kCdefBorder;
+  } else if (do_restoration) {
+    // If CDEF is enabled, loop restoration is safe without extra border.
+    border += kRestorationVerticalBorder;
+  }
   if (do_superres) border += kSuperResVerticalBorder;
   return Align(border, 2);  // Must be a multiple of 2.
 }

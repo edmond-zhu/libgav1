@@ -219,7 +219,9 @@ PostFilter::PostFilter(const ObuFrameHeader& frame_header,
       if (DoRestoration() &&
           loop_restoration_.type[plane] != kLoopRestorationTypeNone) {
         horizontal_shift += frame_buffer_.alignment();
-        vertical_shift += kRestorationVerticalBorder;
+        if (!DoCdef()) {
+          vertical_shift += kRestorationVerticalBorder;
+        }
         superres_buffer_[plane] +=
             vertical_shift * frame_buffer_.stride(plane) +
             horizontal_shift * pixel_size_;

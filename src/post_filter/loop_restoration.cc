@@ -105,8 +105,13 @@ void PostFilter::ApplyLoopRestorationForOneUnit(
   if (restoration_info.type == kLoopRestorationTypeNone) {
     Pixel* dest = &(*loop_restored_window)[row][column];
     for (int k = 0; k < current_process_unit_height; ++k) {
-      memcpy(dest, cdef_unit_buffer,
-             current_process_unit_width * sizeof(Pixel));
+      if (DoCdef()) {
+        memmove(dest, cdef_unit_buffer,
+                current_process_unit_width * sizeof(Pixel));
+      } else {
+        memcpy(dest, cdef_unit_buffer,
+               current_process_unit_width * sizeof(Pixel));
+      }
       dest += loop_restored_window->columns();
       cdef_unit_buffer += cdef_buffer_stride;
     }
