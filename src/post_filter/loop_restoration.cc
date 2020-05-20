@@ -32,15 +32,15 @@ void CopyTwoRows(const Pixel* src, const ptrdiff_t src_stride, Pixel** dst,
 // static
 template <typename Pixel>
 void PostFilter::PrepareLoopRestorationBlock(
-    const uint8_t* cdef_buffer, ptrdiff_t cdef_stride,
+    const uint8_t* src_buffer, ptrdiff_t src_stride,
     const uint8_t* deblock_buffer, ptrdiff_t deblock_stride, uint8_t* dest,
     ptrdiff_t dest_stride, const int width, const int height,
     const bool frame_top_border, const bool frame_bottom_border) {
-  cdef_stride /= sizeof(Pixel);
+  src_stride /= sizeof(Pixel);
   deblock_stride /= sizeof(Pixel);
   dest_stride /= sizeof(Pixel);
-  const auto* cdef_ptr = reinterpret_cast<const Pixel*>(cdef_buffer) -
-                         kRestorationVerticalBorder * cdef_stride -
+  const auto* cdef_ptr = reinterpret_cast<const Pixel*>(src_buffer) -
+                         kRestorationVerticalBorder * src_stride -
                          kRestorationHorizontalBorder;
   const auto* deblock_ptr = reinterpret_cast<const Pixel*>(deblock_buffer) -
                             kRestorationHorizontalBorder;
@@ -52,7 +52,7 @@ void PostFilter::PrepareLoopRestorationBlock(
   } else {
     CopyTwoRows<Pixel>(deblock_ptr, deblock_stride, &dst, dest_stride,
                        width + 2 * kRestorationHorizontalBorder);
-    cdef_ptr += kRestorationVerticalBorder * cdef_stride;
+    cdef_ptr += kRestorationVerticalBorder * src_stride;
     // If |frame_top_border| is true, then we are in the first superblock row,
     // so in that case, do not increment |deblock_ptr| since we don't store
     // anything from the first superblock row into |deblock_buffer|.
@@ -63,7 +63,7 @@ void PostFilter::PrepareLoopRestorationBlock(
   do {
     memcpy(dst, cdef_ptr,
            sizeof(Pixel) * (width + 2 * kRestorationHorizontalBorder));
-    cdef_ptr += cdef_stride;
+    cdef_ptr += src_stride;
     dst += dest_stride;
   } while (--h != 0);
   // Bottom 2 rows.
@@ -75,116 +75,103 @@ void PostFilter::PrepareLoopRestorationBlock(
 }
 
 template void PostFilter::PrepareLoopRestorationBlock<uint8_t>(
-    const uint8_t* cdef_buffer, ptrdiff_t cdef_stride,
+    const uint8_t* src_buffer, ptrdiff_t src_stride,
     const uint8_t* deblock_buffer, ptrdiff_t deblock_stride, uint8_t* dest,
     ptrdiff_t dest_stride, const int width, const int height,
     const bool frame_top_border, const bool frame_bottom_border);
 
 #if LIBGAV1_MAX_BITDEPTH >= 10
 template void PostFilter::PrepareLoopRestorationBlock<uint16_t>(
-    const uint8_t* cdef_buffer, ptrdiff_t cdef_stride,
+    const uint8_t* src_buffer, ptrdiff_t src_stride,
     const uint8_t* deblock_buffer, ptrdiff_t deblock_stride, uint8_t* dest,
     ptrdiff_t dest_stride, const int width, const int height,
     const bool frame_top_border, const bool frame_bottom_border);
 #endif
 
 template <typename Pixel>
-void PostFilter::ApplyLoopRestorationForOneUnit(
-    const RestorationUnitInfo& restoration_info,
-    const uint8_t* const cdef_buffer, const ptrdiff_t cdef_buffer_stride,
-    const Plane plane, const int plane_height, const int y, const int x,
-    const int row, const int column, const int current_process_unit_height,
-    const int plane_unit_size, const int plane_width,
-    Array2DView<Pixel>* const loop_restored_window) {
-  const int unit_x = x + column;
-  const int unit_y = y + row;
-  const int current_process_unit_width =
-      std::min(plane_unit_size, plane_width - unit_x);
-  const uint8_t* cdef_unit_buffer =
-      cdef_buffer + unit_y * cdef_buffer_stride + unit_x * sizeof(Pixel);
-  if (restoration_info.type == kLoopRestorationTypeNone) {
-    Pixel* dest = &(*loop_restored_window)[row][column];
-    for (int k = 0; k < current_process_unit_height; ++k) {
-      if (DoCdef()) {
-        memmove(dest, cdef_unit_buffer,
-                current_process_unit_width * sizeof(Pixel));
-      } else {
-        memcpy(dest, cdef_unit_buffer,
-               current_process_unit_width * sizeof(Pixel));
-      }
-      dest += loop_restored_window->columns();
-      cdef_unit_buffer += cdef_buffer_stride;
-    }
-    return;
-  }
-  const ptrdiff_t block_buffer_stride =
-      kRestorationUnitWidthWithBorders * sizeof(Pixel);
-  // The SIMD implementation of wiener filter (currently WienerFilter_SSE4_1())
-  // over-reads 6 bytes, and the SIMD implementation of self-guided filter
-  // (currently SelfGuidedFilter_SSE4_1()) over-reads up to 7 bytes, so add 7
-  // extra bytes at the end of block_buffer for 8 bit. 7 byte over-reads happen
-  // when |current_process_unit_width| equals |kRestorationUnitWidth| - 7, and
-  // the radius of the first pass in sfg is 0.
-  alignas(alignof(uint16_t)) uint8_t
-      block_buffer[kRestorationUnitHeightWithBorders * block_buffer_stride +
-                   ((sizeof(Pixel) == 1) ? 7 : 0)];
-  RestorationBuffer restoration_buffer;
-  const uint8_t* source;
-  ptrdiff_t source_stride;
-  if (DoCdef()) {
-    const int deblock_buffer_units = 64 >> subsampling_y_[plane];
-    const uint8_t* const deblock_buffer = deblock_buffer_.data(plane);
-    assert(deblock_buffer != nullptr);
-    const int deblock_buffer_stride = deblock_buffer_.stride(plane);
-    const int deblock_unit_y =
-        std::max(MultiplyBy4(Ceil(unit_y, deblock_buffer_units)) - 4, 0);
-    const uint8_t* const deblock_unit_buffer =
-        deblock_buffer + deblock_unit_y * deblock_buffer_stride +
-        unit_x * sizeof(Pixel);
-    PrepareLoopRestorationBlock<Pixel>(
-        cdef_unit_buffer, cdef_buffer_stride, deblock_unit_buffer,
-        deblock_buffer_stride, block_buffer, block_buffer_stride,
-        current_process_unit_width, current_process_unit_height, unit_y == 0,
-        unit_y + current_process_unit_height >= plane_height);
-    source = block_buffer + kRestorationVerticalBorder * block_buffer_stride +
-             kRestorationHorizontalBorder * sizeof(Pixel);
-    source_stride = kRestorationUnitWidthWithBorders;
-  } else {
-    source = cdef_unit_buffer;
-    source_stride = cdef_buffer_stride / sizeof(Pixel);
-  }
-  const LoopRestorationType type = restoration_info.type;
-  assert(type == kLoopRestorationTypeSgrProj ||
-         type == kLoopRestorationTypeWiener);
-  const dsp::LoopRestorationFunc restoration_func =
-      dsp_.loop_restorations[type - 2];
-  restoration_func(source, &(*loop_restored_window)[row][column],
-                   restoration_info, source_stride,
-                   loop_restored_window->columns(), current_process_unit_width,
-                   current_process_unit_height, &restoration_buffer);
-}
-
-template <typename Pixel>
 void PostFilter::ApplyLoopRestorationForOneRowInWindow(
-    const uint8_t* const cdef_buffer, const Plane plane, const int plane_height,
+    const uint8_t* src_buffer, const Plane plane, const int plane_height,
     const int plane_width, const int y, const int x, const int row,
     const int unit_row, const int current_process_unit_height,
     const int plane_unit_size, const int window_width,
     Array2DView<Pixel>* const loop_restored_window) {
   const int num_horizontal_units =
       restoration_info_->num_horizontal_units(static_cast<Plane>(plane));
-  const int stride = frame_buffer_.stride(plane);
+  const ptrdiff_t src_stride = frame_buffer_.stride(plane);
   const RestorationUnitInfo* const restoration_info =
       restoration_info_->loop_restoration_info(static_cast<Plane>(plane),
                                                unit_row * num_horizontal_units);
   int unit_column = x / plane_unit_size;
+  src_buffer += (y + row) * src_stride + x * sizeof(Pixel);
   int column = 0;
   do {
+    const int unit_x = x + column;
+    const int unit_y = y + row;
+    const int current_process_unit_width =
+        std::min(plane_unit_size, plane_width - unit_x);
+    const uint8_t* src = src_buffer + column * sizeof(Pixel);
     unit_column = std::min(unit_column, num_horizontal_units - 1);
-    ApplyLoopRestorationForOneUnit<Pixel>(
-        restoration_info[unit_column], cdef_buffer, stride, plane, plane_height,
-        y, x, row, column, current_process_unit_height, plane_unit_size,
-        plane_width, loop_restored_window);
+    if (restoration_info[unit_column].type == kLoopRestorationTypeNone) {
+      const ptrdiff_t dst_stride = loop_restored_window->columns();
+      Pixel* dst = &(*loop_restored_window)[row][column];
+      for (int k = 0; k < current_process_unit_height; ++k) {
+        if (DoCdef()) {
+          memmove(dst, src, current_process_unit_width * sizeof(Pixel));
+        } else {
+          memcpy(dst, src, current_process_unit_width * sizeof(Pixel));
+        }
+        src += src_stride;
+        dst += dst_stride;
+      }
+    } else {
+      const ptrdiff_t block_buffer_stride =
+          kRestorationUnitWidthWithBorders * sizeof(Pixel);
+      // The SIMD implementation of wiener filter over-reads 6 bytes, and the
+      // SIMD implementation of self-guided filter over-reads up to 7 bytes, so
+      // add 7 extra bytes at the end of block_buffer for 8 bit. 7 byte
+      // over-reads happen when |current_process_unit_width| equals
+      // |kRestorationUnitWidth| - 7, and the radius of the first pass in sfg is
+      // 0.
+      alignas(alignof(uint16_t)) uint8_t
+          block_buffer[kRestorationUnitHeightWithBorders * block_buffer_stride +
+                       ((sizeof(Pixel) == 1) ? 7 : 0)];
+      RestorationBuffer restoration_buffer;
+      const uint8_t* source;
+      ptrdiff_t source_stride;
+      if (DoCdef()) {
+        const int deblock_buffer_units = 64 >> subsampling_y_[plane];
+        const uint8_t* const deblock_buffer = deblock_buffer_.data(plane);
+        assert(deblock_buffer != nullptr);
+        const int deblock_buffer_stride = deblock_buffer_.stride(plane);
+        const int deblock_unit_y =
+            std::max(MultiplyBy4(Ceil(unit_y, deblock_buffer_units)) - 4, 0);
+        const uint8_t* const deblock_unit_buffer =
+            deblock_buffer + deblock_unit_y * deblock_buffer_stride +
+            unit_x * sizeof(Pixel);
+        PrepareLoopRestorationBlock<Pixel>(
+            src, src_stride, deblock_unit_buffer, deblock_buffer_stride,
+            block_buffer, block_buffer_stride, current_process_unit_width,
+            current_process_unit_height, unit_y == 0,
+            unit_y + current_process_unit_height >= plane_height);
+        source = block_buffer +
+                 kRestorationVerticalBorder * block_buffer_stride +
+                 kRestorationHorizontalBorder * sizeof(Pixel);
+        source_stride = kRestorationUnitWidthWithBorders;
+      } else {
+        source = src;
+        source_stride = src_stride / sizeof(Pixel);
+      }
+      const LoopRestorationType type = restoration_info[unit_column].type;
+      assert(type == kLoopRestorationTypeSgrProj ||
+             type == kLoopRestorationTypeWiener);
+      const dsp::LoopRestorationFunc restoration_func =
+          dsp_.loop_restorations[type - 2];
+      restoration_func(source, &(*loop_restored_window)[row][column],
+                       restoration_info[unit_column], source_stride,
+                       loop_restored_window->columns(),
+                       current_process_unit_width, current_process_unit_height,
+                       &restoration_buffer);
+    }
     ++unit_column;
     column += plane_unit_size;
   } while (column < window_width);
@@ -255,9 +242,9 @@ void PostFilter::ApplyLoopRestorationForOneSuperBlockRow(int row4x4_start,
 // completes filtering until all jobs are finished. This approach requires an
 // extra buffer (|threaded_window_buffer_|) to hold the filtering output, whose
 // size is the size of the window. It also needs block buffers (i.e.,
-// |block_buffer| in ApplyLoopRestorationForOneUnit()) to store intermediate
-// results in loop restoration for each thread. After all units inside the
-// window are filtered, the output is written to the frame buffer.
+// |block_buffer| in ApplyLoopRestorationForOneRowInWindow()) to store
+// intermediate results in loop restoration for each thread. After all units
+// inside the window are filtered, the output is written to the frame buffer.
 template <typename Pixel>
 void PostFilter::ApplyLoopRestorationThreaded() {
   const int plane_process_unit_height[kMaxPlanes] = {

@@ -174,15 +174,15 @@ class PostFilter {
   // prepare a block as input for loop restoration.
   // In striped loop restoration:
   // The filtering needs to fetch the area of size (width + 6) x (height + 4),
-  // in which (width + 6) x height area is from cdef filtered frame
-  // (cdef_buffer). Top 2 rows and bottom 2 rows are from deblocked frame
+  // in which (width + 6) x height area is from upscaled frame
+  // (superres_buffer). Top 2 rows and bottom 2 rows are from deblocked frame
   // (deblock_buffer). Special cases are: (1). when it is the top border, the
   // top 2 rows are from cdef filtered frame. (2). when it is the bottom border,
   // the bottom 2 rows are from cdef filtered frame. This function is called
   // only when cdef is applied for this frame.
   template <typename Pixel>
   static void PrepareLoopRestorationBlock(
-      const uint8_t* cdef_buffer, ptrdiff_t cdef_stride,
+      const uint8_t* src_buffer, ptrdiff_t src_stride,
       const uint8_t* deblock_buffer, ptrdiff_t deblock_stride, uint8_t* dest,
       ptrdiff_t dest_stride, const int width, const int height,
       const bool frame_top_border, const bool frame_bottom_border);
@@ -420,16 +420,10 @@ class PostFilter {
   // Functions for the Loop Restoration filter.
 
   template <typename Pixel>
-  void ApplyLoopRestorationForOneUnit(
-      const RestorationUnitInfo& restoration_info, const uint8_t* cdef_buffer,
-      ptrdiff_t cdef_buffer_stride, Plane plane, int plane_height, int y, int x,
-      int row, int column, int current_process_unit_height, int plane_unit_size,
-      int plane_width, Array2DView<Pixel>* loop_restored_window);
-  template <typename Pixel>
   void ApplyLoopRestorationForOneRowInWindow(
-      const uint8_t* cdef_buffer, Plane plane, int plane_height,
-      int plane_width, int y, int x, int row, int unit_row,
-      int current_process_unit_height, int plane_unit_size, int window_width,
+      const uint8_t* src_buffer, Plane plane, int plane_height, int plane_width,
+      int y, int x, int row, int unit_row, int current_process_unit_height,
+      int plane_unit_size, int window_width,
       Array2DView<Pixel>* loop_restored_window);
   // Applies loop restoration for the superblock row starting at |row4x4_start|
   // with a height of 4*|sb4x4|.
@@ -559,7 +553,7 @@ extern template void PostFilter::ExtendFrame<uint8_t>(void* frame_start,
                                                       int left, int right,
                                                       int top, int bottom);
 extern template void PostFilter::PrepareLoopRestorationBlock<uint8_t>(
-    const uint8_t* cdef_buffer, ptrdiff_t cdef_stride,
+    const uint8_t* src_buffer, ptrdiff_t src_stride,
     const uint8_t* deblock_buffer, ptrdiff_t deblock_stride, uint8_t* dest,
     ptrdiff_t dest_stride, const int width, const int height,
     const bool frame_top_border, const bool frame_bottom_border);
@@ -571,7 +565,7 @@ extern template void PostFilter::ExtendFrame<uint16_t>(void* frame_start,
                                                        int left, int right,
                                                        int top, int bottom);
 extern template void PostFilter::PrepareLoopRestorationBlock<uint16_t>(
-    const uint8_t* cdef_buffer, ptrdiff_t cdef_stride,
+    const uint8_t* src_buffer, ptrdiff_t src_stride,
     const uint8_t* deblock_buffer, ptrdiff_t deblock_stride, uint8_t* dest,
     ptrdiff_t dest_stride, const int width, const int height,
     const bool frame_top_border, const bool frame_bottom_border);
