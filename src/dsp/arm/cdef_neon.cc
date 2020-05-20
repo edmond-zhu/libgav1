@@ -489,26 +489,24 @@ void CdefFilter_NEON(const uint16_t* src, const ptrdiff_t src_stride,
     }
     // Clip3(pixel + ((8 + sum - (sum < 0)) >> 4), min, max))
     const int16x8_t sum_lt_0 = vshrq_n_s16(sum, 15);
-    sum = vaddq_s16(sum, vdupq_n_s16(8));
     sum = vaddq_s16(sum, sum_lt_0);
-    sum = vshrq_n_s16(sum, 4);
-    sum = vaddq_s16(sum, vreinterpretq_s16_u16(pixel));
+    int16x8_t result = vrsraq_n_s16(vreinterpretq_s16_u16(pixel), sum, 4);
     if (clipping_required) {
-      sum = vminq_s16(sum, vreinterpretq_s16_u16(max));
-      sum = vmaxq_s16(sum, vreinterpretq_s16_u16(min));
+      result = vminq_s16(result, vreinterpretq_s16_u16(max));
+      result = vmaxq_s16(result, vreinterpretq_s16_u16(min));
     }
 
-    const uint8x8_t result = vqmovun_s16(sum);
+    const uint8x8_t dst_pixel = vqmovun_s16(result);
     if (width == 8) {
       src += src_stride;
-      vst1_u8(dst, result);
+      vst1_u8(dst, dst_pixel);
       dst += dst_stride;
       ++y;
     } else {
       src += 2 * src_stride;
-      StoreLo4(dst, result);
+      StoreLo4(dst, dst_pixel);
       dst += dst_stride;
-      StoreHi4(dst, result);
+      StoreHi4(dst, dst_pixel);
       dst += dst_stride;
       y += 2;
     }
