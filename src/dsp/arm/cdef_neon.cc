@@ -354,7 +354,7 @@ void CdefFilter_NEON(const uint16_t* src, const ptrdiff_t src_stride,
   const int primary_tap_0 = kCdefPrimaryTaps[primary_strength & 1][0];
   const int primary_tap_1 = kCdefPrimaryTaps[primary_strength & 1][1];
 
-  int y = 0;
+  int y = height;
   do {
     uint16x8_t pixel;
     if (width == 8) {
@@ -501,16 +501,16 @@ void CdefFilter_NEON(const uint16_t* src, const ptrdiff_t src_stride,
       src += src_stride;
       vst1_u8(dst, dst_pixel);
       dst += dst_stride;
-      ++y;
+      --y;
     } else {
       src += 2 * src_stride;
       StoreLo4(dst, dst_pixel);
       dst += dst_stride;
       StoreHi4(dst, dst_pixel);
       dst += dst_stride;
-      y += 2;
+      y -= 2;
     }
-  } while (y < height);
+  } while (y != 0);
 }
 
 void Init8bpp() {

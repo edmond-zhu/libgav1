@@ -372,7 +372,7 @@ void CdefFilter_SSE4_1(const uint16_t* src, const ptrdiff_t src_stride,
   const __m128i primary_threshold = _mm_set1_epi16(primary_strength);
   const __m128i secondary_threshold = _mm_set1_epi16(secondary_strength);
 
-  int y = 0;
+  int y = height;
   do {
     __m128i pixel;
     if (width == 8) {
@@ -512,16 +512,16 @@ void CdefFilter_SSE4_1(const uint16_t* src, const ptrdiff_t src_stride,
       src += src_stride;
       StoreLo8(dst, result);
       dst += dst_stride;
-      ++y;
+      --y;
     } else {
       src += 2 * src_stride;
       Store4(dst, result);
       dst += dst_stride;
       Store4(dst, _mm_srli_si128(result, 4));
       dst += dst_stride;
-      y += 2;
+      y -= 2;
     }
-  } while (y < height);
+  } while (y != 0);
 }
 
 void Init8bpp() {

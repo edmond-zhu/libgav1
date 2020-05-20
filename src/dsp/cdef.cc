@@ -149,7 +149,7 @@ void CdefFilter_C(const uint16_t* src, const ptrdiff_t src_stride,
                                                 kCdefSecondaryTap1};
   auto* dst = static_cast<Pixel*>(dest);
   const ptrdiff_t dst_stride = dest_stride / sizeof(Pixel);
-  int y = 0;
+  int y = block_height;
   do {
     int x = 0;
     do {
@@ -210,7 +210,7 @@ void CdefFilter_C(const uint16_t* src, const ptrdiff_t src_stride,
 
     src += src_stride;
     dst += dst_stride;
-  } while (++y < block_height);
+  } while (--y != 0);
 }
 #endif  // LIBGAV1_ENABLE_ALL_DSP_FUNCTIONS ||
         // !defined(LIBGAV1_Dsp8bpp_CdefFilters) ||
