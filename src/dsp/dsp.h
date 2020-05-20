@@ -336,11 +336,15 @@ using CdefDirectionFunc = void (*)(const void* src, ptrdiff_t stride,
 // |direction| is the filtering direction.
 // |dest| is the output buffer. |dest_stride| is given in bytes.
 using CdefFilteringFunc = void (*)(const uint16_t* source,
-                                   ptrdiff_t source_stride, int block_width,
-                                   int block_height, int primary_strength,
-                                   int secondary_strength, int damping,
-                                   int direction, void* dest,
+                                   ptrdiff_t source_stride, int block_height,
+                                   int primary_strength, int secondary_strength,
+                                   int damping, int direction, void* dest,
                                    ptrdiff_t dest_stride);
+
+// The first index is block width: [0]: 4, [1]: 8. The second is based on
+// non-zero strengths: [0]: |primary_strength| and |secondary_strength|, [1]:
+// |primary_strength| only, [2]: |secondary_strength| only.
+using CdefFilteringFuncs = CdefFilteringFunc[2][3];
 
 // Upscaling process function signature. Section 7.16.
 // Operates on a single row.
@@ -788,7 +792,7 @@ using MvProjectionSingleFunc = void (*)(
 struct Dsp {
   AverageBlendFunc average_blend;
   CdefDirectionFunc cdef_direction;
-  CdefFilteringFunc cdef_filter;
+  CdefFilteringFuncs cdef_filters;
   CflIntraPredictorFuncs cfl_intra_predictors;
   CflSubsamplerFuncs cfl_subsamplers;
   ConvolveFuncs convolve;

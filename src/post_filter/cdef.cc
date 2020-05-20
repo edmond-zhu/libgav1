@@ -231,6 +231,10 @@ void PostFilter::ApplyCdefForOneUnit(uint16_t* cdef_block, const int index,
       frame_header_.cdef.y_primary_strength[index];
   const uint8_t y_secondary_strength =
       frame_header_.cdef.y_secondary_strength[index];
+  // y_strength_index is 0 for both primary and secondary strengths being
+  // non-zero, 1 for primary only, 2 for secondary only. This will be updated
+  // with y_primary_strength after variance is applied.
+  int y_strength_index = static_cast<int>(y_secondary_strength == 0);
 
   const bool compute_direction_and_variance =
       (y_primary_strength | frame_header_.cdef.uv_primary_strength[index]) != 0;
@@ -289,10 +293,12 @@ void PostFilter::ApplyCdefForOneUnit(uint16_t* cdef_block, const int index,
           cdef_src +=
               (MultiplyBy4(row4x4 - row4x4_start)) * kCdefUnitSizeWithBorders +
               (MultiplyBy4(column4x4 - column4x4_start));
-          dsp_.cdef_filter(cdef_src, kCdefUnitSizeWithBorders, block_width,
-                           block_height, primary_strength, y_secondary_strength,
-                           frame_header_.cdef.damping, direction, cdef_buffer,
-                           cdef_stride);
+          const int strength_index =
+              y_strength_index | (static_cast<int>(primary_strength == 0) << 1);
+          dsp_.cdef_filters[1][strength_index](
+              cdef_src, kCdefUnitSizeWithBorders, block_height,
+              primary_strength, y_secondary_strength,
+              frame_header_.cdef.damping, direction, cdef_buffer, cdef_stride);
         }
       }
       cdef_buffer_base += column_step[kPlaneY];
@@ -335,6 +341,11 @@ void PostFilter::ApplyCdefForOneUnit(uint16_t* cdef_block, const int index,
                           column4x4_start, cdef_block, kCdefUnitSizeWithBorders,
                           false);
 
+  // uv_strength_index is 0 for both primary and secondary strengths being
+  // non-zero, 1 for primary only, 2 for secondary only.
+  const int uv_strength_index =
+      (static_cast<int>(uv_primary_strength == 0) << 1) |
+      static_cast<int>(uv_secondary_strength == 0);
   for (int plane = kPlaneU; plane <= kPlaneV; ++plane) {
     const int8_t subsampling_x = subsampling_x_[plane];
     const int8_t subsampling_y = subsampling_y_[plane];
@@ -392,11 +403,13 @@ void PostFilter::ApplyCdefForOneUnit(uint16_t* cdef_block, const int index,
               (MultiplyBy4(row4x4 - row4x4_start) >> subsampling_y) *
                   kCdefUnitSizeWithBorders +
               (MultiplyBy4(column4x4 - column4x4_start) >> subsampling_x);
-          dsp_.cdef_filter(cdef_src, kCdefUnitSizeWithBorders,
-                           block_width << dual_cdef, block_height,
-                           uv_primary_strength, uv_secondary_strength,
-                           frame_header_.cdef.damping - 1, direction,
-                           cdef_buffer, cdef_stride);
+          // Block width is 8 if either dual_cdef is true or subsampling_x == 0.
+          const int width_index = dual_cdef | (subsampling_x ^ 1);
+          dsp_.cdef_filters[width_index][uv_strength_index](
+              cdef_src, kCdefUnitSizeWithBorders, block_height,
+              uv_primary_strength, uv_secondary_strength,
+              frame_header_.cdef.damping - 1, direction, cdef_buffer,
+              cdef_stride);
         }
         // When dual_cdef is set, the above cdef_filter() will process 2 blocks,
         // so adjust the pointers and indexes for 2 blocks.

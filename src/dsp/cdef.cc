@@ -104,9 +104,9 @@ void CdefDirection_C(const void* const source, ptrdiff_t stride,
         // !defined(LIBGAV1_Dsp10bpp_CdefDirection))
 
 // Silence unused function warnings when CdefFilter_C is obviated.
-#if LIBGAV1_ENABLE_ALL_DSP_FUNCTIONS ||     \
-    !defined(LIBGAV1_Dsp8bpp_CdefFilter) || \
-    (LIBGAV1_MAX_BITDEPTH >= 10 && !defined(LIBGAV1_Dsp10bpp_CdefFilter))
+#if LIBGAV1_ENABLE_ALL_DSP_FUNCTIONS ||      \
+    !defined(LIBGAV1_Dsp8bpp_CdefFilters) || \
+    (LIBGAV1_MAX_BITDEPTH >= 10 && !defined(LIBGAV1_Dsp10bpp_CdefFilters))
 
 int Constrain(int diff, int threshold, int damping) {
   if (threshold == 0) return 0;
@@ -119,13 +119,13 @@ int Constrain(int diff, int threshold, int damping) {
 // Filters the source block. It doesn't check whether the candidate pixel is
 // inside the frame. However it requires the source input to be padded with a
 // constant large value (kCdefLargeValue) if at the boundary.
-template <int bitdepth, typename Pixel>
+template <int block_width, int bitdepth, typename Pixel>
 void CdefFilter_C(const uint16_t* src, const ptrdiff_t src_stride,
-                  const int block_width, const int block_height,
-                  const int primary_strength, const int secondary_strength,
-                  const int damping, const int direction, void* const dest,
+                  const int block_height, const int primary_strength,
+                  const int secondary_strength, const int damping,
+                  const int direction, void* const dest,
                   const ptrdiff_t dest_stride) {
-  assert(block_width == 4 || block_width == 8);
+  static_assert(block_width == 4 || block_width == 8, "Invalid CDEF width.");
   assert(block_height == 4 || block_height == 8);
   assert(direction >= 0 && direction <= 7);
   constexpr int coeff_shift = bitdepth - 8;
@@ -191,22 +191,33 @@ void CdefFilter_C(const uint16_t* src, const ptrdiff_t src_stride,
   } while (++y < block_height);
 }
 #endif  // LIBGAV1_ENABLE_ALL_DSP_FUNCTIONS ||
-        // !defined(LIBGAV1_Dsp8bpp_CdefFilter) ||
-        // (LIBGAV1_MAX_BITDEPTH >= 10 && !defined(LIBGAV1_Dsp10bpp_CdefFilter))
+        // !defined(LIBGAV1_Dsp8bpp_CdefFilters) ||
+        // (LIBGAV1_MAX_BITDEPTH >= 10 &&
+        // !defined(LIBGAV1_Dsp10bpp_CdefFilters))
 
 void Init8bpp() {
   Dsp* const dsp = dsp_internal::GetWritableDspTable(8);
   assert(dsp != nullptr);
 #if LIBGAV1_ENABLE_ALL_DSP_FUNCTIONS
   dsp->cdef_direction = CdefDirection_C<8, uint8_t>;
-  dsp->cdef_filter = CdefFilter_C<8, uint8_t>;
+  dsp->cdef_filters[0][0] = CdefFilter_C<4, 8, uint8_t>;
+  dsp->cdef_filters[0][1] = CdefFilter_C<4, 8, uint8_t>;
+  dsp->cdef_filters[0][2] = CdefFilter_C<4, 8, uint8_t>;
+  dsp->cdef_filters[1][0] = CdefFilter_C<8, 8, uint8_t>;
+  dsp->cdef_filters[1][1] = CdefFilter_C<8, 8, uint8_t>;
+  dsp->cdef_filters[1][2] = CdefFilter_C<8, 8, uint8_t>;
 #else  // !LIBGAV1_ENABLE_ALL_DSP_FUNCTIONS
   static_cast<void>(dsp);
 #ifndef LIBGAV1_Dsp8bpp_CdefDirection
   dsp->cdef_direction = CdefDirection_C<8, uint8_t>;
 #endif
-#ifndef LIBGAV1_Dsp8bpp_CdefFilter
-  dsp->cdef_filter = CdefFilter_C<8, uint8_t>;
+#ifndef LIBGAV1_Dsp8bpp_CdefFilters
+  dsp->cdef_filters[0][0] = CdefFilter_C<4, 8, uint8_t>;
+  dsp->cdef_filters[0][1] = CdefFilter_C<4, 8, uint8_t>;
+  dsp->cdef_filters[0][2] = CdefFilter_C<4, 8, uint8_t>;
+  dsp->cdef_filters[1][0] = CdefFilter_C<8, 8, uint8_t>;
+  dsp->cdef_filters[1][1] = CdefFilter_C<8, 8, uint8_t>;
+  dsp->cdef_filters[1][2] = CdefFilter_C<8, 8, uint8_t>;
 #endif
 #endif  // LIBGAV1_ENABLE_ALL_DSP_FUNCTIONS
 }
@@ -217,14 +228,24 @@ void Init10bpp() {
   assert(dsp != nullptr);
 #if LIBGAV1_ENABLE_ALL_DSP_FUNCTIONS
   dsp->cdef_direction = CdefDirection_C<10, uint16_t>;
-  dsp->cdef_filter = CdefFilter_C<10, uint16_t>;
+  dsp->cdef_filters[0][0] = CdefFilter_C<4, 10, uint16_t>;
+  dsp->cdef_filters[0][1] = CdefFilter_C<4, 10, uint16_t>;
+  dsp->cdef_filters[0][2] = CdefFilter_C<4, 10, uint16_t>;
+  dsp->cdef_filters[1][0] = CdefFilter_C<8, 10, uint16_t>;
+  dsp->cdef_filters[1][1] = CdefFilter_C<8, 10, uint16_t>;
+  dsp->cdef_filters[1][2] = CdefFilter_C<8, 10, uint16_t>;
 #else  // !LIBGAV1_ENABLE_ALL_DSP_FUNCTIONS
   static_cast<void>(dsp);
 #ifndef LIBGAV1_Dsp10bpp_CdefDirection
   dsp->cdef_direction = CdefDirection_C<10, uint16_t>;
 #endif
-#ifndef LIBGAV1_Dsp10bpp_CdefFilter
-  dsp->cdef_filter = CdefFilter_C<10, uint16_t>;
+#ifndef LIBGAV1_Dsp10bpp_CdefFilters
+  dsp->cdef_filters[0][0] = CdefFilter_C<4, 10, uint16_t>;
+  dsp->cdef_filters[0][1] = CdefFilter_C<4, 10, uint16_t>;
+  dsp->cdef_filters[0][2] = CdefFilter_C<4, 10, uint16_t>;
+  dsp->cdef_filters[1][0] = CdefFilter_C<8, 10, uint16_t>;
+  dsp->cdef_filters[1][1] = CdefFilter_C<8, 10, uint16_t>;
+  dsp->cdef_filters[1][2] = CdefFilter_C<8, 10, uint16_t>;
 #endif
 #endif  // LIBGAV1_ENABLE_ALL_DSP_FUNCTIONS
 }

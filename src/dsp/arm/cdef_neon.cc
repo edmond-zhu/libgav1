@@ -319,12 +319,14 @@ int16x8_t Constrain(const uint16x8_t pixel, const uint16x8_t reference,
 }
 
 template <int width, bool enable_primary = true, bool enable_secondary = true>
-void DoCdef(const uint16_t* src, const ptrdiff_t src_stride, const int height,
-            const int direction, const int primary_strength,
-            const int secondary_strength, const int damping, uint8_t* dst,
-            const ptrdiff_t dst_stride) {
+void CdefFilter_NEON(const uint16_t* src, const ptrdiff_t src_stride,
+                     const int height, const int primary_strength,
+                     const int secondary_strength, const int damping,
+                     const int direction, void* dest,
+                     const ptrdiff_t dst_stride) {
   static_assert(width == 8 || width == 4, "");
   static_assert(enable_primary || enable_secondary, "");
+  auto* dst = static_cast<uint8_t*>(dest);
   const uint16x8_t cdef_large_value_mask =
       vdupq_n_u16(static_cast<uint16_t>(~kCdefLargeValue));
   const uint16x8_t primary_threshold = vdupq_n_u16(primary_strength);
@@ -503,59 +505,18 @@ void DoCdef(const uint16_t* src, const ptrdiff_t src_stride, const int height,
   } while (y < height);
 }
 
-// Filters the source block. It doesn't check whether the candidate pixel is
-// inside the frame. However it requires the source input to be padded with a
-// constant large value (kCdefLargeValue) if at the boundary.
-void CdefFilter_NEON(const uint16_t* src, const ptrdiff_t src_stride,
-                     const int block_width, const int block_height,
-                     const int primary_strength, const int secondary_strength,
-                     const int damping, const int direction, void* const dest,
-                     const ptrdiff_t dest_stride) {
-  auto* dst = static_cast<uint8_t*>(dest);
-
-  // TODO(slavarnway): Change dsp->cdef_filter to dsp->cdef_filter[2][2]. This
-  // would eliminate the strength checks.
-  if (secondary_strength > 0) {
-    if (primary_strength > 0) {
-      if (block_width == 8) {
-        DoCdef<8>(src, src_stride, block_height, direction, primary_strength,
-                  secondary_strength, damping, dst, dest_stride);
-      } else {
-        assert(block_width == 4);
-        DoCdef<4>(src, src_stride, block_height, direction, primary_strength,
-                  secondary_strength, damping, dst, dest_stride);
-      }
-    } else {
-      if (block_width == 8) {
-        DoCdef<8, /*enable_primary=*/false>(
-            src, src_stride, block_height, direction, primary_strength,
-            secondary_strength, damping, dst, dest_stride);
-      } else {
-        assert(block_width == 4);
-        DoCdef<4, /*enable_primary=*/false>(
-            src, src_stride, block_height, direction, primary_strength,
-            secondary_strength, damping, dst, dest_stride);
-      }
-    }
-  } else {
-    if (block_width == 8) {
-      DoCdef<8, /*enable_primary=*/true, /*enable_secondary=*/false>(
-          src, src_stride, block_height, direction, primary_strength,
-          secondary_strength, damping, dst, dest_stride);
-    } else {
-      assert(block_width == 4);
-      DoCdef<4, /*enable_primary=*/true, /*enable_secondary=*/false>(
-          src, src_stride, block_height, direction, primary_strength,
-          secondary_strength, damping, dst, dest_stride);
-    }
-  }
-}
-
 void Init8bpp() {
   Dsp* const dsp = dsp_internal::GetWritableDspTable(kBitdepth8);
   assert(dsp != nullptr);
   dsp->cdef_direction = CdefDirection_NEON;
-  dsp->cdef_filter = CdefFilter_NEON;
+  dsp->cdef_filters[0][0] = CdefFilter_NEON<4>;
+  dsp->cdef_filters[0][1] =
+      CdefFilter_NEON<4, /*enable_primary=*/true, /*enable_secondary=*/false>;
+  dsp->cdef_filters[0][2] = CdefFilter_NEON<4, /*enable_primary=*/false>;
+  dsp->cdef_filters[1][0] = CdefFilter_NEON<8>;
+  dsp->cdef_filters[1][1] =
+      CdefFilter_NEON<8, /*enable_primary=*/true, /*enable_secondary=*/false>;
+  dsp->cdef_filters[1][2] = CdefFilter_NEON<8, /*enable_primary=*/false>;
 }
 
 }  // namespace
