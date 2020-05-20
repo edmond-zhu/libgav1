@@ -109,7 +109,7 @@ void CdefDirection_C(const void* const source, ptrdiff_t stride,
     (LIBGAV1_MAX_BITDEPTH >= 10 && !defined(LIBGAV1_Dsp10bpp_CdefFilters))
 
 int Constrain(int diff, int threshold, int damping) {
-  if (threshold == 0) return 0;
+  assert(threshold != 0);
   damping = std::max(0, damping - FloorLog2(threshold));
   const int sign = (diff < 0) ? -1 : 1;
   return sign *
@@ -119,13 +119,15 @@ int Constrain(int diff, int threshold, int damping) {
 // Filters the source block. It doesn't check whether the candidate pixel is
 // inside the frame. However it requires the source input to be padded with a
 // constant large value (kCdefLargeValue) if at the boundary.
-template <int block_width, int bitdepth, typename Pixel>
+template <int block_width, int bitdepth, typename Pixel,
+          bool enable_primary = true, bool enable_secondary = true>
 void CdefFilter_C(const uint16_t* src, const ptrdiff_t src_stride,
                   const int block_height, const int primary_strength,
                   const int secondary_strength, const int damping,
                   const int direction, void* const dest,
                   const ptrdiff_t dest_stride) {
   static_assert(block_width == 4 || block_width == 8, "Invalid CDEF width.");
+  static_assert(enable_primary || enable_secondary, "");
   assert(block_height == 4 || block_height == 8);
   assert(direction >= 0 && direction <= 7);
   constexpr int coeff_shift = bitdepth - 8;
@@ -133,6 +135,7 @@ void CdefFilter_C(const uint16_t* src, const ptrdiff_t src_stride,
   assert(primary_strength >= 0 && primary_strength <= 15 << coeff_shift);
   assert(secondary_strength >= 0 && secondary_strength <= 4 << coeff_shift &&
          secondary_strength != 3 << coeff_shift);
+  assert(primary_strength != 0 || secondary_strength != 0);
   // damping is decreased by 1 for chroma.
   assert((damping >= 3 && damping <= 6 + coeff_shift) ||
          (damping >= 2 && damping <= 5 + coeff_shift));
@@ -151,32 +154,36 @@ void CdefFilter_C(const uint16_t* src, const ptrdiff_t src_stride,
       for (int k = 0; k < 2; ++k) {
         static constexpr int signs[] = {-1, 1};
         for (const int& sign : signs) {
-          int dy = sign * kCdefDirections[direction][k][0];
-          int dx = sign * kCdefDirections[direction][k][1];
-          uint16_t value = src[dy * src_stride + dx + x];
-          // Note: the summation can ignore the condition check in SIMD
-          // implementation, because Constrain() will return 0 when
-          // value == kCdefLargeValue.
-          if (value != kCdefLargeValue) {
-            sum += Constrain(value - pixel_value, primary_strength, damping) *
-                   kCdefPrimaryTaps[(primary_strength >> coeff_shift) & 1][k];
-            max_value = std::max(value, max_value);
-            min_value = std::min(value, min_value);
-          }
-
-          static constexpr int offsets[] = {-2, 2};
-          for (const int& offset : offsets) {
-            dy = sign * kCdefDirections[direction + offset][k][0];
-            dx = sign * kCdefDirections[direction + offset][k][1];
-            value = src[dy * src_stride + dx + x];
+          if (enable_primary) {
+            const int dy = sign * kCdefDirections[direction][k][0];
+            const int dx = sign * kCdefDirections[direction][k][1];
+            const uint16_t value = src[dy * src_stride + dx + x];
             // Note: the summation can ignore the condition check in SIMD
-            // implementation.
+            // implementation, because Constrain() will return 0 when
+            // value == kCdefLargeValue.
             if (value != kCdefLargeValue) {
-              sum +=
-                  Constrain(value - pixel_value, secondary_strength, damping) *
-                  kCdefSecondaryTaps[k];
+              sum += Constrain(value - pixel_value, primary_strength, damping) *
+                     kCdefPrimaryTaps[(primary_strength >> coeff_shift) & 1][k];
               max_value = std::max(value, max_value);
               min_value = std::min(value, min_value);
+            }
+          }
+
+          if (enable_secondary) {
+            static constexpr int offsets[] = {-2, 2};
+            for (const int& offset : offsets) {
+              const int dy = sign * kCdefDirections[direction + offset][k][0];
+              const int dx = sign * kCdefDirections[direction + offset][k][1];
+              const uint16_t value = src[dy * src_stride + dx + x];
+              // Note: the summation can ignore the condition check in SIMD
+              // implementation.
+              if (value != kCdefLargeValue) {
+                sum += Constrain(value - pixel_value, secondary_strength,
+                                 damping) *
+                       kCdefSecondaryTaps[k];
+                max_value = std::max(value, max_value);
+                min_value = std::min(value, min_value);
+              }
             }
           }
         }
@@ -201,11 +208,15 @@ void Init8bpp() {
 #if LIBGAV1_ENABLE_ALL_DSP_FUNCTIONS
   dsp->cdef_direction = CdefDirection_C<8, uint8_t>;
   dsp->cdef_filters[0][0] = CdefFilter_C<4, 8, uint8_t>;
-  dsp->cdef_filters[0][1] = CdefFilter_C<4, 8, uint8_t>;
-  dsp->cdef_filters[0][2] = CdefFilter_C<4, 8, uint8_t>;
+  dsp->cdef_filters[0][1] = CdefFilter_C<4, 8, uint8_t, /*enable_primary=*/true,
+                                         /*enable_secondary=*/false>;
+  dsp->cdef_filters[0][2] =
+      CdefFilter_C<4, 8, uint8_t, /*enable_primary=*/false>;
   dsp->cdef_filters[1][0] = CdefFilter_C<8, 8, uint8_t>;
-  dsp->cdef_filters[1][1] = CdefFilter_C<8, 8, uint8_t>;
-  dsp->cdef_filters[1][2] = CdefFilter_C<8, 8, uint8_t>;
+  dsp->cdef_filters[1][1] = CdefFilter_C<8, 8, uint8_t, /*enable_primary=*/true,
+                                         /*enable_secondary=*/false>;
+  dsp->cdef_filters[1][2] =
+      CdefFilter_C<8, 8, uint8_t, /*enable_primary=*/false>;
 #else  // !LIBGAV1_ENABLE_ALL_DSP_FUNCTIONS
   static_cast<void>(dsp);
 #ifndef LIBGAV1_Dsp8bpp_CdefDirection
@@ -213,11 +224,15 @@ void Init8bpp() {
 #endif
 #ifndef LIBGAV1_Dsp8bpp_CdefFilters
   dsp->cdef_filters[0][0] = CdefFilter_C<4, 8, uint8_t>;
-  dsp->cdef_filters[0][1] = CdefFilter_C<4, 8, uint8_t>;
-  dsp->cdef_filters[0][2] = CdefFilter_C<4, 8, uint8_t>;
+  dsp->cdef_filters[0][1] = CdefFilter_C<4, 8, uint8_t, /*enable_primary=*/true,
+                                         /*enable_secondary=*/false>;
+  dsp->cdef_filters[0][2] =
+      CdefFilter_C<4, 8, uint8_t, /*enable_primary=*/false>;
   dsp->cdef_filters[1][0] = CdefFilter_C<8, 8, uint8_t>;
-  dsp->cdef_filters[1][1] = CdefFilter_C<8, 8, uint8_t>;
-  dsp->cdef_filters[1][2] = CdefFilter_C<8, 8, uint8_t>;
+  dsp->cdef_filters[1][1] = CdefFilter_C<8, 8, uint8_t, /*enable_primary=*/true,
+                                         /*enable_secondary=*/false>;
+  dsp->cdef_filters[1][2] =
+      CdefFilter_C<8, 8, uint8_t, /*enable_primary=*/false>;
 #endif
 #endif  // LIBGAV1_ENABLE_ALL_DSP_FUNCTIONS
 }
@@ -229,11 +244,17 @@ void Init10bpp() {
 #if LIBGAV1_ENABLE_ALL_DSP_FUNCTIONS
   dsp->cdef_direction = CdefDirection_C<10, uint16_t>;
   dsp->cdef_filters[0][0] = CdefFilter_C<4, 10, uint16_t>;
-  dsp->cdef_filters[0][1] = CdefFilter_C<4, 10, uint16_t>;
-  dsp->cdef_filters[0][2] = CdefFilter_C<4, 10, uint16_t>;
+  dsp->cdef_filters[0][1] =
+      CdefFilter_C<4, 10, uint16_t, /*enable_primary=*/true,
+                   /*enable_secondary=*/false>;
+  dsp->cdef_filters[0][2] =
+      CdefFilter_C<4, 10, uint16_t, /*enable_primary=*/false>;
   dsp->cdef_filters[1][0] = CdefFilter_C<8, 10, uint16_t>;
-  dsp->cdef_filters[1][1] = CdefFilter_C<8, 10, uint16_t>;
-  dsp->cdef_filters[1][2] = CdefFilter_C<8, 10, uint16_t>;
+  dsp->cdef_filters[1][1] =
+      CdefFilter_C<8, 10, uint16_t, /*enable_primary=*/true,
+                   /*enable_secondary=*/false>;
+  dsp->cdef_filters[1][2] =
+      CdefFilter_C<8, 10, uint16_t, /*enable_primary=*/false>;
 #else  // !LIBGAV1_ENABLE_ALL_DSP_FUNCTIONS
   static_cast<void>(dsp);
 #ifndef LIBGAV1_Dsp10bpp_CdefDirection
@@ -241,11 +262,17 @@ void Init10bpp() {
 #endif
 #ifndef LIBGAV1_Dsp10bpp_CdefFilters
   dsp->cdef_filters[0][0] = CdefFilter_C<4, 10, uint16_t>;
-  dsp->cdef_filters[0][1] = CdefFilter_C<4, 10, uint16_t>;
-  dsp->cdef_filters[0][2] = CdefFilter_C<4, 10, uint16_t>;
+  dsp->cdef_filters[0][1] =
+      CdefFilter_C<4, 10, uint16_t, /*enable_primary=*/true,
+                   /*enable_secondary=*/false>;
+  dsp->cdef_filters[0][2] =
+      CdefFilter_C<4, 10, uint16_t, /*enable_primary=*/false>;
   dsp->cdef_filters[1][0] = CdefFilter_C<8, 10, uint16_t>;
-  dsp->cdef_filters[1][1] = CdefFilter_C<8, 10, uint16_t>;
-  dsp->cdef_filters[1][2] = CdefFilter_C<8, 10, uint16_t>;
+  dsp->cdef_filters[1][1] =
+      CdefFilter_C<8, 10, uint16_t, /*enable_primary=*/true,
+                   /*enable_secondary=*/false>;
+  dsp->cdef_filters[1][2] =
+      CdefFilter_C<8, 10, uint16_t, /*enable_primary=*/false>;
 #endif
 #endif  // LIBGAV1_ENABLE_ALL_DSP_FUNCTIONS
 }
