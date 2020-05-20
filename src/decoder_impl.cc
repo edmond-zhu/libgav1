@@ -57,10 +57,10 @@ constexpr int kMaxLayers = 32;
 int GetBottomBorderPixels(const bool do_cdef, const bool do_restoration,
                           const bool do_superres) {
   int border = kBorderPixels;
-  if (do_cdef) border += 2 * kCdefBorder;
-  if (do_restoration) border += 2 * kRestorationVerticalBorder;
-  if (do_superres) border += 2 * kSuperResVerticalBorder;
-  return border;
+  if (do_cdef) border += kCdefBorder;
+  if (do_restoration) border += kRestorationVerticalBorder;
+  if (do_superres) border += kSuperResVerticalBorder;
+  return Align(border, 2);  // Must be a multiple of 2.
 }
 
 // Sets |frame_scratch_buffer->tile_decoding_failed| to true (while holding on
