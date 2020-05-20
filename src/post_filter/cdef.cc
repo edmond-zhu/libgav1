@@ -287,9 +287,8 @@ void PostFilter::ApplyCdefForOneUnit(uint16_t* cdef_block, const int index,
           CopyPixels(src_buffer, src_stride, cdef_buffer, cdef_stride,
                      block_width, block_height, sizeof(Pixel));
         } else {
-          uint16_t* cdef_src = cdef_block + kPlaneY * kCdefUnitSizeWithBorders *
-                                                kCdefUnitSizeWithBorders;
-          cdef_src += kCdefBorder * kCdefUnitSizeWithBorders + kCdefBorder;
+          uint16_t* cdef_src =
+              cdef_block + kCdefBorder * kCdefUnitSizeWithBorders + kCdefBorder;
           cdef_src +=
               (MultiplyBy4(row4x4 - row4x4_start)) * kCdefUnitSizeWithBorders +
               (MultiplyBy4(column4x4 - column4x4_start));
