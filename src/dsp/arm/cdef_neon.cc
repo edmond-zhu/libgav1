@@ -38,108 +38,284 @@ namespace {
 
 #include "src/dsp/cdef.inc"
 
-// Expand |a| to int8x16_t, left shift it by |shift| and sum the low
-// and high values with |b| and |c| respectively.
-// Used to calculate |partial[0][i + j]| and |partial[4][7 + i - j]|. The input
-// is |src[j]| and it is being added to |partial[]| based on the above indices.
-template <int shift, bool is_partial4 = false>
-void AddPartial0(uint8x8_t a, uint16x8_t* b, uint16x8_t* c) {
-  // Allow Left/RightShift() to compile when |shift| is out of range.
-  constexpr int safe_shift = (shift > 0) ? shift : 1;
-  if (is_partial4) a = vrev64_u8(a);
-  if (shift == 0) {
-    *b = vaddw_u8(*b, a);
-  } else {
-    *b = vaddw_u8(*b, LeftShift<safe_shift * 8>(a));
-    *c = vaddw_u8(*c, RightShift<(8 - safe_shift) * 8>(a));
-  }
-}
-
-// |[i + j / 2]| effectively adds two values to the same index:
-// partial[1][0 + 0 / 2] += src[j]
-// partial[1][0 + 1 / 2] += src[j + 1]
-// Pairwise add |a| to generate 4 values. Shift/extract as necessary to add
-// these values to |b| and |c|.
+// ----------------------------------------------------------------------------
+// Refer to CdefDirection_C().
 //
-// |partial[3]| is the same with one exception: The values are reversed.
-// |i| |j| |3 + i - j / 2|
-//  0   0   3
-//  0   1   3
-//  0   2   2
-//  < ... >
-//  0   7   0
+// int32_t partial[8][15] = {};
+// for (int i = 0; i < 8; ++i) {
+//   for (int j = 0; j < 8; ++j) {
+//     const int x = 1;
+//     partial[0][i + j] += x;
+//     partial[1][i + j / 2] += x;
+//     partial[2][i] += x;
+//     partial[3][3 + i - j / 2] += x;
+//     partial[4][7 + i - j] += x;
+//     partial[5][3 - i / 2 + j] += x;
+//     partial[6][j] += x;
+//     partial[7][i / 2 + j] += x;
+//   }
+// }
 //
-//  1   0   4
-//  < ... >
-//  1   7   1
-// Used to calculate |partial[1][i + j / 2]| and |partial[3][3 + i - j / 2]|.
-template <int shift, bool is_partial3 = false>
-void AddPartial1(uint8x8_t a, uint16x8_t* b, uint16x8_t* c) {
-  // Allow vextq_u16() to compile when |shift| is out of range.
-  constexpr int safe_shift = (shift > 0) ? shift : 1;
-  const uint16x4_t zero4 = vdup_n_u16(0);
-  const uint16x8_t zero8 = vdupq_n_u16(0);
-  if (is_partial3) a = vrev64_u8(a);
-  const uint16x4_t paired = vpaddl_u8(a);
-  const uint16x8_t extended = vcombine_u16(paired, zero4);
-  if (shift == 0) {
-    *b = vaddq_u16(*b, extended);
-  } else if (shift == 4) {
-    *b = vaddq_u16(*b, vcombine_u16(zero4, paired));
-  } else {
-    const uint16x8_t shifted_b = vextq_u16(zero8, extended, 8 - safe_shift);
-    *b = vaddq_u16(*b, shifted_b);
-    if (shift > 4) {
-      // Split |paired| between |b| and |c|.
-      const uint16x8_t shifted_c = vextq_u16(extended, zero8, 8 - safe_shift);
-      *c = vaddq_u16(*c, shifted_c);
-    }
-  }
+// Using the code above, generate the position count for partial[8][15].
+//
+// partial[0]: 1 2 3 4 5 6 7 8 7 6 5 4 3 2 1
+// partial[1]: 2 4 6 8 8 8 8 8 6 4 2 0 0 0 0
+// partial[2]: 8 8 8 8 8 8 8 8 0 0 0 0 0 0 0
+// partial[3]: 2 4 6 8 8 8 8 8 6 4 2 0 0 0 0
+// partial[4]: 1 2 3 4 5 6 7 8 7 6 5 4 3 2 1
+// partial[5]: 2 4 6 8 8 8 8 8 6 4 2 0 0 0 0
+// partial[6]: 8 8 8 8 8 8 8 8 0 0 0 0 0 0 0
+// partial[7]: 2 4 6 8 8 8 8 8 6 4 2 0 0 0 0
+//
+// The SIMD code shifts the input horizontally, then adds vertically to get the
+// correct partial value for the given position.
+// ----------------------------------------------------------------------------
+
+// ----------------------------------------------------------------------------
+// partial[0][i + j] += x;
+//
+// 00 01 02 03 04 05 06 07  00 00 00 00 00 00 00
+// 00 10 11 12 13 14 15 16  17 00 00 00 00 00 00
+// 00 00 20 21 22 23 24 25  26 27 00 00 00 00 00
+// 00 00 00 30 31 32 33 34  35 36 37 00 00 00 00
+// 00 00 00 00 40 41 42 43  44 45 46 47 00 00 00
+// 00 00 00 00 00 50 51 52  53 54 55 56 57 00 00
+// 00 00 00 00 00 00 60 61  62 63 64 65 66 67 00
+// 00 00 00 00 00 00 00 70  71 72 73 74 75 76 77
+//
+// partial[4] is the same except the source is reversed.
+LIBGAV1_ALWAYS_INLINE void AddPartial_D0_D4(uint8x8_t* v_src,
+                                            uint16x8_t* partial_lo,
+                                            uint16x8_t* partial_hi) {
+  const uint8x8_t v_zero = vdup_n_u8(0);
+  // 00 01 02 03 04 05 06 07
+  *partial_lo = vmovl_u8(v_src[0]);
+  *partial_hi = vdupq_n_u16(0);
+
+  // 00 10 11 12 13 14 15 16
+  *partial_lo = vaddw_u8(*partial_lo, vext_u8(v_zero, v_src[1], 7));
+  // 17 00 00 00 00 00 00 00
+  *partial_hi = vaddw_u8(*partial_hi, vext_u8(v_src[1], v_zero, 7));
+
+  // 00 00 20 21 22 23 24 25
+  *partial_lo = vaddw_u8(*partial_lo, vext_u8(v_zero, v_src[2], 6));
+  // 26 27 00 00 00 00 00 00
+  *partial_hi = vaddw_u8(*partial_hi, vext_u8(v_src[2], v_zero, 6));
+
+  // 00 00 00 30 31 32 33 34
+  *partial_lo = vaddw_u8(*partial_lo, vext_u8(v_zero, v_src[3], 5));
+  // 35 36 37 00 00 00 00 00
+  *partial_hi = vaddw_u8(*partial_hi, vext_u8(v_src[3], v_zero, 5));
+
+  // 00 00 00 00 40 41 42 43
+  *partial_lo = vaddw_u8(*partial_lo, vext_u8(v_zero, v_src[4], 4));
+  // 44 45 46 47 00 00 00 00
+  *partial_hi = vaddw_u8(*partial_hi, vext_u8(v_src[4], v_zero, 4));
+
+  // 00 00 00 00 00 50 51 52
+  *partial_lo = vaddw_u8(*partial_lo, vext_u8(v_zero, v_src[5], 3));
+  // 53 54 55 56 57 00 00 00
+  *partial_hi = vaddw_u8(*partial_hi, vext_u8(v_src[5], v_zero, 3));
+
+  // 00 00 00 00 00 00 60 61
+  *partial_lo = vaddw_u8(*partial_lo, vext_u8(v_zero, v_src[6], 2));
+  // 62 63 64 65 66 67 00 00
+  *partial_hi = vaddw_u8(*partial_hi, vext_u8(v_src[6], v_zero, 2));
+
+  // 00 00 00 00 00 00 00 70
+  *partial_lo = vaddw_u8(*partial_lo, vext_u8(v_zero, v_src[7], 1));
+  // 71 72 73 74 75 76 77 00
+  *partial_hi = vaddw_u8(*partial_hi, vext_u8(v_src[7], v_zero, 1));
 }
 
-// Simple add starting at [3] and stepping back every other row.
-// Used to calculate |partial[5][3 - i / 2 + j]|.
-template <int shift>
-void AddPartial5(const uint8x8_t a, uint16x8_t* b, uint16x8_t* c) {
-  // Allow Left/RightShift() to compile when |shift| is out of range.
-  constexpr int safe_shift = (shift < 6) ? shift : 1;
-  if (shift > 5) {
-    *b = vaddw_u8(*b, a);
-  } else {
-    *b = vaddw_u8(*b, LeftShift<(3 - (safe_shift / 2)) * 8>(a));
-    *c = vaddw_u8(*c, RightShift<(5 + (safe_shift / 2)) * 8>(a));
+// ----------------------------------------------------------------------------
+// partial[1][i + j / 2] += x;
+//
+// A0 = src[0] + src[1], A1 = src[2] + src[3], ...
+//
+// A0 A1 A2 A3 00 00 00 00  00 00 00 00 00 00 00
+// 00 B0 B1 B2 B3 00 00 00  00 00 00 00 00 00 00
+// 00 00 C0 C1 C2 C3 00 00  00 00 00 00 00 00 00
+// 00 00 00 D0 D1 D2 D3 00  00 00 00 00 00 00 00
+// 00 00 00 00 E0 E1 E2 E3  00 00 00 00 00 00 00
+// 00 00 00 00 00 F0 F1 F2  F3 00 00 00 00 00 00
+// 00 00 00 00 00 00 G0 G1  G2 G3 00 00 00 00 00
+// 00 00 00 00 00 00 00 H0  H1 H2 H3 00 00 00 00
+//
+// partial[3] is the same except the source is reversed.
+LIBGAV1_ALWAYS_INLINE void AddPartial_D1_D3(uint8x8_t* v_src,
+                                            uint16x8_t* partial_lo,
+                                            uint16x8_t* partial_hi) {
+  uint8x16_t v_d1_temp[8];
+  const uint8x8_t v_zero = vdup_n_u8(0);
+  const uint8x16_t v_zero_16 = vdupq_n_u8(0);
+
+  for (int i = 0; i < 8; ++i) {
+    v_d1_temp[i] = vcombine_u8(v_src[i], v_zero);
   }
+
+  *partial_lo = *partial_hi = vdupq_n_u16(0);
+  // A0 A1 A2 A3 00 00 00 00
+  *partial_lo = vpadalq_u8(*partial_lo, v_d1_temp[0]);
+
+  // 00 B0 B1 B2 B3 00 00 00
+  *partial_lo = vpadalq_u8(*partial_lo, vextq_u8(v_zero_16, v_d1_temp[1], 14));
+
+  // 00 00 C0 C1 C2 C3 00 00
+  *partial_lo = vpadalq_u8(*partial_lo, vextq_u8(v_zero_16, v_d1_temp[2], 12));
+  // 00 00 00 D0 D1 D2 D3 00
+  *partial_lo = vpadalq_u8(*partial_lo, vextq_u8(v_zero_16, v_d1_temp[3], 10));
+  // 00 00 00 00 E0 E1 E2 E3
+  *partial_lo = vpadalq_u8(*partial_lo, vextq_u8(v_zero_16, v_d1_temp[4], 8));
+
+  // 00 00 00 00 00 F0 F1 F2
+  *partial_lo = vpadalq_u8(*partial_lo, vextq_u8(v_zero_16, v_d1_temp[5], 6));
+  // F3 00 00 00 00 00 00 00
+  *partial_hi = vpadalq_u8(*partial_hi, vextq_u8(v_d1_temp[5], v_zero_16, 6));
+
+  // 00 00 00 00 00 00 G0 G1
+  *partial_lo = vpadalq_u8(*partial_lo, vextq_u8(v_zero_16, v_d1_temp[6], 4));
+  // G2 G3 00 00 00 00 00 00
+  *partial_hi = vpadalq_u8(*partial_hi, vextq_u8(v_d1_temp[6], v_zero_16, 4));
+
+  // 00 00 00 00 00 00 00 H0
+  *partial_lo = vpadalq_u8(*partial_lo, vextq_u8(v_zero_16, v_d1_temp[7], 2));
+  // H1 H2 H3 00 00 00 00 00
+  *partial_hi = vpadalq_u8(*partial_hi, vextq_u8(v_d1_temp[7], v_zero_16, 2));
 }
 
-// Simple add.
-// Used to calculate |partial[6][j]|
-void AddPartial6(const uint8x8_t a, uint16x8_t* b) { *b = vaddw_u8(*b, a); }
+// ----------------------------------------------------------------------------
+// partial[7][i / 2 + j] += x;
+//
+// 00 01 02 03 04 05 06 07  00 00 00 00 00 00 00
+// 10 11 12 13 14 15 16 17  00 00 00 00 00 00 00
+// 00 20 21 22 23 24 25 26  27 00 00 00 00 00 00
+// 00 30 31 32 33 34 35 36  37 00 00 00 00 00 00
+// 00 00 40 41 42 43 44 45  46 47 00 00 00 00 00
+// 00 00 50 51 52 53 54 55  56 57 00 00 00 00 00
+// 00 00 00 60 61 62 63 64  65 66 67 00 00 00 00
+// 00 00 00 70 71 72 73 74  75 76 77 00 00 00 00
+//
+// partial[5] is the same except the source is reversed.
+LIBGAV1_ALWAYS_INLINE void AddPartial_D5_D7(uint8x8_t* v_src,
+                                            uint16x8_t* partial_lo,
+                                            uint16x8_t* partial_hi) {
+  const uint16x8_t v_zero = vdupq_n_u16(0);
+  uint16x8_t v_pair_add[4];
+  // Add vertical source pairs.
+  v_pair_add[0] = vaddl_u8(v_src[0], v_src[1]);
+  v_pair_add[1] = vaddl_u8(v_src[2], v_src[3]);
+  v_pair_add[2] = vaddl_u8(v_src[4], v_src[5]);
+  v_pair_add[3] = vaddl_u8(v_src[6], v_src[7]);
 
-// Simple add starting at [0] and stepping forward every other row.
-// Used to calculate |partial[7][i / 2 + j]|.
-template <int shift>
-void AddPartial7(const uint8x8_t a, uint16x8_t* b, uint16x8_t* c) {
-  // Allow Left/RightShift() to compile when |shift| is out of range.
-  constexpr int safe_shift = (shift > 1) ? shift : 2;
-  if (shift < 2) {
-    *b = vaddw_u8(*b, a);
-  } else {
-    *b = vaddw_u8(*b, LeftShift<(safe_shift / 2) * 8>(a));
-    *c = vaddw_u8(*c, RightShift<(8 - (safe_shift / 2)) * 8>(a));
-  }
+  // 00 01 02 03 04 05 06 07
+  // 10 11 12 13 14 15 16 17
+  *partial_lo = v_pair_add[0];
+  // 00 00 00 00 00 00 00 00
+  // 00 00 00 00 00 00 00 00
+  *partial_hi = vdupq_n_u16(0);
+
+  // 00 20 21 22 23 24 25 26
+  // 00 30 31 32 33 34 35 36
+  *partial_lo = vaddq_u16(*partial_lo, vextq_u16(v_zero, v_pair_add[1], 7));
+  // 27 00 00 00 00 00 00 00
+  // 37 00 00 00 00 00 00 00
+  *partial_hi = vaddq_u16(*partial_hi, vextq_u16(v_pair_add[1], v_zero, 7));
+
+  // 00 00 40 41 42 43 44 45
+  // 00 00 50 51 52 53 54 55
+  *partial_lo = vaddq_u16(*partial_lo, vextq_u16(v_zero, v_pair_add[2], 6));
+  // 46 47 00 00 00 00 00 00
+  // 56 57 00 00 00 00 00 00
+  *partial_hi = vaddq_u16(*partial_hi, vextq_u16(v_pair_add[2], v_zero, 6));
+
+  // 00 00 00 60 61 62 63 64
+  // 00 00 00 70 71 72 73 74
+  *partial_lo = vaddq_u16(*partial_lo, vextq_u16(v_zero, v_pair_add[3], 5));
+  // 65 66 67 00 00 00 00 00
+  // 75 76 77 00 00 00 00 00
+  *partial_hi = vaddq_u16(*partial_hi, vextq_u16(v_pair_add[3], v_zero, 5));
 }
 
-template <int value>
-void AddPartial(uint8x8_t source, uint16x8_t dest_lo[8], uint16x8_t dest_hi[8],
-                uint16_t dest_2[8]) {
-  AddPartial0<value>(source, &dest_lo[0], &dest_hi[0]);
-  AddPartial1<value>(source, &dest_lo[1], &dest_hi[1]);
-  dest_2[value] = SumVector(source);
-  AddPartial1<value, /*is_partial3=*/true>(source, &dest_lo[3], &dest_hi[3]);
-  AddPartial0<value, /*is_partial4=*/true>(source, &dest_lo[4], &dest_hi[4]);
-  AddPartial5<value>(source, &dest_lo[5], &dest_hi[5]);
-  AddPartial6(source, &dest_lo[6]);
-  AddPartial7<value>(source, &dest_lo[7], &dest_hi[7]);
+LIBGAV1_ALWAYS_INLINE void AddPartial(const void* const source,
+                                      ptrdiff_t stride, uint16x8_t* partial_lo,
+                                      uint16x8_t* partial_hi) {
+  const auto* src = static_cast<const uint8_t*>(source);
+
+  // 8x8 input
+  // 00 01 02 03 04 05 06 07
+  // 10 11 12 13 14 15 16 17
+  // 20 21 22 23 24 25 26 27
+  // 30 31 32 33 34 35 36 37
+  // 40 41 42 43 44 45 46 47
+  // 50 51 52 53 54 55 56 57
+  // 60 61 62 63 64 65 66 67
+  // 70 71 72 73 74 75 76 77
+  uint8x8_t v_src[8];
+  for (int i = 0; i < 8; ++i) {
+    v_src[i] = vld1_u8(src);
+    src += stride;
+  }
+
+  // partial for direction 2
+  // --------------------------------------------------------------------------
+  // partial[2][i] += x;
+  // 00 10 20 30 40 50 60 70  00 00 00 00 00 00 00 00
+  // 01 11 21 33 41 51 61 71  00 00 00 00 00 00 00 00
+  // 02 12 22 33 42 52 62 72  00 00 00 00 00 00 00 00
+  // 03 13 23 33 43 53 63 73  00 00 00 00 00 00 00 00
+  // 04 14 24 34 44 54 64 74  00 00 00 00 00 00 00 00
+  // 05 15 25 35 45 55 65 75  00 00 00 00 00 00 00 00
+  // 06 16 26 36 46 56 66 76  00 00 00 00 00 00 00 00
+  // 07 17 27 37 47 57 67 77  00 00 00 00 00 00 00 00
+  partial_lo[2] = vsetq_lane_u16(SumVector(v_src[0]), partial_lo[2], 0);
+  partial_lo[2] = vsetq_lane_u16(SumVector(v_src[1]), partial_lo[2], 1);
+  partial_lo[2] = vsetq_lane_u16(SumVector(v_src[2]), partial_lo[2], 2);
+  partial_lo[2] = vsetq_lane_u16(SumVector(v_src[3]), partial_lo[2], 3);
+  partial_lo[2] = vsetq_lane_u16(SumVector(v_src[4]), partial_lo[2], 4);
+  partial_lo[2] = vsetq_lane_u16(SumVector(v_src[5]), partial_lo[2], 5);
+  partial_lo[2] = vsetq_lane_u16(SumVector(v_src[6]), partial_lo[2], 6);
+  partial_lo[2] = vsetq_lane_u16(SumVector(v_src[7]), partial_lo[2], 7);
+
+  // partial for direction 6
+  // --------------------------------------------------------------------------
+  // partial[6][j] += x;
+  // 00 01 02 03 04 05 06 07  00 00 00 00 00 00 00 00
+  // 10 11 12 13 14 15 16 17  00 00 00 00 00 00 00 00
+  // 20 21 22 23 24 25 26 27  00 00 00 00 00 00 00 00
+  // 30 31 32 33 34 35 36 37  00 00 00 00 00 00 00 00
+  // 40 41 42 43 44 45 46 47  00 00 00 00 00 00 00 00
+  // 50 51 52 53 54 55 56 57  00 00 00 00 00 00 00 00
+  // 60 61 62 63 64 65 66 67  00 00 00 00 00 00 00 00
+  // 70 71 72 73 74 75 76 77  00 00 00 00 00 00 00 00
+  const uint8x8_t v_zero = vdup_n_u8(0);
+  partial_lo[6] = vaddl_u8(v_zero, v_src[0]);
+  for (int i = 1; i < 8; ++i) {
+    partial_lo[6] = vaddw_u8(partial_lo[6], v_src[i]);
+  }
+
+  // partial for direction 0
+  AddPartial_D0_D4(v_src, &partial_lo[0], &partial_hi[0]);
+
+  // partial for direction 1
+  AddPartial_D1_D3(v_src, &partial_lo[1], &partial_hi[1]);
+
+  // partial for direction 7
+  AddPartial_D5_D7(v_src, &partial_lo[7], &partial_hi[7]);
+
+  uint8x8_t v_src_reverse[8];
+  for (int i = 0; i < 8; ++i) {
+    v_src_reverse[i] = vrev64_u8(v_src[i]);
+  }
+
+  // partial for direction 4
+  AddPartial_D0_D4(v_src_reverse, &partial_lo[4], &partial_hi[4]);
+
+  // partial for direction 3
+  AddPartial_D1_D3(v_src_reverse, &partial_lo[3], &partial_hi[3]);
+
+  // partial for direction 5
+  AddPartial_D5_D7(v_src_reverse, &partial_lo[5], &partial_hi[5]);
 }
 
 uint32x4_t Square(uint16x4_t a) { return vmull_u16(a, a); }
@@ -193,29 +369,8 @@ void CdefDirection_NEON(const void* const source, ptrdiff_t stride,
   const auto* src = static_cast<const uint8_t*>(source);
   uint32_t cost[8];
   uint16x8_t partial_lo[8], partial_hi[8];
-  uint16_t partial_2[8];
 
-  for (int i = 0; i < 8; ++i) {
-    partial_lo[i] = partial_hi[i] = vdupq_n_u16(0);
-  }
-
-  AddPartial<0>(vld1_u8(src), partial_lo, partial_hi, partial_2);
-  src += stride;
-  AddPartial<1>(vld1_u8(src), partial_lo, partial_hi, partial_2);
-  src += stride;
-  AddPartial<2>(vld1_u8(src), partial_lo, partial_hi, partial_2);
-  src += stride;
-  AddPartial<3>(vld1_u8(src), partial_lo, partial_hi, partial_2);
-  src += stride;
-  AddPartial<4>(vld1_u8(src), partial_lo, partial_hi, partial_2);
-  src += stride;
-  AddPartial<5>(vld1_u8(src), partial_lo, partial_hi, partial_2);
-  src += stride;
-  AddPartial<6>(vld1_u8(src), partial_lo, partial_hi, partial_2);
-  src += stride;
-  AddPartial<7>(vld1_u8(src), partial_lo, partial_hi, partial_2);
-
-  partial_lo[2] = vld1q_u16(partial_2);
+  AddPartial(src, stride, partial_lo, partial_hi);
 
   cost[2] = SquareAccumulate(partial_lo[2]);
   cost[6] = SquareAccumulate(partial_lo[6]);
