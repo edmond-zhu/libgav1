@@ -266,7 +266,7 @@ class PostFilter {
   }
 
   template <typename Pixel>
-  static void ExtendFrame(void* frame_start, int width, int height,
+  static void ExtendFrame(Pixel* frame_start, int width, int height,
                           ptrdiff_t stride, int left, int right, int top,
                           int bottom);
 
@@ -313,16 +313,12 @@ class PostFilter {
                MultiplyBy4(frame_header_.columns4x4);
   }
   template <typename Pixel>
-  void CopyPlane(const uint8_t* source, ptrdiff_t source_stride, int width,
-                 int height, uint8_t* dest, ptrdiff_t dest_stride) {
-    auto* dst = reinterpret_cast<Pixel*>(dest);
-    const auto* src = reinterpret_cast<const Pixel*>(source);
-    source_stride /= sizeof(Pixel);
-    dest_stride /= sizeof(Pixel);
+  void CopyPlane(const Pixel* src, ptrdiff_t src_stride, int width, int height,
+                 Pixel* dst, ptrdiff_t dst_stride) {
     for (int y = 0; y < height; ++y) {
       memcpy(dst, src, width * sizeof(Pixel));
-      src += source_stride;
-      dst += dest_stride;
+      src += src_stride;
+      dst += dst_stride;
     }
   }
 
@@ -421,7 +417,7 @@ class PostFilter {
 
   template <typename Pixel>
   void ApplyLoopRestorationForOneRowInWindow(
-      const uint8_t* src_buffer, Plane plane, int plane_height, int plane_width,
+      const Pixel* src_buffer, Plane plane, int plane_height, int plane_width,
       int y, int x, int row, int unit_row, int current_process_unit_height,
       int plane_unit_size, int window_width,
       Array2DView<Pixel>* loop_restored_window);
@@ -549,7 +545,7 @@ class PostFilter {
   friend class PostFilterHelperFuncTest;
 };
 
-extern template void PostFilter::ExtendFrame<uint8_t>(void* frame_start,
+extern template void PostFilter::ExtendFrame<uint8_t>(uint8_t* frame_start,
                                                       int width, int height,
                                                       ptrdiff_t stride,
                                                       int left, int right,
@@ -561,7 +557,7 @@ extern template void PostFilter::PrepareLoopRestorationBlock<uint8_t>(
     const bool frame_top_border, const bool frame_bottom_border);
 
 #if LIBGAV1_MAX_BITDEPTH >= 10
-extern template void PostFilter::ExtendFrame<uint16_t>(void* frame_start,
+extern template void PostFilter::ExtendFrame<uint16_t>(uint16_t* frame_start,
                                                        int width, int height,
                                                        ptrdiff_t stride,
                                                        int left, int right,

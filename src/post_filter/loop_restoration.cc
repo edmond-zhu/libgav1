@@ -84,7 +84,7 @@ template void PostFilter::PrepareLoopRestorationBlock<uint16_t>(
 
 template <typename Pixel>
 void PostFilter::ApplyLoopRestorationForOneRowInWindow(
-    const uint8_t* src_buffer, const Plane plane, const int plane_height,
+    const Pixel* src_buffer, const Plane plane, const int plane_height,
     const int plane_width, const int y, const int x, const int row,
     const int unit_row, const int current_process_unit_height,
     const int plane_unit_size, const int window_width,
@@ -92,19 +92,18 @@ void PostFilter::ApplyLoopRestorationForOneRowInWindow(
   const int num_horizontal_units =
       restoration_info_->num_horizontal_units(static_cast<Plane>(plane));
   const ptrdiff_t src_stride = frame_buffer_.stride(plane) / sizeof(Pixel);
-  const auto* src_ptr = reinterpret_cast<const Pixel*>(src_buffer);
   const RestorationUnitInfo* const restoration_info =
       restoration_info_->loop_restoration_info(static_cast<Plane>(plane),
                                                unit_row * num_horizontal_units);
   int unit_column = x / plane_unit_size;
-  src_ptr += (y + row) * src_stride + x;
+  src_buffer += (y + row) * src_stride + x;
   int column = 0;
   do {
     const int unit_x = x + column;
     const int unit_y = y + row;
     const int current_process_unit_width =
         std::min(plane_unit_size, plane_width - unit_x);
-    const Pixel* src = src_ptr + column;
+    const Pixel* src = src_buffer + column;
     unit_column = std::min(unit_column, num_horizontal_units - 1);
     if (restoration_info[unit_column].type == kLoopRestorationTypeNone) {
       const ptrdiff_t dst_stride = loop_restored_window->columns();
@@ -212,9 +211,10 @@ void PostFilter::ApplyLoopRestorationSingleThread(const int row4x4_start,
           reinterpret_cast<Pixel*>(loop_restoration_buffer_[plane]) +
               y * stride);
       ApplyLoopRestorationForOneRowInWindow<Pixel>(
-          superres_buffer_[plane], static_cast<Plane>(plane), plane_height,
-          plane_width, y, 0, 0, unit_row, current_process_unit_height,
-          plane_unit_size, plane_width, &loop_restored_window);
+          reinterpret_cast<Pixel*>(superres_buffer_[plane]),
+          static_cast<Plane>(plane), plane_height, plane_width, y, 0, 0,
+          unit_row, current_process_unit_height, plane_unit_size, plane_width,
+          &loop_restored_window);
     }
   }
 }
@@ -248,8 +248,8 @@ void PostFilter::ApplyLoopRestorationThreaded() {
 
     const int unit_height_offset =
         kRestorationUnitOffset >> subsampling_y_[plane];
-    uint8_t* const src_buffer = superres_buffer_[plane];
-    const ptrdiff_t src_stride = frame_buffer_.stride(plane);
+    auto* const src_buffer = reinterpret_cast<Pixel*>(superres_buffer_[plane]);
+    const ptrdiff_t src_stride = frame_buffer_.stride(plane) / sizeof(Pixel);
     const int plane_unit_size = loop_restoration_.unit_size[plane];
     const int num_vertical_units =
         restoration_info_->num_vertical_units(static_cast<Plane>(plane));
@@ -293,10 +293,9 @@ void PostFilter::ApplyLoopRestorationThreaded() {
         assert(jobs_for_threadpool < vertical_units_per_window);
         if (DoCdef()) {
           loop_restored_window.Reset(
-              actual_window_height,
-              static_cast<int>(src_stride) / sizeof(Pixel),
-              reinterpret_cast<Pixel*>(loop_restoration_buffer_[plane] +
-                                       y * src_stride + x * sizeof(Pixel)));
+              actual_window_height, static_cast<int>(src_stride),
+              reinterpret_cast<Pixel*>(loop_restoration_buffer_[plane]) +
+                  y * src_stride + x);
         }
         BlockingCounter pending_jobs(jobs_for_threadpool);
         int job_count = 0;
@@ -336,12 +335,12 @@ void PostFilter::ApplyLoopRestorationThreaded() {
         pending_jobs.Wait();
         if (!DoCdef()) {
           // Copy |threaded_window_buffer_| to output frame.
-          CopyPlane<Pixel>(threaded_window_buffer_,
-                           window_buffer_width_ * sizeof(Pixel),
-                           actual_window_width, actual_window_height,
-                           loop_restoration_buffer_[plane] + y * src_stride +
-                               x * sizeof(Pixel),
-                           src_stride);
+          CopyPlane<Pixel>(
+              reinterpret_cast<const Pixel*>(threaded_window_buffer_),
+              window_buffer_width_, actual_window_width, actual_window_height,
+              reinterpret_cast<Pixel*>(loop_restoration_buffer_[plane]) +
+                  y * src_stride + x,
+              src_stride);
         }
       }
       if (y == 0) y -= unit_height_offset;

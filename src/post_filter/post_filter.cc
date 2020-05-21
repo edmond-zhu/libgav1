@@ -73,13 +73,12 @@ constexpr int kDeblockedRowsForLoopRestoration[2][4] = {{54, 55, 56, 57},
 // the extended first row to the top borders[3].
 // static
 template <typename Pixel>
-void PostFilter::ExtendFrame(void* const frame_start, const int width,
-                             const int height, ptrdiff_t stride, const int left,
-                             const int right, const int top, const int bottom) {
-  auto* const start = static_cast<Pixel*>(frame_start);
-  const Pixel* src = start;
-  Pixel* dst = start - left;
-  stride /= sizeof(Pixel);
+void PostFilter::ExtendFrame(Pixel* const frame_start, const int width,
+                             const int height, const ptrdiff_t stride,
+                             const int left, const int right, const int top,
+                             const int bottom) {
+  const Pixel* src = frame_start;
+  Pixel* dst = frame_start - left;
   // Copy to left and right borders.
   for (int y = 0; y < height; ++y) {
     Memset(dst, src[0], left);
@@ -98,7 +97,7 @@ void PostFilter::ExtendFrame(void* const frame_start, const int width,
   // **YYY|YZabcdef|fff
   // **YYY|YZabcdef|fff
   // **YYY|YZabcdef|fff <-- bottom right border pixel
-  assert(src == start + height * stride);
+  assert(src == frame_start + height * stride);
   dst = const_cast<Pixel*>(src) + width + right - stride;
   src = dst - stride;
   for (int y = 0; y < bottom; ++y) {
@@ -118,25 +117,25 @@ void PostFilter::ExtendFrame(void* const frame_start, const int width,
   // ---+--------+-----
   // AAA|ABCDEFGH|HHH** <-- Copy from the extended first row.
   // |<--- stride --->|
-  src = start - left;
-  dst = start - left - top * stride;
+  src = frame_start - left;
+  dst = frame_start - left - top * stride;
   for (int y = 0; y < top; ++y) {
     memcpy(dst, src, sizeof(Pixel) * stride);
     dst += stride;
   }
 }
 
-template void PostFilter::ExtendFrame<uint8_t>(void* const frame_start,
+template void PostFilter::ExtendFrame<uint8_t>(uint8_t* const frame_start,
                                                const int width,
                                                const int height,
-                                               ptrdiff_t stride, const int left,
-                                               const int right, const int top,
-                                               const int bottom);
+                                               const ptrdiff_t stride,
+                                               const int left, const int right,
+                                               const int top, const int bottom);
 
 #if LIBGAV1_MAX_BITDEPTH >= 10
 template void PostFilter::ExtendFrame<uint16_t>(
-    void* const frame_start, const int width, const int height,
-    ptrdiff_t stride, const int left, const int right, const int top,
+    uint16_t* const frame_start, const int width, const int height,
+    const ptrdiff_t stride, const int left, const int right, const int top,
     const int bottom);
 #endif
 
@@ -248,7 +247,8 @@ void PostFilter::ExtendFrameBoundary(uint8_t* const frame_start,
                                      const int bottom) {
 #if LIBGAV1_MAX_BITDEPTH >= 10
   if (bitdepth_ >= 10) {
-    ExtendFrame<uint16_t>(frame_start, width, height, stride, left, right, top,
+    ExtendFrame<uint16_t>(reinterpret_cast<uint16_t*>(frame_start), width,
+                          height, stride / sizeof(uint16_t), left, right, top,
                           bottom);
     return;
   }

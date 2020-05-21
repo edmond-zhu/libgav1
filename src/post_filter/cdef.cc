@@ -503,7 +503,7 @@ void PostFilter::ApplyCdefThreaded() {
   assert((window_buffer_height_ & 63) == 0);
   const int num_workers = thread_pool_->num_threads();
   const int window_buffer_plane_size =
-      window_buffer_width_ * window_buffer_height_ * sizeof(Pixel);
+      window_buffer_width_ * window_buffer_height_;
   const int window_buffer_height4x4 = DivideBy4(window_buffer_height_);
   for (int row4x4 = 0; row4x4 < frame_header_.rows4x4;
        row4x4 += window_buffer_height4x4) {
@@ -534,7 +534,8 @@ void PostFilter::ApplyCdefThreaded() {
 
       // Copy |threaded_window_buffer_| to |cdef_buffer_|.
       for (int plane = kPlaneY; plane < planes_; ++plane) {
-        const int src_stride = frame_buffer_.stride(plane);
+        const ptrdiff_t src_stride =
+            frame_buffer_.stride(plane) / sizeof(Pixel);
         const int plane_row = MultiplyBy4(row4x4) >> subsampling_y_[plane];
         const int plane_column =
             MultiplyBy4(column4x4) >> subsampling_x_[plane];
@@ -545,10 +546,11 @@ void PostFilter::ApplyCdefThreaded() {
             std::min(frame_header_.rows4x4 - row4x4, window_buffer_height4x4);
         copy_height = MultiplyBy4(copy_height) >> subsampling_y_[plane];
         CopyPlane<Pixel>(
-            threaded_window_buffer_ + plane * window_buffer_plane_size,
-            window_buffer_width_ * sizeof(Pixel), copy_width, copy_height,
-            cdef_buffer_[plane] + plane_row * src_stride +
-                plane_column * sizeof(Pixel),
+            reinterpret_cast<const Pixel*>(threaded_window_buffer_) +
+                plane * window_buffer_plane_size,
+            window_buffer_width_, copy_width, copy_height,
+            reinterpret_cast<Pixel*>(cdef_buffer_[plane]) +
+                plane_row * src_stride + plane_column,
             src_stride);
       }
     }
