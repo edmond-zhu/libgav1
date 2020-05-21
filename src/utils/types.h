@@ -427,8 +427,6 @@ struct FilmGrainParams {
 };
 
 struct ObuFrameHeader {
-  int spatial_id;
-  int temporal_id;
   uint16_t display_frame_id;
   uint16_t current_frame_id;
   int64_t frame_offset;

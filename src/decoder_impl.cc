@@ -568,8 +568,6 @@ StatusCode DecoderImpl::DecodeTemporalUnit(const TemporalUnit& temporal_unit,
           &film_grain_frame,
           frame_scratch_buffer->threading_strategy.film_grain_thread_pool());
       if (status != kStatusOk) return status;
-      film_grain_frame->set_spatial_id(obu->frame_header().spatial_id);
-      film_grain_frame->set_temporal_id(obu->frame_header().temporal_id);
       output_frame_queue_.Push(std::move(film_grain_frame));
     }
   }
@@ -1520,6 +1518,8 @@ StatusCode DecoderImpl::ApplyFilmGrain(
     (*film_grain_frame)
         ->set_chroma_sample_position(
             displayable_frame->chroma_sample_position());
+    (*film_grain_frame)->set_spatial_id(displayable_frame->spatial_id());
+    (*film_grain_frame)->set_temporal_id(displayable_frame->temporal_id());
   }
   const bool color_matrix_is_identity =
       sequence_header.color_config.matrix_coefficients ==
