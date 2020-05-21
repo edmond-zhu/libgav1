@@ -137,7 +137,7 @@ void PostFilter::ApplyLoopRestorationForOneRowInWindow(
         const auto* const deblock_buffer =
             reinterpret_cast<const Pixel*>(deblock_buffer_.data(plane));
         assert(deblock_buffer != nullptr);
-        const int deblock_buffer_stride =
+        const ptrdiff_t deblock_buffer_stride =
             deblock_buffer_.stride(plane) / sizeof(Pixel);
         const int deblock_unit_y =
             std::max(MultiplyBy4(Ceil(unit_y, deblock_buffer_units)) - 4, 0);
@@ -172,15 +172,16 @@ void PostFilter::ApplyLoopRestorationForOneRowInWindow(
   } while (column < window_width);
 }
 
-void PostFilter::ApplyLoopRestorationForOneSuperBlockRow(int row4x4_start,
-                                                         int sb4x4) {
+template <typename Pixel>
+void PostFilter::ApplyLoopRestorationSingleThread(const int row4x4_start,
+                                                  const int sb4x4) {
   assert(row4x4_start >= 0);
   assert(DoRestoration());
   for (int plane = 0; plane < planes_; ++plane) {
     if (loop_restoration_.type[plane] == kLoopRestorationTypeNone) {
       continue;
     }
-    const int stride = frame_buffer_.stride(plane);
+    const ptrdiff_t stride = frame_buffer_.stride(plane) / sizeof(Pixel);
     const int unit_height_offset =
         kRestorationUnitOffset >> subsampling_y_[plane];
     const int plane_height =
@@ -206,23 +207,11 @@ void PostFilter::ApplyLoopRestorationForOneSuperBlockRow(int row4x4_start,
                                     num_vertical_units - 1);
       current_process_unit_height = std::min(expected_height, plane_height - y);
       expected_height = plane_process_unit_height;
-#if LIBGAV1_MAX_BITDEPTH >= 10
-      if (bitdepth_ >= 10) {
-        Array2DView<uint16_t> loop_restored_window(
-            current_process_unit_height, stride / sizeof(uint16_t),
-            reinterpret_cast<uint16_t*>(loop_restoration_buffer_[plane] +
-                                        y * stride));
-        ApplyLoopRestorationForOneRowInWindow<uint16_t>(
-            superres_buffer_[plane], static_cast<Plane>(plane), plane_height,
-            plane_width, y, 0, 0, unit_row, current_process_unit_height,
-            plane_unit_size, plane_width, &loop_restored_window);
-        continue;
-      }
-#endif
-      Array2DView<uint8_t> loop_restored_window(
-          current_process_unit_height, stride / sizeof(uint8_t),
-          loop_restoration_buffer_[plane] + y * stride);
-      ApplyLoopRestorationForOneRowInWindow<uint8_t>(
+      Array2DView<Pixel> loop_restored_window(
+          current_process_unit_height, static_cast<int>(stride),
+          reinterpret_cast<Pixel*>(loop_restoration_buffer_[plane]) +
+              y * stride);
+      ApplyLoopRestorationForOneRowInWindow<Pixel>(
           superres_buffer_[plane], static_cast<Plane>(plane), plane_height,
           plane_width, y, 0, 0, unit_row, current_process_unit_height,
           plane_unit_size, plane_width, &loop_restored_window);
@@ -358,6 +347,16 @@ void PostFilter::ApplyLoopRestorationThreaded() {
       if (y == 0) y -= unit_height_offset;
     }
   }
+}
+
+void PostFilter::ApplyLoopRestoration(const int row4x4_start, const int sb4x4) {
+#if LIBGAV1_MAX_BITDEPTH >= 10
+  if (bitdepth_ >= 10) {
+    ApplyLoopRestorationSingleThread<uint16_t>(row4x4_start, sb4x4);
+    return;
+  }
+#endif
+  ApplyLoopRestorationSingleThread<uint8_t>(row4x4_start, sb4x4);
 }
 
 void PostFilter::ApplyLoopRestoration() {

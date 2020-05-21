@@ -410,12 +410,12 @@ int PostFilter::ApplyFilteringForOneSuperBlockRow(int row4x4, int sb4x4,
   }
   if (DoRestoration()) {
     CopyBordersForOneSuperBlockRow(row4x4, sb4x4, true);
-    ApplyLoopRestorationForOneSuperBlockRow(row4x4, sb4x4);
+    ApplyLoopRestoration(row4x4, sb4x4);
     if (is_last_row) {
       // Loop restoration operates with a lag of 8 rows. So make sure to cover
       // all the rows of the last superblock row.
       CopyBordersForOneSuperBlockRow(row4x4 + sb4x4, 16, true);
-      ApplyLoopRestorationForOneSuperBlockRow(row4x4 + sb4x4, 16);
+      ApplyLoopRestoration(row4x4 + sb4x4, 16);
     }
   }
   if (frame_header_.refresh_frame_flags != 0 && DoBorderExtensionInLoop()) {

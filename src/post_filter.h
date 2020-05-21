@@ -427,7 +427,9 @@ class PostFilter {
       Array2DView<Pixel>* loop_restored_window);
   // Applies loop restoration for the superblock row starting at |row4x4_start|
   // with a height of 4*|sb4x4|.
-  void ApplyLoopRestorationForOneSuperBlockRow(int row4x4_start, int sb4x4);
+  template <typename Pixel>
+  void ApplyLoopRestorationSingleThread(int row4x4_start, int sb4x4);
+  void ApplyLoopRestoration(int row4x4_start, int sb4x4);
   template <typename Pixel>
   void ApplyLoopRestorationThreaded();
   // Note for ApplyLoopRestoration():
