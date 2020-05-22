@@ -135,9 +135,13 @@ DecoderImpl::DecoderImpl(const DecoderSettings* settings)
 }
 
 DecoderImpl::~DecoderImpl() {
-  // The frame buffer references need to be released before |buffer_pool_| is
-  // destroyed.
+  // Clean up and wait until all the threads have stopped. We just have to pass
+  // in a dummy status that is not kStatusOk or kStatusTryAgain to trigger the
+  // path that clears all the threads and structs.
+  SignalFailure(kStatusUnknownError);
+  // Release any other frame buffer references that we may be holding on to.
   ReleaseOutputFrame();
+  output_frame_queue_.Clear();
   for (auto& reference_frame : state_.reference_frame) {
     reference_frame = nullptr;
   }
@@ -157,6 +161,7 @@ StatusCode DecoderImpl::Init() {
 
 StatusCode DecoderImpl::InitializeFrameThreadPoolAndTemporalUnitQueue(
     const uint8_t* data, size_t size) {
+  is_frame_parallel_ = false;
   if (settings_.frame_parallel) {
     DecoderState state;
     std::unique_ptr<ObuParser> obu(
@@ -189,6 +194,7 @@ StatusCode DecoderImpl::InitializeFrameThreadPoolAndTemporalUnitQueue(
     LIBGAV1_DLOG(ERROR, "temporal_units_.Init() failed.");
     return kStatusOutOfMemory;
   }
+  is_frame_parallel_ = frame_thread_pool_ != nullptr;
   return kStatusOk;
 }
 
@@ -215,7 +221,7 @@ StatusCode DecoderImpl::EnqueueFrame(const uint8_t* data, size_t size,
   TemporalUnit temporal_unit(data, size, user_private_data,
                              buffer_private_data);
   temporal_units_.Push(std::move(temporal_unit));
-  return IsFrameParallel() ? SignalFailure(ParseAndSchedule()) : kStatusOk;
+  return is_frame_parallel_ ? SignalFailure(ParseAndSchedule()) : kStatusOk;
 }
 
 StatusCode DecoderImpl::SignalFailure(StatusCode status) {
@@ -255,7 +261,7 @@ StatusCode DecoderImpl::DequeueFrame(const DecoderBuffer** out_ptr) {
     return kStatusNothingToDequeue;
   }
   const TemporalUnit& temporal_unit = temporal_units_.Front();
-  if (!IsFrameParallel()) {
+  if (!is_frame_parallel_) {
     // If |output_frame_queue_| is not empty, then return the first frame from
     // that queue.
     if (!output_frame_queue_.Empty()) {
@@ -772,12 +778,12 @@ StatusCode DecoderImpl::DecodeTiles(
   }
   ThreadingStrategy& threading_strategy =
       frame_scratch_buffer->threading_strategy;
-  if (!IsFrameParallel() &&
+  if (!is_frame_parallel_ &&
       !threading_strategy.Reset(frame_header, settings_.threads)) {
     return kStatusOutOfMemory;
   }
 
-  if (threading_strategy.row_thread_pool(0) != nullptr || IsFrameParallel()) {
+  if (threading_strategy.row_thread_pool(0) != nullptr || is_frame_parallel_) {
     if (frame_scratch_buffer->residual_buffer_pool == nullptr) {
       frame_scratch_buffer->residual_buffer_pool.reset(
           new (std::nothrow) ResidualBufferPool(
@@ -866,7 +872,7 @@ StatusCode DecoderImpl::DecodeTiles(
                          current_frame->buffer(), dsp,
                          settings_.post_filter_mask);
 
-  if (IsFrameParallel()) {
+  if (is_frame_parallel_) {
     // We can parse the current frame if all the reference frames have been
     // parsed.
     for (int i = 0; i < kNumReferenceFrameTypes; ++i) {
@@ -901,12 +907,12 @@ StatusCode DecoderImpl::DecodeTiles(
   // The Tile class must make use of a separate buffer to store the unfiltered
   // pixels for the intra prediction of the next superblock row. This is done
   // only when one of the following conditions are true:
-  //   * IsFrameParallel() is true.
+  //   * is_frame_parallel_ is true.
   //   * settings_.threads == 1.
   // In the non-frame-parallel multi-threaded case, we do not run the post
   // filters in the decode loop. So this buffer need not be used.
   const bool use_intra_prediction_buffer =
-      IsFrameParallel() || settings_.threads == 1;
+      is_frame_parallel_ || settings_.threads == 1;
   if (use_intra_prediction_buffer) {
     if (!frame_scratch_buffer->intra_prediction_buffers.Resize(
             frame_header.tile_info.tile_rows)) {
@@ -971,7 +977,7 @@ StatusCode DecoderImpl::DecodeTiles(
           frame_scratch_buffer, wedge_masks_, &saved_symbol_decoder_context,
           prev_segment_ids, &post_filter, dsp,
           threading_strategy.row_thread_pool(tile_index++), &pending_tiles,
-          IsFrameParallel(), use_intra_prediction_buffer);
+          is_frame_parallel_, use_intra_prediction_buffer);
       if (tile == nullptr) {
         LIBGAV1_DLOG(ERROR, "Failed to create tile.");
         return kStatusOutOfMemory;
@@ -983,7 +989,7 @@ StatusCode DecoderImpl::DecodeTiles(
     }
   }
   assert(tiles.size() == static_cast<size_t>(tile_count));
-  if (IsFrameParallel()) {
+  if (is_frame_parallel_) {
     if (frame_scratch_buffer->threading_strategy.thread_pool() == nullptr) {
       return DecodeTilesFrameParallel(
           sequence_header, frame_header, tiles, saved_symbol_decoder_context,

@@ -241,7 +241,6 @@ class DecoderImpl : public Allocable {
                             ThreadPool* thread_pool);
 
   bool IsNewSequenceHeader(const ObuParser& obu);
-  bool IsFrameParallel() const { return frame_thread_pool_ != nullptr; }
 
   bool HasFailure() {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -269,6 +268,7 @@ class DecoderImpl : public Allocable {
   // the "decoded" state of an temporal unit.
   std::mutex mutex_;
   std::condition_variable decoded_condvar_;
+  bool is_frame_parallel_;
   std::unique_ptr<ThreadPool> frame_thread_pool_;
 
   // In frame parallel mode, there are two primary points of failure:
