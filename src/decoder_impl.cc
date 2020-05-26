@@ -48,8 +48,6 @@ namespace {
 
 constexpr int kMaxBlockWidth4x4 = 32;
 constexpr int kMaxBlockHeight4x4 = 32;
-// There can be a maximum of 4 spatial layers and 8 temporal layers.
-constexpr int kMaxLayers = 32;
 
 // Computes the bottom border size in pixels. If CDEF, loop restoration or
 // SuperRes is enabled, adds extra border pixels to facilitate those steps to
@@ -260,7 +258,7 @@ StatusCode DecoderImpl::DequeueFrame(const DecoderBuffer** out_ptr) {
     *out_ptr = nullptr;
     return kStatusNothingToDequeue;
   }
-  const TemporalUnit& temporal_unit = temporal_units_.Front();
+  TemporalUnit& temporal_unit = temporal_units_.Front();
   if (!is_frame_parallel_) {
     // If |output_frame_queue_| is not empty, then return the first frame from
     // that queue.
@@ -311,7 +309,9 @@ StatusCode DecoderImpl::DequeueFrame(const DecoderBuffer** out_ptr) {
       return SignalFailure(failure_status);
     }
   }
-  if (settings_.release_input_buffer != nullptr) {
+  if (settings_.release_input_buffer != nullptr &&
+      !temporal_unit.released_input_buffer) {
+    temporal_unit.released_input_buffer = true;
     settings_.release_input_buffer(settings_.callback_private_data,
                                    temporal_unit.buffer_private_data);
   }
@@ -324,14 +324,20 @@ StatusCode DecoderImpl::DequeueFrame(const DecoderBuffer** out_ptr) {
     temporal_units_.Pop();
     return kStatusOk;
   }
-  StatusCode status = CopyFrameToOutputBuffer(temporal_unit.output_frame);
+  assert(temporal_unit.output_layer_count > 0);
+  StatusCode status = CopyFrameToOutputBuffer(std::move(
+      temporal_unit.output_layers[temporal_unit.output_layer_count - 1].frame));
+  temporal_unit.output_layers[temporal_unit.output_layer_count - 1].frame =
+      nullptr;
   if (status != kStatusOk) {
     temporal_units_.Pop();
     return SignalFailure(status);
   }
   buffer_.user_private_data = temporal_unit.user_private_data;
   *out_ptr = &buffer_;
-  temporal_units_.Pop();
+  if (--temporal_unit.output_layer_count == 0) {
+    temporal_units_.Pop();
+  }
   return kStatusOk;
 }
 
@@ -417,6 +423,12 @@ StatusCode DecoderImpl::ParseAndSchedule() {
       }
       temporal_unit.decoded =
           ++temporal_unit.decoded_count == temporal_unit.frames.size();
+      if (temporal_unit.decoded && settings_.output_all_layers &&
+          temporal_unit.output_layer_count > 1) {
+        std::sort(
+            temporal_unit.output_layers,
+            temporal_unit.output_layers + temporal_unit.output_layer_count);
+      }
       if (temporal_unit.decoded || failure_status_ != kStatusOk) {
         decoded_condvar_.notify_one();
       }
@@ -473,22 +485,29 @@ StatusCode DecoderImpl::DecodeFrame(EncodedFrame* const encoded_frame) {
   if (status != kStatusOk) {
     return status;
   }
-  current_frame = std::move(film_grain_frame);
+
   TemporalUnit& temporal_unit = encoded_frame->temporal_unit;
   std::lock_guard<std::mutex> lock(mutex_);
-  if (temporal_unit.has_displayable_frame &&
-      temporal_unit.output_frame_position >
-          encoded_frame->position_in_temporal_unit) {
-    // A displayable frame was already found and its position in the temporal
-    // unit is greater than the current frame's position.  This can happen if
-    // there are multiple spatial/temporal layers. We don't care about it for
-    // now, so simply return the last displayable frame.
-    // TODO(b/129153372): Add support for outputting multiple spatial/temporal
-    // layers.
-    return kStatusOk;
+  if (temporal_unit.has_displayable_frame && !settings_.output_all_layers) {
+    // A displayable frame was already found in this temporal unit. This can
+    // happen if there are multiple spatial/temporal layers. Since
+    // |settings_.output_all_layers| is false, we will output only the last
+    // displayable frame.
+    if (temporal_unit.output_frame_position >
+        encoded_frame->position_in_temporal_unit) {
+      return kStatusOk;
+    }
+    // Replace any output frame that we may have seen before with the current
+    // frame.
+    assert(temporal_unit.output_layer_count == 1);
+    --temporal_unit.output_layer_count;
   }
   temporal_unit.has_displayable_frame = true;
-  temporal_unit.output_frame = std::move(current_frame);
+  temporal_unit.output_layers[temporal_unit.output_layer_count].frame =
+      std::move(film_grain_frame);
+  temporal_unit.output_layers[temporal_unit.output_layer_count]
+      .position_in_temporal_unit = encoded_frame->position_in_temporal_unit;
+  ++temporal_unit.output_layer_count;
   temporal_unit.output_frame_position =
       encoded_frame->position_in_temporal_unit;
   return kStatusOk;

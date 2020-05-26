@@ -154,6 +154,8 @@ enum {
   kMaxTileColumns = 64,
   kMaxTileRows = 64,
   kMaxOperatingPoints = 32,
+  // There can be a maximum of 4 spatial layers and 8 temporal layers.
+  kMaxLayers = 32,
   // The cache line size should ideally be queried at run time. 64 is a common
   // cache line size of x86 CPUs. Web searches showed the cache line size of ARM
   // CPUs is 32 or 64 bytes. So aligning to 64-byte boundary will work for all

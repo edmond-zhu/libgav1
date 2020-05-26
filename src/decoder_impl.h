@@ -85,7 +85,9 @@ struct TemporalUnit : public Allocable {
         decoded(false),
         status(kStatusOk),
         has_displayable_frame(false),
-        decoded_count(0) {}
+        decoded_count(0),
+        output_layer_count(0),
+        released_input_buffer(false) {}
 
   const uint8_t* data;
   size_t size;
@@ -96,10 +98,33 @@ struct TemporalUnit : public Allocable {
   bool decoded;
   StatusCode status;
   bool has_displayable_frame;
-  RefCountedBufferPtr output_frame;
   int output_frame_position;
+
   Vector<EncodedFrame> frames;
   size_t decoded_count;
+
+  // The struct (and the counter) is used to support output of multiple layers
+  // within a single temporal unit. The decoding process will store the output
+  // frames in |output_layers| in the order they are finished decoding. At the
+  // end of the decoding process, this array will be sorted in reverse order of
+  // |position_in_temporal_unit|. DequeueFrame() will then return the frames in
+  // reverse order (so that the entire process can run with a single counter
+  // variable).
+  struct OutputLayer {
+    // Used by std::sort to sort |output_layers| in reverse order of
+    // |position_in_temporal_unit|.
+    bool operator<(const OutputLayer& rhs) const {
+      return position_in_temporal_unit > rhs.position_in_temporal_unit;
+    }
+
+    RefCountedBufferPtr frame;
+    int position_in_temporal_unit = 0;
+  } output_layers[kMaxLayers];
+  // Number of entries in |output_layers|.
+  int output_layer_count;
+  // Flag to ensure that we release the input buffer only once if there are
+  // multiple output layers.
+  bool released_input_buffer;
 };
 
 class DecoderImpl : public Allocable {
@@ -257,7 +282,8 @@ class DecoderImpl : public Allocable {
 
   // Queue of output frames that are to be returned in the DequeueFrame() calls.
   // If |settings_.output_all_layers| is false, this queue will never contain
-  // more than 1 element.
+  // more than 1 element. This queue is used only when |is_frame_parallel_| is
+  // false.
   Queue<RefCountedBufferPtr> output_frame_queue_;
 
   BufferPool buffer_pool_;
