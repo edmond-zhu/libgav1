@@ -152,22 +152,23 @@ bool PostFilter::GetHorizontalDeblockFilterEdgeInfo(int row4x4, int column4x4,
 }
 
 void PostFilter::GetHorizontalDeblockFilterEdgeInfoUV(
-    int row4x4, int column4x4, bool* need_filter_u, bool* need_filter_v,
-    uint8_t* level_u, uint8_t* level_v, int* step, int* filter_length) const {
+    int row4x4, int column4x4, uint8_t* level_u, uint8_t* level_v, int* step,
+    int* filter_length) const {
   const int subsampling_x = subsampling_x_[kPlaneU];
   const int subsampling_y = subsampling_y_[kPlaneU];
   row4x4 = GetDeblockPosition(row4x4, subsampling_y);
   column4x4 = GetDeblockPosition(column4x4, subsampling_x);
   const BlockParameters* bp = block_parameters_.Find(row4x4, column4x4);
+  *level_u = 0;
+  *level_v = 0;
   *step = kTransformHeight[bp->uv_transform_size];
   if (row4x4 == subsampling_y) {
-    *need_filter_u = false;
-    *need_filter_v = false;
     return;
   }
 
-  *need_filter_u = frame_header_.loop_filter.level[kPlaneU + 1] != 0;
-  *need_filter_v = frame_header_.loop_filter.level[kPlaneV + 1] != 0;
+  bool need_filter_u = frame_header_.loop_filter.level[kPlaneU + 1] != 0;
+  bool need_filter_v = frame_header_.loop_filter.level[kPlaneV + 1] != 0;
+  assert(need_filter_u || need_filter_v);
   const int filter_id_u =
       kDeblockFilterLevelIndex[kPlaneU][kLoopFilterTypeHorizontal];
   const int filter_id_v =
@@ -180,43 +181,32 @@ void PostFilter::GetHorizontalDeblockFilterEdgeInfoUV(
   if (bp == bp_prev) {
     // Not a border.
     const bool skip = bp->skip && bp->is_inter;
-    *need_filter_u =
-        *need_filter_u && bp->deblock_filter_level[filter_id_u] != 0 && !skip;
-    *need_filter_v =
-        *need_filter_v && bp->deblock_filter_level[filter_id_v] != 0 && !skip;
-    if (!*need_filter_u && !*need_filter_v) return;
-    *level_u = bp->deblock_filter_level[filter_id_u];
-    *level_v = bp->deblock_filter_level[filter_id_v];
+    need_filter_u =
+        need_filter_u && bp->deblock_filter_level[filter_id_u] != 0 && !skip;
+    need_filter_v =
+        need_filter_v && bp->deblock_filter_level[filter_id_v] != 0 && !skip;
+    if (!need_filter_u && !need_filter_v) return;
+    if (need_filter_u) *level_u = bp->deblock_filter_level[filter_id_u];
+    if (need_filter_v) *level_v = bp->deblock_filter_level[filter_id_v];
     *filter_length = *step;
     return;
   }
 
   // It is a border.
-  if (*need_filter_u) {
+  if (need_filter_u) {
     const uint8_t level_u_this = bp->deblock_filter_level[filter_id_u];
     *level_u = level_u_this;
     if (level_u_this == 0) {
-      const uint8_t level_u_prev = bp_prev->deblock_filter_level[filter_id_u];
-      if (level_u_prev == 0) {
-        *need_filter_u = false;
-      } else {
-        *level_u = level_u_prev;
-      }
+      *level_u = bp_prev->deblock_filter_level[filter_id_u];
     }
   }
-  if (*need_filter_v) {
+  if (need_filter_v) {
     const uint8_t level_v_this = bp->deblock_filter_level[filter_id_v];
     *level_v = level_v_this;
     if (level_v_this == 0) {
-      const uint8_t level_v_prev = bp_prev->deblock_filter_level[filter_id_v];
-      if (level_v_prev == 0) {
-        *need_filter_v = false;
-      } else {
-        *level_v = level_v_prev;
-      }
+      *level_v = bp_prev->deblock_filter_level[filter_id_v];
     }
   }
-  if (!*need_filter_u && !*need_filter_v) return;
   const int step_prev = kTransformHeight[bp_prev->uv_transform_size];
   *filter_length = std::min(*step, step_prev);
 }
@@ -252,23 +242,23 @@ bool PostFilter::GetVerticalDeblockFilterEdgeInfo(
 }
 
 void PostFilter::GetVerticalDeblockFilterEdgeInfoUV(
-    int row4x4, int column4x4, BlockParameters* const* bp_ptr,
-    bool* need_filter_u, bool* need_filter_v, uint8_t* level_u,
+    int row4x4, int column4x4, BlockParameters* const* bp_ptr, uint8_t* level_u,
     uint8_t* level_v, int* step, int* filter_length) const {
   const int subsampling_x = subsampling_x_[kPlaneU];
   const int subsampling_y = subsampling_y_[kPlaneU];
   row4x4 = GetDeblockPosition(row4x4, subsampling_y);
   column4x4 = GetDeblockPosition(column4x4, subsampling_x);
   const BlockParameters* bp = *bp_ptr;
+  *level_u = 0;
+  *level_v = 0;
   *step = kTransformWidth[bp->uv_transform_size];
   if (column4x4 == subsampling_x) {
-    *need_filter_u = false;
-    *need_filter_v = false;
     return;
   }
 
-  *need_filter_u = frame_header_.loop_filter.level[kPlaneU + 1] != 0;
-  *need_filter_v = frame_header_.loop_filter.level[kPlaneV + 1] != 0;
+  bool need_filter_u = frame_header_.loop_filter.level[kPlaneU + 1] != 0;
+  bool need_filter_v = frame_header_.loop_filter.level[kPlaneV + 1] != 0;
+  assert(need_filter_u || need_filter_v);
   const int filter_id_u =
       kDeblockFilterLevelIndex[kPlaneU][kLoopFilterTypeVertical];
   const int filter_id_v =
@@ -278,43 +268,32 @@ void PostFilter::GetVerticalDeblockFilterEdgeInfoUV(
   if (bp == bp_prev) {
     // Not a border.
     const bool skip = bp->skip && bp->is_inter;
-    *need_filter_u =
-        *need_filter_u && bp->deblock_filter_level[filter_id_u] != 0 && !skip;
-    *need_filter_v =
-        *need_filter_v && bp->deblock_filter_level[filter_id_v] != 0 && !skip;
-    if (!*need_filter_u && !*need_filter_v) return;
-    *level_u = bp->deblock_filter_level[filter_id_u];
-    *level_v = bp->deblock_filter_level[filter_id_v];
+    need_filter_u =
+        need_filter_u && bp->deblock_filter_level[filter_id_u] != 0 && !skip;
+    need_filter_v =
+        need_filter_v && bp->deblock_filter_level[filter_id_v] != 0 && !skip;
+    if (!need_filter_u && !need_filter_v) return;
+    if (need_filter_u) *level_u = bp->deblock_filter_level[filter_id_u];
+    if (need_filter_v) *level_v = bp->deblock_filter_level[filter_id_v];
     *filter_length = *step;
     return;
   }
 
   // It is a border.
-  if (*need_filter_u) {
+  if (need_filter_u) {
     const uint8_t level_u_this = bp->deblock_filter_level[filter_id_u];
     *level_u = level_u_this;
     if (level_u_this == 0) {
-      const uint8_t level_u_prev = bp_prev->deblock_filter_level[filter_id_u];
-      if (level_u_prev == 0) {
-        *need_filter_u = false;
-      } else {
-        *level_u = level_u_prev;
-      }
+      *level_u = bp_prev->deblock_filter_level[filter_id_u];
     }
   }
-  if (*need_filter_v) {
+  if (need_filter_v) {
     const uint8_t level_v_this = bp->deblock_filter_level[filter_id_v];
     *level_v = level_v_this;
     if (level_v_this == 0) {
-      const uint8_t level_v_prev = bp_prev->deblock_filter_level[filter_id_v];
-      if (level_v_prev == 0) {
-        *need_filter_v = false;
-      } else {
-        *level_v = level_v_prev;
-      }
+      *level_v = bp_prev->deblock_filter_level[filter_id_v];
     }
   }
-  if (!*need_filter_u && !*need_filter_v) return;
   const int step_prev = kTransformWidth[bp_prev->uv_transform_size];
   *filter_length = std::min(*step, step_prev);
 }
@@ -360,8 +339,6 @@ void PostFilter::HorizontalDeblockFilter(int row4x4_start,
     uint8_t* src_u = GetSourceBuffer(kPlaneU, row4x4_start, column4x4_start);
     uint8_t* src_v = GetSourceBuffer(kPlaneV, row4x4_start, column4x4_start);
     int row_step;
-    bool need_filter_u;
-    bool need_filter_v;
     uint8_t level_u;
     uint8_t level_v;
     int filter_length;
@@ -375,15 +352,16 @@ void PostFilter::HorizontalDeblockFilter(int row4x4_start,
                            row4x4 < kNum4x4InLoopFilterUnit;
            row4x4 += row_step) {
         GetHorizontalDeblockFilterEdgeInfoUV(
-            row4x4_start + row4x4, column4x4_start + column4x4, &need_filter_u,
-            &need_filter_v, &level_u, &level_v, &row_step, &filter_length);
-        const dsp::LoopFilterSize size = GetLoopFilterSizeUV(filter_length);
-        if (need_filter_u) {
+            row4x4_start + row4x4, column4x4_start + column4x4, &level_u,
+            &level_v, &row_step, &filter_length);
+        if (level_u != 0) {
+          const dsp::LoopFilterSize size = GetLoopFilterSizeUV(filter_length);
           dsp_.loop_filters[size][kLoopFilterTypeHorizontal](
               src_row_u, src_stride_u, outer_thresh_[level_u],
               inner_thresh_[level_u], HevThresh(level_u));
         }
-        if (need_filter_v) {
+        if (level_v != 0) {
+          const dsp::LoopFilterSize size = GetLoopFilterSizeUV(filter_length);
           dsp_.loop_filters[size][kLoopFilterTypeHorizontal](
               src_row_v, src_stride_v, outer_thresh_[level_v],
               inner_thresh_[level_v], HevThresh(level_v));
@@ -442,7 +420,6 @@ void PostFilter::VerticalDeblockFilter(int row4x4_start, int column4x4_start) {
     const LoopFilterType type = kLoopFilterTypeVertical;
     int column_step;
     uint8_t level_u, level_v;
-    bool need_filter_u, need_filter_v;
     int filter_length;
 
     BlockParameters* const* bp_row_base = block_parameters_.Address(
@@ -461,16 +438,16 @@ void PostFilter::VerticalDeblockFilter(int row4x4_start, int column4x4_start) {
            column4x4 < kNum4x4InLoopFilterUnit;
            column4x4 += column_step, bp += column_step) {
         GetVerticalDeblockFilterEdgeInfoUV(
-            row4x4_start + row4x4, column4x4_start + column4x4, bp,
-            &need_filter_u, &need_filter_v, &level_u, &level_v, &column_step,
-            &filter_length);
-        const dsp::LoopFilterSize size = GetLoopFilterSizeUV(filter_length);
-        if (need_filter_u) {
+            row4x4_start + row4x4, column4x4_start + column4x4, bp, &level_u,
+            &level_v, &column_step, &filter_length);
+        if (level_u != 0) {
+          const dsp::LoopFilterSize size = GetLoopFilterSizeUV(filter_length);
           dsp_.loop_filters[size][type](
               src_row_u, src_stride_u, outer_thresh_[level_u],
               inner_thresh_[level_u], HevThresh(level_u));
         }
-        if (need_filter_v) {
+        if (level_v != 0) {
+          const dsp::LoopFilterSize size = GetLoopFilterSizeUV(filter_length);
           dsp_.loop_filters[size][type](
               src_row_v, src_stride_v, outer_thresh_[level_v],
               inner_thresh_[level_v], HevThresh(level_v));

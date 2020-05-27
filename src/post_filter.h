@@ -334,19 +334,18 @@ class PostFilter {
   bool GetHorizontalDeblockFilterEdgeInfo(int row4x4, int column4x4,
                                           uint8_t* level, int* step,
                                           int* filter_length) const;
-  void GetHorizontalDeblockFilterEdgeInfoUV(
-      int row4x4, int column4x4, bool* need_filter_u, bool* need_filter_v,
-      uint8_t* level_u, uint8_t* level_v, int* step, int* filter_length) const;
+  void GetHorizontalDeblockFilterEdgeInfoUV(int row4x4, int column4x4,
+                                            uint8_t* level_u, uint8_t* level_v,
+                                            int* step,
+                                            int* filter_length) const;
   bool GetVerticalDeblockFilterEdgeInfo(int row4x4, int column4x4,
                                         BlockParameters* const* bp_ptr,
                                         uint8_t* level, int* step,
                                         int* filter_length) const;
   void GetVerticalDeblockFilterEdgeInfoUV(int row4x4, int column4x4,
                                           BlockParameters* const* bp_ptr,
-                                          bool* need_filter_u,
-                                          bool* need_filter_v, uint8_t* level_u,
-                                          uint8_t* level_v, int* step,
-                                          int* filter_length) const;
+                                          uint8_t* level_u, uint8_t* level_v,
+                                          int* step, int* filter_length) const;
   void HorizontalDeblockFilter(int row4x4_start, int column4x4_start);
   void VerticalDeblockFilter(int row4x4_start, int column4x4_start);
   // HorizontalDeblockFilter and VerticalDeblockFilter must have the correct
