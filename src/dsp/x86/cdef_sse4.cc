@@ -40,105 +40,293 @@ namespace {
 
 #include "src/dsp/cdef.inc"
 
-// Used to calculate |partial[0][i + j]| and |partial[4][7 + i - j]|. The input
-// is |src[j]| and it is being added to |partial[]| based on the above indices.
-// |x| is assumed to be reversed when called for partial[4].
-template <int shift>
-inline void AddPartial0Or4(const __m128i x, __m128i* b, __m128i* c) {
-  if (shift == 0) {
-    *b = _mm_add_epi16(*b, x);
-  } else {
-    *b = _mm_add_epi16(*b, _mm_slli_si128(x, shift << 1));
-    *c = _mm_add_epi16(*c, _mm_srli_si128(x, (8 - shift) << 1));
-  }
-}
-
-// |[i + j / 2]| effectively adds two values to the same index:
-// partial[1][0 + 0 / 2] += src[j]
-// partial[1][0 + 1 / 2] += src[j + 1]
-// Horizontal add |a| to generate 4 values. Shift as necessary to add these
-// values to |b| and |c|.
+// ----------------------------------------------------------------------------
+// Refer to CdefDirection_C().
 //
-// |x| is assumed to be reversed when called for partial[3].
-// Used to calculate |partial[1][i + j / 2]| and |partial[3][3 + i - j / 2]|.
-template <int shift>
-inline void AddPartial1Or3(const __m128i x, __m128i* dest_lo,
-                           __m128i* dest_hi) {
-  const __m128i paired = _mm_hadd_epi16(x, _mm_setzero_si128());
-  if (shift == 0) {
-    *dest_lo = _mm_add_epi16(*dest_lo, paired);
-  } else {
-    *dest_lo = _mm_add_epi16(*dest_lo, _mm_slli_si128(paired, shift << 1));
-    if (shift > 4) {
-      // Split |paired| between |b| and |c|.
-      *dest_hi =
-          _mm_add_epi16(*dest_hi, _mm_srli_si128(paired, (8 - shift) << 1));
-    }
+// int32_t partial[8][15] = {};
+// for (int i = 0; i < 8; ++i) {
+//   for (int j = 0; j < 8; ++j) {
+//     const int x = 1;
+//     partial[0][i + j] += x;
+//     partial[1][i + j / 2] += x;
+//     partial[2][i] += x;
+//     partial[3][3 + i - j / 2] += x;
+//     partial[4][7 + i - j] += x;
+//     partial[5][3 - i / 2 + j] += x;
+//     partial[6][j] += x;
+//     partial[7][i / 2 + j] += x;
+//   }
+// }
+//
+// Using the code above, generate the position count for partial[8][15].
+//
+// partial[0]: 1 2 3 4 5 6 7 8 7 6 5 4 3 2 1
+// partial[1]: 2 4 6 8 8 8 8 8 6 4 2 0 0 0 0
+// partial[2]: 8 8 8 8 8 8 8 8 0 0 0 0 0 0 0
+// partial[3]: 2 4 6 8 8 8 8 8 6 4 2 0 0 0 0
+// partial[4]: 1 2 3 4 5 6 7 8 7 6 5 4 3 2 1
+// partial[5]: 2 4 6 8 8 8 8 8 6 4 2 0 0 0 0
+// partial[6]: 8 8 8 8 8 8 8 8 0 0 0 0 0 0 0
+// partial[7]: 2 4 6 8 8 8 8 8 6 4 2 0 0 0 0
+//
+// The SIMD code shifts the input horizontally, then adds vertically to get the
+// correct partial value for the given position.
+// ----------------------------------------------------------------------------
+
+// ----------------------------------------------------------------------------
+// partial[0][i + j] += x;
+//
+// 00 01 02 03 04 05 06 07  00 00 00 00 00 00 00
+// 00 10 11 12 13 14 15 16  17 00 00 00 00 00 00
+// 00 00 20 21 22 23 24 25  26 27 00 00 00 00 00
+// 00 00 00 30 31 32 33 34  35 36 37 00 00 00 00
+// 00 00 00 00 40 41 42 43  44 45 46 47 00 00 00
+// 00 00 00 00 00 50 51 52  53 54 55 56 57 00 00
+// 00 00 00 00 00 00 60 61  62 63 64 65 66 67 00
+// 00 00 00 00 00 00 00 70  71 72 73 74 75 76 77
+//
+// partial[4] is the same except the source is reversed.
+LIBGAV1_ALWAYS_INLINE void AddPartial_D0_D4(__m128i* v_src_16,
+                                            __m128i* partial_lo,
+                                            __m128i* partial_hi) {
+  // 00 01 02 03 04 05 06 07
+  *partial_lo = v_src_16[0];
+  // 00 00 00 00 00 00 00 00
+  *partial_hi = _mm_setzero_si128();
+
+  // 00 10 11 12 13 14 15 16
+  *partial_lo = _mm_add_epi16(*partial_lo, _mm_slli_si128(v_src_16[1], 2));
+  // 17 00 00 00 00 00 00 00
+  *partial_hi = _mm_add_epi16(*partial_hi, _mm_srli_si128(v_src_16[1], 14));
+
+  // 00 00 20 21 22 23 24 25
+  *partial_lo = _mm_add_epi16(*partial_lo, _mm_slli_si128(v_src_16[2], 4));
+  // 26 27 00 00 00 00 00 00
+  *partial_hi = _mm_add_epi16(*partial_hi, _mm_srli_si128(v_src_16[2], 12));
+
+  // 00 00 00 30 31 32 33 34
+  *partial_lo = _mm_add_epi16(*partial_lo, _mm_slli_si128(v_src_16[3], 6));
+  // 35 36 37 00 00 00 00 00
+  *partial_hi = _mm_add_epi16(*partial_hi, _mm_srli_si128(v_src_16[3], 10));
+
+  // 00 00 00 00 40 41 42 43
+  *partial_lo = _mm_add_epi16(*partial_lo, _mm_slli_si128(v_src_16[4], 8));
+  // 44 45 46 47 00 00 00 00
+  *partial_hi = _mm_add_epi16(*partial_hi, _mm_srli_si128(v_src_16[4], 8));
+
+  // 00 00 00 00 00 50 51 52
+  *partial_lo = _mm_add_epi16(*partial_lo, _mm_slli_si128(v_src_16[5], 10));
+  // 53 54 55 56 57 00 00 00
+  *partial_hi = _mm_add_epi16(*partial_hi, _mm_srli_si128(v_src_16[5], 6));
+
+  // 00 00 00 00 00 00 60 61
+  *partial_lo = _mm_add_epi16(*partial_lo, _mm_slli_si128(v_src_16[6], 12));
+  // 62 63 64 65 66 67 00 00
+  *partial_hi = _mm_add_epi16(*partial_hi, _mm_srli_si128(v_src_16[6], 4));
+
+  // 00 00 00 00 00 00 00 70
+  *partial_lo = _mm_add_epi16(*partial_lo, _mm_slli_si128(v_src_16[7], 14));
+  // 71 72 73 74 75 76 77 00
+  *partial_hi = _mm_add_epi16(*partial_hi, _mm_srli_si128(v_src_16[7], 2));
+}
+
+// ----------------------------------------------------------------------------
+// partial[1][i + j / 2] += x;
+//
+// A0 = src[0] + src[1], A1 = src[2] + src[3], ...
+//
+// A0 A1 A2 A3 00 00 00 00  00 00 00 00 00 00 00
+// 00 B0 B1 B2 B3 00 00 00  00 00 00 00 00 00 00
+// 00 00 C0 C1 C2 C3 00 00  00 00 00 00 00 00 00
+// 00 00 00 D0 D1 D2 D3 00  00 00 00 00 00 00 00
+// 00 00 00 00 E0 E1 E2 E3  00 00 00 00 00 00 00
+// 00 00 00 00 00 F0 F1 F2  F3 00 00 00 00 00 00
+// 00 00 00 00 00 00 G0 G1  G2 G3 00 00 00 00 00
+// 00 00 00 00 00 00 00 H0  H1 H2 H3 00 00 00 00
+//
+// partial[3] is the same except the source is reversed.
+LIBGAV1_ALWAYS_INLINE void AddPartial_D1_D3(__m128i* v_src_16,
+                                            __m128i* partial_lo,
+                                            __m128i* partial_hi) {
+  __m128i v_d1_temp[8];
+  const __m128i v_zero = _mm_setzero_si128();
+
+  for (int i = 0; i < 8; ++i) {
+    v_d1_temp[i] = _mm_hadd_epi16(v_src_16[i], v_zero);
   }
+
+  *partial_lo = *partial_hi = v_zero;
+  // A0 A1 A2 A3 00 00 00 00
+  *partial_lo = _mm_add_epi16(*partial_lo, v_d1_temp[0]);
+
+  // 00 B0 B1 B2 B3 00 00 00
+  *partial_lo = _mm_add_epi16(*partial_lo, _mm_slli_si128(v_d1_temp[1], 2));
+
+  // 00 00 C0 C1 C2 C3 00 00
+  *partial_lo = _mm_add_epi16(*partial_lo, _mm_slli_si128(v_d1_temp[2], 4));
+  // 00 00 00 D0 D1 D2 D3 00
+  *partial_lo = _mm_add_epi16(*partial_lo, _mm_slli_si128(v_d1_temp[3], 6));
+  // 00 00 00 00 E0 E1 E2 E3
+  *partial_lo = _mm_add_epi16(*partial_lo, _mm_slli_si128(v_d1_temp[4], 8));
+
+  // 00 00 00 00 00 F0 F1 F2
+  *partial_lo = _mm_add_epi16(*partial_lo, _mm_slli_si128(v_d1_temp[5], 10));
+  // F3 00 00 00 00 00 00 00
+  *partial_hi = _mm_add_epi16(*partial_hi, _mm_srli_si128(v_d1_temp[5], 6));
+
+  // 00 00 00 00 00 00 G0 G1
+  *partial_lo = _mm_add_epi16(*partial_lo, _mm_slli_si128(v_d1_temp[6], 12));
+  // G2 G3 00 00 00 00 00 00
+  *partial_hi = _mm_add_epi16(*partial_hi, _mm_srli_si128(v_d1_temp[6], 4));
+
+  // 00 00 00 00 00 00 00 H0
+  *partial_lo = _mm_add_epi16(*partial_lo, _mm_slli_si128(v_d1_temp[7], 14));
+  // H1 H2 H3 00 00 00 00 00
+  *partial_hi = _mm_add_epi16(*partial_hi, _mm_srli_si128(v_d1_temp[7], 2));
 }
 
-// Simple add starting at [3] and stepping back every other row.
-// Used to calculate |partial[5][3 - i / 2 + j]|.
-template <int shift>
-inline void AddPartial5(const __m128i a, __m128i* b, __m128i* c) {
-  if (shift > 5) {
-    *b = _mm_add_epi16(*b, a);
-  } else {
-    *b = _mm_add_epi16(*b, _mm_slli_si128(a, (3 - shift / 2) << 1));
-    *c = _mm_add_epi16(*c, _mm_srli_si128(a, (5 + shift / 2) << 1));
+// ----------------------------------------------------------------------------
+// partial[7][i / 2 + j] += x;
+//
+// 00 01 02 03 04 05 06 07  00 00 00 00 00 00 00
+// 10 11 12 13 14 15 16 17  00 00 00 00 00 00 00
+// 00 20 21 22 23 24 25 26  27 00 00 00 00 00 00
+// 00 30 31 32 33 34 35 36  37 00 00 00 00 00 00
+// 00 00 40 41 42 43 44 45  46 47 00 00 00 00 00
+// 00 00 50 51 52 53 54 55  56 57 00 00 00 00 00
+// 00 00 00 60 61 62 63 64  65 66 67 00 00 00 00
+// 00 00 00 70 71 72 73 74  75 76 77 00 00 00 00
+//
+// partial[5] is the same except the source is reversed.
+LIBGAV1_ALWAYS_INLINE void AddPartial_D5_D7(__m128i* v_src, __m128i* partial_lo,
+                                            __m128i* partial_hi) {
+  __m128i v_pair_add[4];
+  // Add vertical source pairs.
+  v_pair_add[0] = _mm_add_epi16(v_src[0], v_src[1]);
+  v_pair_add[1] = _mm_add_epi16(v_src[2], v_src[3]);
+  v_pair_add[2] = _mm_add_epi16(v_src[4], v_src[5]);
+  v_pair_add[3] = _mm_add_epi16(v_src[6], v_src[7]);
+
+  // 00 01 02 03 04 05 06 07
+  // 10 11 12 13 14 15 16 17
+  *partial_lo = v_pair_add[0];
+  // 00 00 00 00 00 00 00 00
+  // 00 00 00 00 00 00 00 00
+  *partial_hi = _mm_setzero_si128();
+
+  // 00 20 21 22 23 24 25 26
+  // 00 30 31 32 33 34 35 36
+  *partial_lo = _mm_add_epi16(*partial_lo, _mm_slli_si128(v_pair_add[1], 2));
+  // 27 00 00 00 00 00 00 00
+  // 37 00 00 00 00 00 00 00
+  *partial_hi = _mm_add_epi16(*partial_hi, _mm_srli_si128(v_pair_add[1], 14));
+
+  // 00 00 40 41 42 43 44 45
+  // 00 00 50 51 52 53 54 55
+  *partial_lo = _mm_add_epi16(*partial_lo, _mm_slli_si128(v_pair_add[2], 4));
+  // 46 47 00 00 00 00 00 00
+  // 56 57 00 00 00 00 00 00
+  *partial_hi = _mm_add_epi16(*partial_hi, _mm_srli_si128(v_pair_add[2], 12));
+
+  // 00 00 00 60 61 62 63 64
+  // 00 00 00 70 71 72 73 74
+  *partial_lo = _mm_add_epi16(*partial_lo, _mm_slli_si128(v_pair_add[3], 6));
+  // 65 66 67 00 00 00 00 00
+  // 75 76 77 00 00 00 00 00
+  *partial_hi = _mm_add_epi16(*partial_hi, _mm_srli_si128(v_pair_add[3], 10));
+}
+
+LIBGAV1_ALWAYS_INLINE void AddPartial(const uint8_t* src, ptrdiff_t stride,
+                                      __m128i* partial_lo,
+                                      __m128i* partial_hi) {
+  // 8x8 input
+  // 00 01 02 03 04 05 06 07
+  // 10 11 12 13 14 15 16 17
+  // 20 21 22 23 24 25 26 27
+  // 30 31 32 33 34 35 36 37
+  // 40 41 42 43 44 45 46 47
+  // 50 51 52 53 54 55 56 57
+  // 60 61 62 63 64 65 66 67
+  // 70 71 72 73 74 75 76 77
+  __m128i v_src[8];
+  for (auto& i : v_src) {
+    i = LoadLo8(src);
+    src += stride;
   }
-}
 
-// Simple add.
-// Used to calculate |partial[6][j]|
-inline void AddPartial6(const __m128i a, __m128i* b) {
-  *b = _mm_add_epi16(*b, a);
-}
+  const __m128i v_zero = _mm_setzero_si128();
+  // partial for direction 2
+  // --------------------------------------------------------------------------
+  // partial[2][i] += x;
+  // 00 10 20 30 40 50 60 70  00 00 00 00 00 00 00 00
+  // 01 11 21 33 41 51 61 71  00 00 00 00 00 00 00 00
+  // 02 12 22 33 42 52 62 72  00 00 00 00 00 00 00 00
+  // 03 13 23 33 43 53 63 73  00 00 00 00 00 00 00 00
+  // 04 14 24 34 44 54 64 74  00 00 00 00 00 00 00 00
+  // 05 15 25 35 45 55 65 75  00 00 00 00 00 00 00 00
+  // 06 16 26 36 46 56 66 76  00 00 00 00 00 00 00 00
+  // 07 17 27 37 47 57 67 77  00 00 00 00 00 00 00 00
+  const __m128i v_src_4_0 = _mm_unpacklo_epi64(v_src[0], v_src[4]);
+  const __m128i v_src_5_1 = _mm_unpacklo_epi64(v_src[1], v_src[5]);
+  const __m128i v_src_6_2 = _mm_unpacklo_epi64(v_src[2], v_src[6]);
+  const __m128i v_src_7_3 = _mm_unpacklo_epi64(v_src[3], v_src[7]);
+  const __m128i v_hsum_4_0 = _mm_sad_epu8(v_src_4_0, v_zero);
+  const __m128i v_hsum_5_1 = _mm_sad_epu8(v_src_5_1, v_zero);
+  const __m128i v_hsum_6_2 = _mm_sad_epu8(v_src_6_2, v_zero);
+  const __m128i v_hsum_7_3 = _mm_sad_epu8(v_src_7_3, v_zero);
+  const __m128i v_hsum_1_0 = _mm_unpacklo_epi16(v_hsum_4_0, v_hsum_5_1);
+  const __m128i v_hsum_3_2 = _mm_unpacklo_epi16(v_hsum_6_2, v_hsum_7_3);
+  const __m128i v_hsum_5_4 = _mm_unpackhi_epi16(v_hsum_4_0, v_hsum_5_1);
+  const __m128i v_hsum_7_6 = _mm_unpackhi_epi16(v_hsum_6_2, v_hsum_7_3);
+  partial_lo[2] =
+      _mm_unpacklo_epi64(_mm_unpacklo_epi32(v_hsum_1_0, v_hsum_3_2),
+                         _mm_unpacklo_epi32(v_hsum_5_4, v_hsum_7_6));
 
-// Simple add starting at [0] and stepping forward every other row.
-// Used to calculate |partial[7][i / 2 + j]|.
-template <int shift>
-inline void AddPartial7(const __m128i a, __m128i* b, __m128i* c) {
-  if (shift < 2) {
-    *b = _mm_add_epi16(*b, a);
-  } else {
-    *b = _mm_add_epi16(*b, _mm_slli_si128(a, (shift / 2) << 1));
-    *c = _mm_add_epi16(*c, _mm_srli_si128(a, (8 - shift / 2) << 1));
+  __m128i v_src_16[8];
+  for (int i = 0; i < 8; ++i) {
+    v_src_16[i] = _mm_cvtepu8_epi16(v_src[i]);
   }
-}
 
-// Reverse the lower 8 bytes in the register.
-// 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 input
-// 7 6 5 4 3 2 1 0 8 9 10 11 12 13 14 15 output
-inline __m128i Reverse8(const __m128i v) {
-  const __m128i reverser = _mm_set_epi32(0, 0, 0x00010203, 0x04050607);
-  return _mm_shuffle_epi8(v, reverser);
-}
+  // partial for direction 6
+  // --------------------------------------------------------------------------
+  // partial[6][j] += x;
+  // 00 01 02 03 04 05 06 07  00 00 00 00 00 00 00 00
+  // 10 11 12 13 14 15 16 17  00 00 00 00 00 00 00 00
+  // 20 21 22 23 24 25 26 27  00 00 00 00 00 00 00 00
+  // 30 31 32 33 34 35 36 37  00 00 00 00 00 00 00 00
+  // 40 41 42 43 44 45 46 47  00 00 00 00 00 00 00 00
+  // 50 51 52 53 54 55 56 57  00 00 00 00 00 00 00 00
+  // 60 61 62 63 64 65 66 67  00 00 00 00 00 00 00 00
+  // 70 71 72 73 74 75 76 77  00 00 00 00 00 00 00 00
+  partial_lo[6] = v_src_16[0];
+  for (int i = 1; i < 8; ++i) {
+    partial_lo[6] = _mm_add_epi16(partial_lo[6], v_src_16[i]);
+  }
 
-// Section 7.15.2 line 10 of first code block.
-template <int i>
-inline void AddPartial(const __m128i source, __m128i dest_lo[8],
-                       __m128i dest_hi[8]) {
-  // This is not normalized for signed arithmetic like the other partials, and
-  // must be corrected at the end.
-  dest_lo[2] = _mm_add_epi16(
-      dest_lo[2],
-      _mm_slli_si128(_mm_sad_epu8(source, _mm_setzero_si128()), i << 1));
-  // Note: though we could save one subtraction and one convert by reversing
-  // after creating |source_s16|, it would mean loading another register for
-  // the shuffle mask.
-  const __m128i signed_offset = _mm_set1_epi16(128);
-  const __m128i reverse_source_s16 =
-      _mm_sub_epi16(_mm_cvtepu8_epi16(Reverse8(source)), signed_offset);
-  AddPartial0Or4<i>(reverse_source_s16, &dest_lo[4], &dest_hi[4]);
-  AddPartial1Or3<i>(reverse_source_s16, &dest_lo[3], &dest_hi[3]);
-  const __m128i source_s16 =
-      _mm_sub_epi16(_mm_cvtepu8_epi16(source), signed_offset);
-  AddPartial0Or4<i>(source_s16, &dest_lo[0], &dest_hi[0]);
-  AddPartial1Or3<i>(source_s16, &dest_lo[1], &dest_hi[1]);
-  AddPartial5<i>(source_s16, &dest_lo[5], &dest_hi[5]);
-  AddPartial6(source_s16, &dest_lo[6]);
-  AddPartial7<i>(source_s16, &dest_lo[7], &dest_hi[7]);
+  // partial for direction 0
+  AddPartial_D0_D4(v_src_16, &partial_lo[0], &partial_hi[0]);
+
+  // partial for direction 1
+  AddPartial_D1_D3(v_src_16, &partial_lo[1], &partial_hi[1]);
+
+  // partial for direction 7
+  AddPartial_D5_D7(v_src_16, &partial_lo[7], &partial_hi[7]);
+
+  __m128i v_src_reverse[8];
+  const __m128i reverser =
+      _mm_set_epi32(0x01000302, 0x05040706, 0x09080b0a, 0x0d0c0f0e);
+  for (int i = 0; i < 8; ++i) {
+    v_src_reverse[i] = _mm_shuffle_epi8(v_src_16[i], reverser);
+  }
+
+  // partial for direction 4
+  AddPartial_D0_D4(v_src_reverse, &partial_lo[4], &partial_hi[4]);
+
+  // partial for direction 3
+  AddPartial_D1_D3(v_src_reverse, &partial_lo[3], &partial_hi[3]);
+
+  // partial for direction 5
+  AddPartial_D5_D7(v_src_reverse, &partial_lo[5], &partial_hi[5]);
 }
 
 inline uint32_t SumVector_S32(__m128i a) {
@@ -208,29 +396,7 @@ void CdefDirection_SSE4_1(const void* const source, ptrdiff_t stride,
   uint32_t cost[8];
   __m128i partial_lo[8], partial_hi[8];
 
-  const __m128i zero = _mm_setzero_si128();
-  for (int i = 0; i < 8; ++i) {
-    partial_lo[i] = partial_hi[i] = zero;
-  }
-
-  AddPartial<0>(LoadLo8(src), partial_lo, partial_hi);
-  src += stride;
-  AddPartial<1>(LoadLo8(src), partial_lo, partial_hi);
-  src += stride;
-  AddPartial<2>(LoadLo8(src), partial_lo, partial_hi);
-  src += stride;
-  AddPartial<3>(LoadLo8(src), partial_lo, partial_hi);
-  src += stride;
-  AddPartial<4>(LoadLo8(src), partial_lo, partial_hi);
-  src += stride;
-  AddPartial<5>(LoadLo8(src), partial_lo, partial_hi);
-  src += stride;
-  AddPartial<6>(LoadLo8(src), partial_lo, partial_hi);
-  src += stride;
-  AddPartial<7>(LoadLo8(src), partial_lo, partial_hi);
-
-  const __m128i signed_offset = _mm_set1_epi16(128 * 8);
-  partial_lo[2] = _mm_sub_epi16(partial_lo[2], signed_offset);
+  AddPartial(src, stride, partial_lo, partial_hi);
 
   cost[2] = kCdefDivisionTable[7] * SquareSum_S16(partial_lo[2]);
   cost[6] = kCdefDivisionTable[7] * SquareSum_S16(partial_lo[6]);
