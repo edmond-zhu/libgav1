@@ -106,7 +106,7 @@ enum {
   kProjectionMvClamp = (1 << 14) - 1,  // == 16383
   kProjectionMvMaxHorizontalOffset = 8,
   kCdefUnitSize = 64,
-  kCdefUnitSizeWithBorders = kCdefUnitSize + 2 * kRestorationHorizontalBorder,
+  kCdefUnitSizeWithBorders = kCdefUnitSize + 2 * kCdefBorder,
   kRestorationUnitOffset = 8,
   // Loop restoration's processing unit size is fixed as 64x64.
   kRestorationUnitHeight = 64,
