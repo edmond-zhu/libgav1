@@ -1777,7 +1777,7 @@ inline void GetHalfSubPixelFilter(__m128i* output) {
 // |step_x|.
 template <int num_taps, int grade_x>
 inline void PrepareSourceVectors(const uint8_t* src, const __m128i src_indices,
-                                 __m128i source[num_taps >> 1]) {
+                                 __m128i* const source /*[num_taps >> 1]*/) {
   const __m128i src_vals = LoadUnaligned16(src);
   source[0] = _mm_shuffle_epi8(src_vals, src_indices);
   if (grade_x == 1) {

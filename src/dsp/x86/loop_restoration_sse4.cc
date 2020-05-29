@@ -904,7 +904,8 @@ inline __m128i BoxFilterPass2(const __m128i src_u8, const __m128i a2,
 
 inline void SelfGuidedDoubleMultiplier(
     const __m128i src, const __m128i box_filter_process_output[2],
-    const __m128i w0, const __m128i w1, const __m128i w2, uint8_t* const dst) {
+    const __m128i& w0, const __m128i& w1, const __m128i& w2,
+    uint8_t* const dst) {
   // |wN| values are signed. |src| values can be treated as int16_t.
   const __m128i u = VshllN8(src, kSgrProjRestoreBits);
   __m128i v_lo = VmulwLo16(w1, u);
