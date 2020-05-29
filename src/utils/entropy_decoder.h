@@ -99,6 +99,17 @@ class DaalaBitReader : public BitReader {
   WindowSize window_diff_;
 };
 
+extern template int DaalaBitReader::ReadSymbol<3>(uint16_t* cdf);
+extern template int DaalaBitReader::ReadSymbol<4>(uint16_t* cdf);
+extern template int DaalaBitReader::ReadSymbol<5>(uint16_t* cdf);
+extern template int DaalaBitReader::ReadSymbol<7>(uint16_t* cdf);
+extern template int DaalaBitReader::ReadSymbol<8>(uint16_t* cdf);
+extern template int DaalaBitReader::ReadSymbol<10>(uint16_t* cdf);
+extern template int DaalaBitReader::ReadSymbol<11>(uint16_t* cdf);
+extern template int DaalaBitReader::ReadSymbol<13>(uint16_t* cdf);
+extern template int DaalaBitReader::ReadSymbol<14>(uint16_t* cdf);
+extern template int DaalaBitReader::ReadSymbol<16>(uint16_t* cdf);
+
 }  // namespace libgav1
 
 #endif  // LIBGAV1_SRC_UTILS_ENTROPY_DECODER_H_

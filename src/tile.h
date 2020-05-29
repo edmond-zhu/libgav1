@@ -903,6 +903,13 @@ struct Tile::Block {
   ResidualPtr* const residual;
 };
 
+extern template bool
+Tile::ProcessSuperBlockRow<kProcessingModeDecodeOnly, false>(
+    int row4x4, TileScratchBuffer* scratch_buffer);
+extern template bool
+Tile::ProcessSuperBlockRow<kProcessingModeParseAndDecode, true>(
+    int row4x4, TileScratchBuffer* scratch_buffer);
+
 }  // namespace libgav1
 
 #endif  // LIBGAV1_SRC_TILE_H_
