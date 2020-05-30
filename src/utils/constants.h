@@ -58,7 +58,9 @@ enum {
   kSgrProjParamsBits = 4,
   kSgrProjPrecisionBits = 7,
   // Padding on left and right side of a restoration block.
-  kRestorationHorizontalBorder = 3,
+  // 3 is enough, but padding to 4 is more efficient, and makes the temporary
+  // source buffer 8-pixel aligned.
+  kRestorationHorizontalBorder = 4,
   // Padding on top and bottom side of a restoration block.
   kRestorationVerticalBorder = 2,
   kCdefBorder = 2,             // Padding on each side of a cdef block.
