@@ -583,34 +583,11 @@ inline __m128i Sum3Horizontal(const __m128i a) {
   return Sum3_16(left, middle, right);
 }
 
-inline __m128i Sum3Horizontal_16(const __m128i a[2]) {
-  const auto left = a[0];
-  const auto middle = _mm_alignr_epi8(a[1], a[0], 2);
-  const auto right = _mm_alignr_epi8(a[1], a[0], 4);
-  return Sum3_16(left, middle, right);
-}
-
 inline __m128i Sum3Horizontal_32(const __m128i a[2]) {
   const auto left = a[0];
   const auto middle = _mm_alignr_epi8(a[1], a[0], 4);
   const auto right = _mm_alignr_epi8(a[1], a[0], 8);
   return Sum3_32(left, middle, right);
-}
-
-inline __m128i* Sum3Horizontal_32x2(const __m128i a[3], __m128i sum[2]) {
-  {
-    const auto left = a[0];
-    const auto middle = _mm_alignr_epi8(a[1], a[0], 4);
-    const auto right = _mm_alignr_epi8(a[1], a[0], 8);
-    sum[0] = Sum3_32(left, middle, right);
-  }
-  {
-    const auto left = a[1];
-    const auto middle = _mm_alignr_epi8(a[2], a[1], 4);
-    const auto right = _mm_alignr_epi8(a[2], a[1], 8);
-    sum[1] = Sum3_32(left, middle, right);
-  }
-  return sum;
 }
 
 inline __m128i Sum3HorizontalOffset1(const __m128i a) {
@@ -690,6 +667,7 @@ template <int size, int offset>
 inline void BoxFilterPreProcess4(const __m128i* const row,
                                  const __m128i* const row_sq, const uint32_t s,
                                  uint16_t* const dst) {
+  static_assert(size == 3 || size == 5, "");
   static_assert(offset == 0 || offset == 1, "");
   // Number of elements in the box being summed.
   constexpr uint32_t n = size * size;
@@ -725,11 +703,12 @@ inline void BoxFilterPreProcess4(const __m128i* const row,
   StoreAligned16(dst, sgr_ma2_b2);
 }
 
-template <int size, int offset>
+template <int size>
 inline void BoxFilterPreProcess8(const __m128i* const row,
                                  const __m128i row_sq[][2], const uint32_t s,
                                  __m128i* const sgr_ma2, __m128i* const b2,
                                  uint16_t* const dst) {
+  static_assert(size == 3 || size == 5, "");
   // Number of elements in the box being summed.
   constexpr uint32_t n = size * size;
   constexpr uint32_t one_over_n =
@@ -737,13 +716,8 @@ inline void BoxFilterPreProcess8(const __m128i* const row,
   __m128i sum, sum_sq[2];
   if (size == 3) {
     __m128i temp16[2], temp32[3];
-    if (offset == 0) {
-      sum = Sum3Horizontal_16(Sum3W_16x2(row, temp16));
-      Sum3Horizontal_32x2(Sum3W(row_sq, temp32), sum_sq);
-    } else /* if (offset == 1) */ {
-      sum = Sum3HorizontalOffset1_16(Sum3W_16x2(row, temp16));
-      Sum3HorizontalOffset1_32x2(Sum3W(row_sq, temp32), sum_sq);
-    }
+    sum = Sum3HorizontalOffset1_16(Sum3W_16x2(row, temp16));
+    Sum3HorizontalOffset1_32x2(Sum3W(row_sq, temp32), sum_sq);
   }
   if (size == 5) {
     __m128i temp16[2], temp32[3];
@@ -771,16 +745,16 @@ inline void BoxFilterPreProcess8(const __m128i* const row,
 
 inline void Prepare3_8(const __m128i a, __m128i* const left,
                        __m128i* const middle, __m128i* const right) {
-  *left = _mm_srli_si128(a, 4);
-  *middle = _mm_srli_si128(a, 5);
-  *right = _mm_srli_si128(a, 6);
+  *left = _mm_srli_si128(a, 5);
+  *middle = _mm_srli_si128(a, 6);
+  *right = _mm_srli_si128(a, 7);
 }
 
 inline void Prepare3_16(const __m128i a[2], __m128i* const left,
                         __m128i* const middle, __m128i* const right) {
-  *left = _mm_alignr_epi8(a[1], a[0], 8);
-  *middle = _mm_alignr_epi8(a[1], a[0], 10);
-  *right = _mm_alignr_epi8(a[1], a[0], 12);
+  *left = _mm_alignr_epi8(a[1], a[0], 10);
+  *middle = _mm_alignr_epi8(a[1], a[0], 12);
+  *right = _mm_alignr_epi8(a[1], a[0], 14);
 }
 
 inline __m128i Sum343(const __m128i a) {
@@ -837,9 +811,9 @@ inline __m128i Sum565(const __m128i a) {
 }
 
 inline __m128i Sum565W(const __m128i a) {
-  const auto left = a;
-  const auto middle = _mm_srli_si128(a, 2);
-  const auto right = _mm_srli_si128(a, 4);
+  const auto left = _mm_srli_si128(a, 2);
+  const auto middle = _mm_srli_si128(a, 4);
+  const auto right = _mm_srli_si128(a, 6);
   const auto sum = Sum3WLo_32(left, middle, right);
   const auto sum4 = _mm_slli_epi32(sum, 2);
   const auto sum5 = _mm_add_epi32(sum4, sum);
@@ -991,17 +965,15 @@ inline void BoxFilterProcess(const uint8_t* const src,
   // names for the next step.
   uint16_t* ab_ptr = temp;
 
-  const uint8_t* const src_pre_process = src - 2 * src_stride - 3;
+  const uint8_t* const src_pre_process = src - 2 * src_stride;
   // Calculate intermediate results, including two-pixel border, for example, if
   // unit size is 64x64, we calculate 68x68 pixels.
   {
-    const uint8_t* column = src_pre_process;
+    const uint8_t* column = src_pre_process - 4;
     __m128i row[5], row_sq[5];
-    // Need min(4, |width|) + 6 pixels, but we read 8 pixels.
-    // Mask 2 - min(4, |width|) extra pixels.
-    row[0] = row[1] = LoadLo8Msan(column, 2 - width);
+    row[0] = row[1] = LoadLo8(column);
     column += src_stride;
-    row[2] = LoadLo8Msan(column, 2 - width);
+    row[2] = LoadLo8(column);
 
     row_sq[0] = row_sq[1] = VmullLo8(row[1], row[1]);
     row_sq[2] = VmullLo8(row[2], row[2]);
@@ -1009,14 +981,14 @@ inline void BoxFilterProcess(const uint8_t* const src,
     int y = (height + 2) >> 1;
     do {
       column += src_stride;
-      row[3] = LoadLo8Msan(column, 2 - width);
+      row[3] = LoadLo8(column);
       column += src_stride;
-      row[4] = LoadLo8Msan(column, 2 - width);
+      row[4] = LoadLo8(column);
 
       row_sq[3] = VmullLo8(row[3], row[3]);
       row_sq[4] = VmullLo8(row[4], row[4]);
 
-      BoxFilterPreProcess4<5, 0>(row + 0, row_sq + 0, s[0], ab_ptr + 0);
+      BoxFilterPreProcess4<5, 1>(row + 0, row_sq + 0, s[0], ab_ptr + 0);
       BoxFilterPreProcess4<3, 1>(row + 1, row_sq + 1, s[1], ab_ptr + 8);
       BoxFilterPreProcess4<3, 1>(row + 2, row_sq + 2, s[1], ab_ptr + 16);
 
@@ -1029,11 +1001,12 @@ inline void BoxFilterProcess(const uint8_t* const src,
       row_sq[2] = row_sq[4];
       ab_ptr += 24;
     } while (--y != 0);
+
     if ((height & 1) != 0) {
       column += src_stride;
-      row[3] = row[4] = LoadLo8Msan(column, 2 - width);
+      row[3] = row[4] = LoadLo8(column);
       row_sq[3] = row_sq[4] = VmullLo8(row[3], row[3]);
-      BoxFilterPreProcess4<5, 0>(row + 0, row_sq + 0, s[0], ab_ptr + 0);
+      BoxFilterPreProcess4<5, 1>(row + 0, row_sq + 0, s[0], ab_ptr + 0);
       BoxFilterPreProcess4<3, 1>(row + 1, row_sq + 1, s[1], ab_ptr + 8);
     }
   }
@@ -1069,17 +1042,17 @@ inline void BoxFilterProcess(const uint8_t* const src,
     a2[0] = b2[0][0] = LoadAligned16(ab_ptr);
     a2[1] = b2[1][0] = LoadAligned16(ab_ptr + 8);
 
-    const uint8_t* column = src_pre_process + x + 4;
+    const uint8_t* column = src_pre_process + x;
     __m128i row[5], row_sq[5][2];
-    // Need |width| + 2 pixels, but we read max(|x|) + 16 pixels.
-    // Mask max(|x|) + 14 - |width| extra pixels.
-    row[0] = row[1] = LoadUnaligned16Msan(column, x + 14 - width);
+    // Need |width| + 3 pixels, but we read max(|x|) + 16 pixels.
+    // Mask max(|x|) + 13 - |width| extra pixels.
+    row[0] = row[1] = LoadUnaligned16Msan(column, x + 13 - width);
     column += src_stride;
-    row[2] = LoadUnaligned16Msan(column, x + 14 - width);
+    row[2] = LoadUnaligned16Msan(column, x + 13 - width);
     column += src_stride;
-    row[3] = LoadUnaligned16Msan(column, x + 14 - width);
+    row[3] = LoadUnaligned16Msan(column, x + 13 - width);
     column += src_stride;
-    row[4] = LoadUnaligned16Msan(column, x + 14 - width);
+    row[4] = LoadUnaligned16Msan(column, x + 13 - width);
 
     row_sq[0][0] = row_sq[1][0] = VmullLo8(row[1], row[1]);
     row_sq[0][1] = row_sq[1][1] = VmullHi8(row[1], row[1]);
@@ -1090,9 +1063,9 @@ inline void BoxFilterProcess(const uint8_t* const src,
     row_sq[4][0] = VmullLo8(row[4], row[4]);
     row_sq[4][1] = VmullHi8(row[4], row[4]);
 
-    BoxFilterPreProcess8<5, 0>(row, row_sq, s[0], &a2[0], &b2[0][1], ab_ptr);
-    BoxFilterPreProcess8<3, 1>(row + 1, row_sq + 1, s[1], &a2[1], &b2[1][1],
-                               ab_ptr + 8);
+    BoxFilterPreProcess8<5>(row, row_sq, s[0], &a2[0], &b2[0][1], ab_ptr);
+    BoxFilterPreProcess8<3>(row + 1, row_sq + 1, s[1], &a2[1], &b2[1][1],
+                            ab_ptr + 8);
 
     // Pass 1 Process. These are the only values we need to propagate between
     // rows.
@@ -1107,15 +1080,14 @@ inline void BoxFilterProcess(const uint8_t* const src,
 
     a2[1] = b2[1][0] = LoadAligned16(ab_ptr + 16);
 
-    BoxFilterPreProcess8<3, 1>(row + 2, row_sq + 2, s[1], &a2[1], &b2[1][1],
-                               ab_ptr + 16);
+    BoxFilterPreProcess8<3>(row + 2, row_sq + 2, s[1], &a2[1], &b2[1][1],
+                            ab_ptr + 16);
 
     Sum343_444(a2[1], &sum343_a[1], &sum444_a[0]);
     sum343_a[1] = _mm_sub_epi16(_mm_set1_epi16((3 + 4 + 3) * 256), sum343_a[1]);
     sum444_a[0] = _mm_sub_epi16(_mm_set1_epi16((4 + 4 + 4) * 256), sum444_a[0]);
     Sum343_444W(b2[1], sum343_b[1], sum444_b[0]);
 
-    const uint8_t* src_ptr = src + x;
     uint8_t* dst_ptr = dst + x;
 
     // Calculate one output line. Add in the line from the previous pass and
@@ -1135,37 +1107,33 @@ inline void BoxFilterProcess(const uint8_t* const src,
       row_sq[2][0] = row_sq[4][0], row_sq[2][1] = row_sq[4][1];
 
       column += src_stride;
-      row[3] = LoadUnaligned16Msan(column, x + 14 - width);
+      row[3] = LoadUnaligned16Msan(column, x + 13 - width);
       column += src_stride;
-      row[4] = LoadUnaligned16Msan(column, x + 14 - width);
+      row[4] = LoadUnaligned16Msan(column, x + 13 - width);
 
       row_sq[3][0] = VmullLo8(row[3], row[3]);
       row_sq[3][1] = VmullHi8(row[3], row[3]);
       row_sq[4][0] = VmullLo8(row[4], row[4]);
       row_sq[4][1] = VmullHi8(row[4], row[4]);
 
-      BoxFilterPreProcess8<5, 0>(row, row_sq, s[0], &a2[0], &b2[0][1], ab_ptr);
-      BoxFilterPreProcess8<3, 1>(row + 1, row_sq + 1, s[1], &a2[1], &b2[1][1],
-                                 ab_ptr + 8);
+      BoxFilterPreProcess8<5>(row, row_sq, s[0], &a2[0], &b2[0][1], ab_ptr);
+      BoxFilterPreProcess8<3>(row + 1, row_sq + 1, s[1], &a2[1], &b2[1][1],
+                              ab_ptr + 8);
 
       __m128i p[2];
-      const __m128i src0 = LoadLo8(src_ptr);
-      p[0] = BoxFilterPass1(src0, a2[0], b2[0], sum565_a, sum565_b);
-      p[1] = BoxFilterPass2(src0, a2[1], b2[1], sum343_a, sum444_a, sum343_b,
+      p[0] = BoxFilterPass1(row[1], a2[0], b2[0], sum565_a, sum565_b);
+      p[1] = BoxFilterPass2(row[1], a2[1], b2[1], sum343_a, sum444_a, sum343_b,
                             sum444_b);
-      SelfGuidedDoubleMultiplier(src0, p, w0_v, w1_v, w2_v, dst_ptr);
-      src_ptr += src_stride;
+      SelfGuidedDoubleMultiplier(row[1], p, w0_v, w1_v, w2_v, dst_ptr);
       dst_ptr += dst_stride;
 
-      const __m128i src1 = LoadLo8(src_ptr);
-      p[0] = CalculateFilteredOutput<4>(src1, sum565_a[1], sum565_b[1]);
+      p[0] = CalculateFilteredOutput<4>(row[2], sum565_a[1], sum565_b[1]);
       a2[1] = b2[1][0] = LoadAligned16(ab_ptr + 16);
-      BoxFilterPreProcess8<3, 1>(row + 2, row_sq + 2, s[1], &a2[1], &b2[1][1],
-                                 ab_ptr + 16);
-      p[1] = BoxFilterPass2(src1, a2[1], b2[1], sum343_a + 1, sum444_a + 1,
+      BoxFilterPreProcess8<3>(row + 2, row_sq + 2, s[1], &a2[1], &b2[1][1],
+                              ab_ptr + 16);
+      p[1] = BoxFilterPass2(row[2], a2[1], b2[1], sum343_a + 1, sum444_a + 1,
                             sum343_b + 1, sum444_b + 1);
-      SelfGuidedDoubleMultiplier(src1, p, w0_v, w1_v, w2_v, dst_ptr);
-      src_ptr += src_stride;
+      SelfGuidedDoubleMultiplier(row[2], p, w0_v, w1_v, w2_v, dst_ptr);
       dst_ptr += dst_stride;
 
       sum565_a[0] = sum565_a[1];
@@ -1177,6 +1145,7 @@ inline void BoxFilterProcess(const uint8_t* const src,
       sum343_b[1][0] = sum343_b[3][0], sum343_b[1][1] = sum343_b[3][1];
       sum444_b[0][0] = sum444_b[2][0], sum444_b[0][1] = sum444_b[2][1];
     }
+
     if ((height & 1) != 0) {
       ab_ptr += 24;
       a2[0] = b2[0][0] = LoadAligned16(ab_ptr);
@@ -1191,21 +1160,20 @@ inline void BoxFilterProcess(const uint8_t* const src,
       row_sq[2][0] = row_sq[4][0], row_sq[2][1] = row_sq[4][1];
 
       column += src_stride;
-      row[3] = row[4] = LoadUnaligned16Msan(column, x + 14 - width);
+      row[3] = row[4] = LoadUnaligned16Msan(column, x + 13 - width);
 
       row_sq[3][0] = row_sq[4][0] = VmullLo8(row[3], row[3]);
       row_sq[3][1] = row_sq[4][1] = VmullHi8(row[3], row[3]);
 
-      BoxFilterPreProcess8<5, 0>(row, row_sq, s[0], &a2[0], &b2[0][1], ab_ptr);
-      BoxFilterPreProcess8<3, 1>(row + 1, row_sq + 1, s[1], &a2[1], &b2[1][1],
-                                 ab_ptr + 8);
+      BoxFilterPreProcess8<5>(row, row_sq, s[0], &a2[0], &b2[0][1], ab_ptr);
+      BoxFilterPreProcess8<3>(row + 1, row_sq + 1, s[1], &a2[1], &b2[1][1],
+                              ab_ptr + 8);
 
       __m128i p[2];
-      const __m128i src0 = LoadLo8(src_ptr);
-      p[0] = BoxFilterPass1(src0, a2[0], b2[0], sum565_a, sum565_b);
-      p[1] = BoxFilterPass2(src0, a2[1], b2[1], sum343_a, sum444_a, sum343_b,
+      p[0] = BoxFilterPass1(row[1], a2[0], b2[0], sum565_a, sum565_b);
+      p[1] = BoxFilterPass2(row[1], a2[1], b2[1], sum343_a, sum444_a, sum343_b,
                             sum444_b);
-      SelfGuidedDoubleMultiplier(src0, p, w0_v, w1_v, w2_v, dst_ptr);
+      SelfGuidedDoubleMultiplier(row[1], p, w0_v, w1_v, w2_v, dst_ptr);
     }
     x += 8;
   } while (x < width);
@@ -1261,17 +1229,15 @@ inline void BoxFilterProcessPass1(const uint8_t* const src,
   // names for the next step.
   uint16_t* ab_ptr = temp;
 
-  const uint8_t* const src_pre_process = src - 2 * src_stride - 3;
+  const uint8_t* const src_pre_process = src - 2 * src_stride;
   // Calculate intermediate results, including two-pixel border, for example, if
   // unit size is 64x64, we calculate 68x68 pixels.
   {
-    const uint8_t* column = src_pre_process;
+    const uint8_t* column = src_pre_process - 4;
     __m128i row[5], row_sq[5];
-    // Need min(4, |width|) + 6 pixels, but we read 8 pixels.
-    // Mask 2 - min(4, |width|) extra pixels.
-    row[0] = row[1] = LoadLo8Msan(column, 2 - width);
+    row[0] = row[1] = LoadLo8(column);
     column += src_stride;
-    row[2] = LoadLo8Msan(column, 2 - width);
+    row[2] = LoadLo8(column);
 
     row_sq[0] = row_sq[1] = VmullLo8(row[1], row[1]);
     row_sq[2] = VmullLo8(row[2], row[2]);
@@ -1279,14 +1245,14 @@ inline void BoxFilterProcessPass1(const uint8_t* const src,
     int y = (height + 2) >> 1;
     do {
       column += src_stride;
-      row[3] = LoadLo8Msan(column, 2 - width);
+      row[3] = LoadLo8(column);
       column += src_stride;
-      row[4] = LoadLo8Msan(column, 2 - width);
+      row[4] = LoadLo8(column);
 
       row_sq[3] = VmullLo8(row[3], row[3]);
       row_sq[4] = VmullLo8(row[4], row[4]);
 
-      BoxFilterPreProcess4<5, 0>(row, row_sq, s, ab_ptr);
+      BoxFilterPreProcess4<5, 1>(row, row_sq, s, ab_ptr);
 
       row[0] = row[2];
       row[1] = row[3];
@@ -1297,11 +1263,12 @@ inline void BoxFilterProcessPass1(const uint8_t* const src,
       row_sq[2] = row_sq[4];
       ab_ptr += 8;
     } while (--y != 0);
+
     if ((height & 1) != 0) {
       column += src_stride;
-      row[3] = row[4] = LoadLo8Msan(column, 2 - width);
+      row[3] = row[4] = LoadLo8(column);
       row_sq[3] = row_sq[4] = VmullLo8(row[3], row[3]);
-      BoxFilterPreProcess4<5, 0>(row, row_sq, s, ab_ptr);
+      BoxFilterPreProcess4<5, 1>(row, row_sq, s, ab_ptr);
     }
   }
 
@@ -1330,17 +1297,17 @@ inline void BoxFilterProcessPass1(const uint8_t* const src,
     ab_ptr = temp;
     a2[0] = b2[0] = LoadAligned16(ab_ptr);
 
-    const uint8_t* column = src_pre_process + x + 4;
+    const uint8_t* column = src_pre_process + x;
     __m128i row[5], row_sq[5][2];
-    // Need |width| + 2 pixels, but we read max(|x|) + 16 pixels.
-    // Mask max(|x|) + 14 - |width| extra pixels.
-    row[0] = row[1] = LoadUnaligned16Msan(column, x + 14 - width);
+    // Need |width| + 3 pixels, but we read max(|x|) + 16 pixels.
+    // Mask max(|x|) + 13 - |width| extra pixels.
+    row[0] = row[1] = LoadUnaligned16Msan(column, x + 13 - width);
     column += src_stride;
-    row[2] = LoadUnaligned16Msan(column, x + 14 - width);
+    row[2] = LoadUnaligned16Msan(column, x + 13 - width);
     column += src_stride;
-    row[3] = LoadUnaligned16Msan(column, x + 14 - width);
+    row[3] = LoadUnaligned16Msan(column, x + 13 - width);
     column += src_stride;
-    row[4] = LoadUnaligned16Msan(column, x + 14 - width);
+    row[4] = LoadUnaligned16Msan(column, x + 13 - width);
 
     row_sq[0][0] = row_sq[1][0] = VmullLo8(row[1], row[1]);
     row_sq[0][1] = row_sq[1][1] = VmullHi8(row[1], row[1]);
@@ -1351,7 +1318,7 @@ inline void BoxFilterProcessPass1(const uint8_t* const src,
     row_sq[4][0] = VmullLo8(row[4], row[4]);
     row_sq[4][1] = VmullHi8(row[4], row[4]);
 
-    BoxFilterPreProcess8<5, 0>(row, row_sq, s, &a2[0], &b2[1], ab_ptr);
+    BoxFilterPreProcess8<5>(row, row_sq, s, &a2[0], &b2[1], ab_ptr);
 
     // Pass 1 Process. These are the only values we need to propagate between
     // rows.
@@ -1360,7 +1327,6 @@ inline void BoxFilterProcessPass1(const uint8_t* const src,
     sum565_b[0][0] = Sum565W(_mm_alignr_epi8(b2[1], b2[0], 8));
     sum565_b[0][1] = Sum565W(b2[1]);
 
-    const uint8_t* src_ptr = src + x;
     uint8_t* dst_ptr = dst + x;
 
     // Calculate one output line. Add in the line from the previous pass and
@@ -1379,33 +1345,30 @@ inline void BoxFilterProcessPass1(const uint8_t* const src,
       row_sq[2][0] = row_sq[4][0], row_sq[2][1] = row_sq[4][1];
 
       column += src_stride;
-      row[3] = LoadUnaligned16Msan(column, x + 14 - width);
+      row[3] = LoadUnaligned16Msan(column, x + 13 - width);
       column += src_stride;
-      row[4] = LoadUnaligned16Msan(column, x + 14 - width);
+      row[4] = LoadUnaligned16Msan(column, x + 13 - width);
 
       row_sq[3][0] = VmullLo8(row[3], row[3]);
       row_sq[3][1] = VmullHi8(row[3], row[3]);
       row_sq[4][0] = VmullLo8(row[4], row[4]);
       row_sq[4][1] = VmullHi8(row[4], row[4]);
 
-      BoxFilterPreProcess8<5, 0>(row, row_sq, s, &a2[0], &b2[1], ab_ptr);
+      BoxFilterPreProcess8<5>(row, row_sq, s, &a2[0], &b2[1], ab_ptr);
 
-      const __m128i src0 = LoadLo8(src_ptr);
-      const __m128i p0 = BoxFilterPass1(src0, a2[0], b2, sum565_a, sum565_b);
-      SelfGuidedSingleMultiplier(src0, p0, w0, w1, dst_ptr);
-      src_ptr += src_stride;
+      const __m128i p0 = BoxFilterPass1(row[1], a2[0], b2, sum565_a, sum565_b);
+      SelfGuidedSingleMultiplier(row[1], p0, w0, w1, dst_ptr);
       dst_ptr += dst_stride;
 
-      const __m128i src1 = LoadLo8(src_ptr);
       const __m128i p1 =
-          CalculateFilteredOutput<4>(src1, sum565_a[1], sum565_b[1]);
-      SelfGuidedSingleMultiplier(src1, p1, w0, w1, dst_ptr);
-      src_ptr += src_stride;
+          CalculateFilteredOutput<4>(row[2], sum565_a[1], sum565_b[1]);
+      SelfGuidedSingleMultiplier(row[2], p1, w0, w1, dst_ptr);
       dst_ptr += dst_stride;
 
       sum565_a[0] = sum565_a[1];
       sum565_b[0][0] = sum565_b[1][0], sum565_b[0][1] = sum565_b[1][1];
     }
+
     if ((height & 1) != 0) {
       ab_ptr += 8;
       a2[0] = b2[0] = LoadAligned16(ab_ptr);
@@ -1419,16 +1382,15 @@ inline void BoxFilterProcessPass1(const uint8_t* const src,
       row_sq[2][0] = row_sq[4][0], row_sq[2][1] = row_sq[4][1];
 
       column += src_stride;
-      row[3] = row[4] = LoadUnaligned16Msan(column, x + 14 - width);
+      row[3] = row[4] = LoadUnaligned16Msan(column, x + 13 - width);
 
       row_sq[3][0] = row_sq[4][0] = VmullLo8(row[3], row[3]);
       row_sq[3][1] = row_sq[4][1] = VmullHi8(row[3], row[3]);
 
-      BoxFilterPreProcess8<5, 0>(row, row_sq, s, &a2[0], &b2[1], ab_ptr);
+      BoxFilterPreProcess8<5>(row, row_sq, s, &a2[0], &b2[1], ab_ptr);
 
-      const __m128i src0 = LoadLo8(src_ptr);
-      const __m128i p0 = BoxFilterPass1(src0, a2[0], b2, sum565_a, sum565_b);
-      SelfGuidedSingleMultiplier(src0, p0, w0, w1, dst_ptr);
+      const __m128i p0 = BoxFilterPass1(row[1], a2[0], b2, sum565_a, sum565_b);
+      SelfGuidedSingleMultiplier(row[1], p0, w0, w1, dst_ptr);
     }
     x += 8;
   } while (x < width);
@@ -1447,22 +1409,20 @@ inline void BoxFilterProcessPass2(const uint8_t* src,
   // unit size is 64x64, we calculate 66x66 pixels.
   // Because of the vectors this calculates start in blocks of 4 so we actually
   // get 68 values.
-  const uint8_t* const src_top_left_corner = src - 2 * src_stride - 2;
+  const uint8_t* const src_pre_process = src - 2 * src_stride;
   {
-    const uint8_t* column = src_top_left_corner;
+    const uint8_t* column = src_pre_process - 3;
     __m128i row[3], row_sq[3];
-    // Need min(4, |width|) + 4 pixels, but we read 8 pixels.
-    // Mask 4 - min(4, |width|) extra pixels.
-    row[0] = LoadLo8Msan(column, 4 - width);
+    row[0] = LoadLo8(column);
     column += src_stride;
-    row[1] = LoadLo8Msan(column, 4 - width);
+    row[1] = LoadLo8(column);
     row_sq[0] = VmullLo8(row[0], row[0]);
     row_sq[1] = VmullLo8(row[1], row[1]);
 
     int y = height + 2;
     do {
       column += src_stride;
-      row[2] = LoadLo8Msan(column, 4 - width);
+      row[2] = LoadLo8(column);
       row_sq[2] = VmullLo8(row[2], row[2]);
 
       BoxFilterPreProcess4<3, 0>(row, row_sq, s, ab_ptr);
@@ -1486,15 +1446,15 @@ inline void BoxFilterProcessPass2(const uint8_t* src,
     __m128i a2, b2[2], sum343_a[3], sum444_a[2], sum343_b[3][2], sum444_b[2][2];
     a2 = b2[0] = LoadAligned16(ab_ptr);
 
-    const uint8_t* column = src_top_left_corner + x + 4;
+    const uint8_t* column = src_pre_process + x;
     __m128i row[3], row_sq[3][2];
-    // Need |width| pixels, but we read max(|x|) + 16 pixels.
-    // Mask max(|x|) + 16 - |width| extra pixels.
-    row[0] = LoadUnaligned16Msan(column, x + 16 - width);
+    // Need |width| + 2 pixels, but we read max(|x|) + 16 pixels.
+    // Mask max(|x|) + 14 - |width| extra pixels.
+    row[0] = LoadUnaligned16Msan(column, x + 14 - width);
     column += src_stride;
-    row[1] = LoadUnaligned16Msan(column, x + 16 - width);
+    row[1] = LoadUnaligned16Msan(column, x + 14 - width);
     column += src_stride;
-    row[2] = LoadUnaligned16Msan(column, x + 16 - width);
+    row[2] = LoadUnaligned16Msan(column, x + 14 - width);
 
     row_sq[0][0] = VmullLo8(row[0], row[0]);
     row_sq[0][1] = VmullHi8(row[0], row[0]);
@@ -1503,7 +1463,7 @@ inline void BoxFilterProcessPass2(const uint8_t* src,
     row_sq[2][0] = VmullLo8(row[2], row[2]);
     row_sq[2][1] = VmullHi8(row[2], row[2]);
 
-    BoxFilterPreProcess8<3, 0>(row, row_sq, s, &a2, &b2[1], ab_ptr);
+    BoxFilterPreProcess8<3>(row, row_sq, s, &a2, &b2[1], ab_ptr);
 
     sum343_a[0] = Sum343(a2);
     sum343_a[0] = _mm_sub_epi16(_mm_set1_epi16((3 + 4 + 3) * 256), sum343_a[0]);
@@ -1518,19 +1478,18 @@ inline void BoxFilterProcessPass2(const uint8_t* src,
     row_sq[0][0] = row_sq[1][0], row_sq[0][1] = row_sq[1][1];
     row_sq[1][0] = row_sq[2][0], row_sq[1][1] = row_sq[2][1];
     column += src_stride;
-    row[2] = LoadUnaligned16Msan(column, x + 16 - width);
+    row[2] = LoadUnaligned16Msan(column, x + 14 - width);
 
     row_sq[2][0] = VmullLo8(row[2], row[2]);
     row_sq[2][1] = VmullHi8(row[2], row[2]);
 
-    BoxFilterPreProcess8<3, 0>(row, row_sq, s, &a2, &b2[1], ab_ptr);
+    BoxFilterPreProcess8<3>(row, row_sq, s, &a2, &b2[1], ab_ptr);
 
     Sum343_444(a2, &sum343_a[1], &sum444_a[0]);
     sum343_a[1] = _mm_sub_epi16(_mm_set1_epi16((3 + 4 + 3) * 256), sum343_a[1]);
     sum444_a[0] = _mm_sub_epi16(_mm_set1_epi16((4 + 4 + 4) * 256), sum444_a[0]);
     Sum343_444W(b2, sum343_b[1], sum444_b[0]);
 
-    const uint8_t* src_ptr = src + x;
     uint8_t* dst_ptr = dst + x;
     int y = height;
     do {
@@ -1543,24 +1502,22 @@ inline void BoxFilterProcessPass2(const uint8_t* src,
       row_sq[0][0] = row_sq[1][0], row_sq[0][1] = row_sq[1][1];
       row_sq[1][0] = row_sq[2][0], row_sq[1][1] = row_sq[2][1];
       column += src_stride;
-      row[2] = LoadUnaligned16Msan(column, x + 16 - width);
+      row[2] = LoadUnaligned16Msan(column, x + 14 - width);
 
       row_sq[2][0] = VmullLo8(row[2], row[2]);
       row_sq[2][1] = VmullHi8(row[2], row[2]);
 
-      BoxFilterPreProcess8<3, 0>(row, row_sq, s, &a2, &b2[1], ab_ptr);
+      BoxFilterPreProcess8<3>(row, row_sq, s, &a2, &b2[1], ab_ptr);
 
-      const __m128i src_u8 = LoadLo8(src_ptr);
-      const __m128i p = BoxFilterPass2(src_u8, a2, b2, sum343_a, sum444_a,
+      const __m128i p = BoxFilterPass2(row[0], a2, b2, sum343_a, sum444_a,
                                        sum343_b, sum444_b);
-      SelfGuidedSingleMultiplier(src_u8, p, w0, w1, dst_ptr);
+      SelfGuidedSingleMultiplier(row[0], p, w0, w1, dst_ptr);
       sum343_a[0] = sum343_a[1];
       sum343_a[1] = sum343_a[2];
       sum444_a[0] = sum444_a[1];
       sum343_b[0][0] = sum343_b[1][0], sum343_b[0][1] = sum343_b[1][1];
       sum343_b[1][0] = sum343_b[2][0], sum343_b[1][1] = sum343_b[2][1];
       sum444_b[0][0] = sum444_b[1][0], sum444_b[0][1] = sum444_b[1][1];
-      src_ptr += src_stride;
       dst_ptr += dst_stride;
     } while (--y != 0);
     x += 8;

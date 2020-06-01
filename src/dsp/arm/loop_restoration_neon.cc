@@ -563,35 +563,11 @@ inline uint16x4_t Sum3Horizontal(const uint16x8_t a) {
   return Sum3(left, middle, right);
 }
 
-inline uint16x8_t Sum3Horizontal_16(const uint16x8x2_t a) {
-  const uint16x8_t left = a.val[0];
-  const uint16x8_t middle = vextq_u16(a.val[0], a.val[1], 1);
-  const uint16x8_t right = vextq_u16(a.val[0], a.val[1], 2);
-  return Sum3_16(left, middle, right);
-}
-
 inline uint32x4_t Sum3Horizontal_32(const uint32x4x2_t a) {
   const uint32x4_t left = a.val[0];
   const uint32x4_t middle = vextq_u32(a.val[0], a.val[1], 1);
   const uint32x4_t right = vextq_u32(a.val[0], a.val[1], 2);
   return Sum3_32(left, middle, right);
-}
-
-inline uint32x4x2_t Sum3Horizontal_32x2(const uint32x4x3_t a) {
-  uint32x4x2_t sum;
-  {
-    const uint32x4_t left = a.val[0];
-    const uint32x4_t middle = vextq_u32(a.val[0], a.val[1], 1);
-    const uint32x4_t right = vextq_u32(a.val[0], a.val[1], 2);
-    sum.val[0] = Sum3_32(left, middle, right);
-  }
-  {
-    const uint32x4_t left = a.val[1];
-    const uint32x4_t middle = vextq_u32(a.val[1], a.val[2], 1);
-    const uint32x4_t right = vextq_u32(a.val[1], a.val[2], 2);
-    sum.val[1] = Sum3_32(left, middle, right);
-  }
-  return sum;
 }
 
 inline uint16x4_t Sum3HorizontalOffset1(const uint16x8_t a) {
@@ -684,6 +660,7 @@ template <int size, int offset>
 inline void BoxFilterPreProcess4(const uint8x8_t* const row,
                                  const uint16x8_t* const row_sq,
                                  const uint32_t s, uint16_t* const dst) {
+  static_assert(size == 3 || size == 5, "");
   static_assert(offset == 0 || offset == 1, "");
   // Number of elements in the box being summed.
   constexpr uint32_t n = size * size;
@@ -695,7 +672,7 @@ inline void BoxFilterPreProcess4(const uint8x8_t* const row,
     if (offset == 0) {
       sum = Sum3Horizontal(Sum3W_16(row));
       sum_sq = Sum3Horizontal_32(Sum3W(row_sq));
-    } else {
+    } else /* if (offset == 1) */ {
       sum = Sum3HorizontalOffset1(Sum3W_16(row));
       sum_sq = Sum3HorizontalOffset1_32(Sum3W(row_sq));
     }
@@ -723,11 +700,12 @@ inline void BoxFilterPreProcess4(const uint8x8_t* const row,
   vst1q_u16(dst, sgr_ma2_b2);
 }
 
-template <int size, int offset>
+template <int size>
 inline void BoxFilterPreProcess8(const uint8x16_t* const row,
                                  const uint16x8x2_t* const row_sq,
                                  const uint32_t s, uint8x8_t* const sgr_ma2,
                                  uint16x8_t* const b2, uint16_t* const dst) {
+  static_assert(size == 3 || size == 5, "");
   // Number of elements in the box being summed.
   constexpr uint32_t n = size * size;
   constexpr uint32_t one_over_n =
@@ -735,13 +713,8 @@ inline void BoxFilterPreProcess8(const uint8x16_t* const row,
   uint16x8_t sum;
   uint32x4x2_t sum_sq;
   if (size == 3) {
-    if (offset == 0) {
-      sum = Sum3Horizontal_16(Sum3W_16x2(row));
-      sum_sq = Sum3Horizontal_32x2(Sum3W(row_sq));
-    } else /* if (offset == 1) */ {
-      sum = Sum3HorizontalOffset1_16(Sum3W_16x2(row));
-      sum_sq = Sum3HorizontalOffset1_32x2(Sum3W(row_sq));
-    }
+    sum = Sum3HorizontalOffset1_16(Sum3W_16x2(row));
+    sum_sq = Sum3HorizontalOffset1_32x2(Sum3W(row_sq));
   }
   if (size == 5) {
     sum = Sum5Horizontal_16(Sum5W_16D(row));
@@ -772,16 +745,16 @@ inline void BoxFilterPreProcess8(const uint8x16_t* const row,
 
 inline void Prepare3_8(const uint8x8_t a[2], uint8x8_t* const left,
                        uint8x8_t* const middle, uint8x8_t* const right) {
-  *left = vext_u8(a[0], a[1], 4);
-  *middle = vext_u8(a[0], a[1], 5);
-  *right = vext_u8(a[0], a[1], 6);
+  *left = vext_u8(a[0], a[1], 5);
+  *middle = vext_u8(a[0], a[1], 6);
+  *right = vext_u8(a[0], a[1], 7);
 }
 
 inline void Prepare3_16(const uint16x8_t a[2], uint16x8_t* const left,
                         uint16x8_t* const middle, uint16x8_t* const right) {
-  *left = vextq_u16(a[0], a[1], 4);
-  *middle = vextq_u16(a[0], a[1], 5);
-  *right = vextq_u16(a[0], a[1], 6);
+  *left = vextq_u16(a[0], a[1], 5);
+  *middle = vextq_u16(a[0], a[1], 6);
+  *right = vextq_u16(a[0], a[1], 7);
 }
 
 inline uint16x8_t Sum343(const uint8x8_t a[2]) {
@@ -843,9 +816,19 @@ inline uint16x8_t Sum565(const uint8x8_t a[2]) {
 }
 
 inline uint32x4_t Sum565W(const uint16x8_t a) {
-  const uint16x4_t left = vget_low_u16(a);
-  const uint16x4_t middle = VshrU128<2>(a);
-  const uint16x4_t right = VshrU128<4>(a);
+  const uint16x4_t left = VshrU128<2>(a);
+  const uint16x4_t middle = VshrU128<4>(a);
+  const uint16x4_t right = VshrU128<6>(a);
+  const uint32x4_t sum = Sum3W_32(left, middle, right);
+  const uint32x4_t sum4 = vshlq_n_u32(sum, 2);
+  const uint32x4_t sum5 = vaddq_u32(sum4, sum);
+  return vaddw_u16(sum5, middle);
+}
+
+inline uint32x4_t Sum565W(const uint16x8_t a, const uint16x8_t b) {
+  const uint16x4_t left = vext_u16(vget_high_u16(a), vget_low_u16(b), 1);
+  const uint16x4_t middle = vext_u16(vget_high_u16(a), vget_low_u16(b), 2);
+  const uint16x4_t right = vext_u16(vget_high_u16(a), vget_low_u16(b), 3);
   const uint32x4_t sum = Sum3W_32(left, middle, right);
   const uint32x4_t sum4 = vshlq_n_u32(sum, 2);
   const uint32x4_t sum5 = vaddq_u32(sum4, sum);
@@ -889,7 +872,7 @@ inline int16x8_t BoxFilterPass1(const uint8x8_t src_u8, const uint8x8_t a2[2],
   uint32x4x2_t b_v;
   sum565_a[1] = Sum565(a2);
   sum565_a[1] = vsubq_u16(vdupq_n_u16((5 + 6 + 5) * 256), sum565_a[1]);
-  sum565_b[1].val[0] = Sum565W(vextq_u16(b2[0], b2[1], 4));
+  sum565_b[1].val[0] = Sum565W(b2[0], b2[1]);
   sum565_b[1].val[1] = Sum565W(b2[1]);
 
   uint16x8_t a_v = vaddq_u16(sum565_a[0], sum565_a[1]);
@@ -1004,11 +987,11 @@ inline void BoxFilterProcess(const uint8_t* const src,
   // names for the next step.
   uint16_t* ab_ptr = temp;
 
-  const uint8_t* const src_pre_process = src - 2 * src_stride - 3;
+  const uint8_t* const src_pre_process = src - 2 * src_stride;
   // Calculate intermediate results, including two-pixel border, for example, if
   // unit size is 64x64, we calculate 68x68 pixels.
   {
-    const uint8_t* column = src_pre_process;
+    const uint8_t* column = src_pre_process - 4;
     uint8x8_t row[5];
     uint16x8_t row_sq[5];
     row[0] = row[1] = vld1_u8(column);
@@ -1028,7 +1011,7 @@ inline void BoxFilterProcess(const uint8_t* const src,
       row_sq[3] = vmull_u8(row[3], row[3]);
       row_sq[4] = vmull_u8(row[4], row[4]);
 
-      BoxFilterPreProcess4<5, 0>(row + 0, row_sq + 0, s[0], ab_ptr + 0);
+      BoxFilterPreProcess4<5, 1>(row + 0, row_sq + 0, s[0], ab_ptr + 0);
       BoxFilterPreProcess4<3, 1>(row + 1, row_sq + 1, s[1], ab_ptr + 8);
       BoxFilterPreProcess4<3, 1>(row + 2, row_sq + 2, s[1], ab_ptr + 16);
 
@@ -1046,7 +1029,7 @@ inline void BoxFilterProcess(const uint8_t* const src,
       column += src_stride;
       row[3] = row[4] = vld1_u8(column);
       row_sq[3] = row_sq[4] = vmull_u8(row[3], row[3]);
-      BoxFilterPreProcess4<5, 0>(row + 0, row_sq + 0, s[0], ab_ptr + 0);
+      BoxFilterPreProcess4<5, 1>(row + 0, row_sq + 0, s[0], ab_ptr + 0);
       BoxFilterPreProcess4<3, 1>(row + 1, row_sq + 1, s[1], ab_ptr + 8);
     }
   }
@@ -1085,7 +1068,7 @@ inline void BoxFilterProcess(const uint8_t* const src,
     b2[1][0] = vld1q_u16(ab_ptr + 8);
     a2[1][0] = vget_low_u8(vreinterpretq_u8_u16(b2[1][0]));
 
-    const uint8_t* column = src_pre_process + x + 4;
+    const uint8_t* column = src_pre_process + x;
     uint8x16_t row[5];
     uint16x8x2_t row_sq[5];
     row[0] = row[1] = vld1q_u8(column);
@@ -1107,15 +1090,15 @@ inline void BoxFilterProcess(const uint8_t* const src,
     row_sq[4].val[0] = vmull_u8(vget_low_u8(row[4]), vget_low_u8(row[4]));
     row_sq[4].val[1] = vmull_u8(vget_high_u8(row[4]), vget_high_u8(row[4]));
 
-    BoxFilterPreProcess8<5, 0>(row, row_sq, s[0], &a2[0][1], &b2[0][1], ab_ptr);
-    BoxFilterPreProcess8<3, 1>(row + 1, row_sq + 1, s[1], &a2[1][1], &b2[1][1],
-                               ab_ptr + 8);
+    BoxFilterPreProcess8<5>(row, row_sq, s[0], &a2[0][1], &b2[0][1], ab_ptr);
+    BoxFilterPreProcess8<3>(row + 1, row_sq + 1, s[1], &a2[1][1], &b2[1][1],
+                            ab_ptr + 8);
 
     // Pass 1 Process. These are the only values we need to propagate between
     // rows.
     sum565_a[0] = Sum565(a2[0]);
     sum565_a[0] = vsubq_u16(vdupq_n_u16((5 + 6 + 5) * 256), sum565_a[0]);
-    sum565_b[0].val[0] = Sum565W(vextq_u16(b2[0][0], b2[0][1], 4));
+    sum565_b[0].val[0] = Sum565W(b2[0][0], b2[0][1]);
     sum565_b[0].val[1] = Sum565W(b2[0][1]);
 
     sum343_a[0] = Sum343(a2[1]);
@@ -1125,15 +1108,14 @@ inline void BoxFilterProcess(const uint8_t* const src,
     b2[1][0] = vld1q_u16(ab_ptr + 16);
     a2[1][0] = vget_low_u8(vreinterpretq_u8_u16(b2[1][0]));
 
-    BoxFilterPreProcess8<3, 1>(row + 2, row_sq + 2, s[1], &a2[1][1], &b2[1][1],
-                               ab_ptr + 16);
+    BoxFilterPreProcess8<3>(row + 2, row_sq + 2, s[1], &a2[1][1], &b2[1][1],
+                            ab_ptr + 16);
 
     Sum343_444(a2[1], &sum343_a[1], &sum444_a[0]);
     sum343_a[1] = vsubq_u16(vdupq_n_u16((3 + 4 + 3) * 256), sum343_a[1]);
     sum444_a[0] = vsubq_u16(vdupq_n_u16((4 + 4 + 4) * 256), sum444_a[0]);
     Sum343_444W(b2[1], &sum343_b[1], &sum444_b[0]);
 
-    const uint8_t* src_ptr = src + x;
     uint8_t* dst_ptr = dst + x;
 
     // Calculate one output line. Add in the line from the previous pass and
@@ -1164,30 +1146,27 @@ inline void BoxFilterProcess(const uint8_t* const src,
       row_sq[4].val[0] = vmull_u8(vget_low_u8(row[4]), vget_low_u8(row[4]));
       row_sq[4].val[1] = vmull_u8(vget_high_u8(row[4]), vget_high_u8(row[4]));
 
-      BoxFilterPreProcess8<5, 0>(row, row_sq, s[0], &a2[0][1], &b2[0][1],
-                                 ab_ptr);
-      BoxFilterPreProcess8<3, 1>(row + 1, row_sq + 1, s[1], &a2[1][1],
-                                 &b2[1][1], ab_ptr + 8);
+      BoxFilterPreProcess8<5>(row, row_sq, s[0], &a2[0][1], &b2[0][1], ab_ptr);
+      BoxFilterPreProcess8<3>(row + 1, row_sq + 1, s[1], &a2[1][1], &b2[1][1],
+                              ab_ptr + 8);
 
       int16x8_t p[2];
-      const uint8x8_t src0 = vld1_u8(src_ptr);
+      const uint8x8_t src0 = vget_low_u8(row[1]);
       p[0] = BoxFilterPass1(src0, a2[0], b2[0], sum565_a, sum565_b);
       p[1] = BoxFilterPass2(src0, a2[1], b2[1], sum343_a, sum444_a, sum343_b,
                             sum444_b);
       SelfGuidedDoubleMultiplier(src0, p, w0_v, w1_v, w2_v, dst_ptr);
-      src_ptr += src_stride;
       dst_ptr += dst_stride;
 
-      const uint8x8_t src1 = vld1_u8(src_ptr);
+      const uint8x8_t src1 = vget_low_u8(row[2]);
       p[0] = CalculateFilteredOutput<4>(src1, sum565_a[1], sum565_b[1]);
       b2[1][0] = vld1q_u16(ab_ptr + 16);
       a2[1][0] = vget_low_u8(vreinterpretq_u8_u16(b2[1][0]));
-      BoxFilterPreProcess8<3, 1>(row + 2, row_sq + 2, s[1], &a2[1][1],
-                                 &b2[1][1], ab_ptr + 16);
+      BoxFilterPreProcess8<3>(row + 2, row_sq + 2, s[1], &a2[1][1], &b2[1][1],
+                              ab_ptr + 16);
       p[1] = BoxFilterPass2(src1, a2[1], b2[1], sum343_a + 1, sum444_a + 1,
                             sum343_b + 1, sum444_b + 1);
       SelfGuidedDoubleMultiplier(src1, p, w0_v, w1_v, w2_v, dst_ptr);
-      src_ptr += src_stride;
       dst_ptr += dst_stride;
 
       sum565_a[0] = sum565_a[1];
@@ -1199,6 +1178,7 @@ inline void BoxFilterProcess(const uint8_t* const src,
       sum343_b[1] = sum343_b[3];
       sum444_b[0] = sum444_b[2];
     }
+
     if ((height & 1) != 0) {
       ab_ptr += 24;
       b2[0][0] = vld1q_u16(ab_ptr);
@@ -1222,13 +1202,12 @@ inline void BoxFilterProcess(const uint8_t* const src,
       row_sq[3].val[1] = row_sq[4].val[1] =
           vmull_u8(vget_high_u8(row[3]), vget_high_u8(row[3]));
 
-      BoxFilterPreProcess8<5, 0>(row, row_sq, s[0], &a2[0][1], &b2[0][1],
-                                 ab_ptr);
-      BoxFilterPreProcess8<3, 1>(row + 1, row_sq + 1, s[1], &a2[1][1],
-                                 &b2[1][1], ab_ptr + 8);
+      BoxFilterPreProcess8<5>(row, row_sq, s[0], &a2[0][1], &b2[0][1], ab_ptr);
+      BoxFilterPreProcess8<3>(row + 1, row_sq + 1, s[1], &a2[1][1], &b2[1][1],
+                              ab_ptr + 8);
 
       int16x8_t p[2];
-      const uint8x8_t src0 = vld1_u8(src_ptr);
+      const uint8x8_t src0 = vget_low_u8(row[1]);
       p[0] = BoxFilterPass1(src0, a2[0], b2[0], sum565_a, sum565_b);
       p[1] = BoxFilterPass2(src0, a2[1], b2[1], sum343_a, sum444_a, sum343_b,
                             sum444_b);
@@ -1288,11 +1267,11 @@ inline void BoxFilterProcessPass1(const uint8_t* const src,
   // names for the next step.
   uint16_t* ab_ptr = temp;
 
-  const uint8_t* const src_pre_process = src - 2 * src_stride - 3;
+  const uint8_t* const src_pre_process = src - 2 * src_stride;
   // Calculate intermediate results, including two-pixel border, for example, if
   // unit size is 64x64, we calculate 68x68 pixels.
   {
-    const uint8_t* column = src_pre_process;
+    const uint8_t* column = src_pre_process - 4;
     uint8x8_t row[5];
     uint16x8_t row_sq[5];
     row[0] = row[1] = vld1_u8(column);
@@ -1312,7 +1291,7 @@ inline void BoxFilterProcessPass1(const uint8_t* const src,
       row_sq[3] = vmull_u8(row[3], row[3]);
       row_sq[4] = vmull_u8(row[4], row[4]);
 
-      BoxFilterPreProcess4<5, 0>(row, row_sq, s, ab_ptr);
+      BoxFilterPreProcess4<5, 1>(row, row_sq, s, ab_ptr);
 
       row[0] = row[2];
       row[1] = row[3];
@@ -1328,7 +1307,7 @@ inline void BoxFilterProcessPass1(const uint8_t* const src,
       column += src_stride;
       row[3] = row[4] = vld1_u8(column);
       row_sq[3] = row_sq[4] = vmull_u8(row[3], row[3]);
-      BoxFilterPreProcess4<5, 0>(row, row_sq, s, ab_ptr);
+      BoxFilterPreProcess4<5, 1>(row, row_sq, s, ab_ptr);
     }
   }
 
@@ -1360,7 +1339,7 @@ inline void BoxFilterProcessPass1(const uint8_t* const src,
     b2[0] = vld1q_u16(ab_ptr);
     a2[0] = vget_low_u8(vreinterpretq_u8_u16(b2[0]));
 
-    const uint8_t* column = src_pre_process + x + 4;
+    const uint8_t* column = src_pre_process + x;
     uint8x16_t row[5];
     uint16x8x2_t row_sq[5];
     row[0] = row[1] = vld1q_u8(column);
@@ -1382,16 +1361,15 @@ inline void BoxFilterProcessPass1(const uint8_t* const src,
     row_sq[4].val[0] = vmull_u8(vget_low_u8(row[4]), vget_low_u8(row[4]));
     row_sq[4].val[1] = vmull_u8(vget_high_u8(row[4]), vget_high_u8(row[4]));
 
-    BoxFilterPreProcess8<5, 0>(row, row_sq, s, &a2[1], &b2[1], ab_ptr);
+    BoxFilterPreProcess8<5>(row, row_sq, s, &a2[1], &b2[1], ab_ptr);
 
     // Pass 1 Process. These are the only values we need to propagate between
     // rows.
     sum565_a[0] = Sum565(a2);
     sum565_a[0] = vsubq_u16(vdupq_n_u16((5 + 6 + 5) * 256), sum565_a[0]);
-    sum565_b[0].val[0] = Sum565W(vextq_u16(b2[0], b2[1], 4));
+    sum565_b[0].val[0] = Sum565W(b2[0], b2[1]);
     sum565_b[0].val[1] = Sum565W(b2[1]);
 
-    const uint8_t* src_ptr = src + x;
     uint8_t* dst_ptr = dst + x;
 
     // Calculate one output line. Add in the line from the previous pass and
@@ -1420,24 +1398,23 @@ inline void BoxFilterProcessPass1(const uint8_t* const src,
       row_sq[4].val[0] = vmull_u8(vget_low_u8(row[4]), vget_low_u8(row[4]));
       row_sq[4].val[1] = vmull_u8(vget_high_u8(row[4]), vget_high_u8(row[4]));
 
-      BoxFilterPreProcess8<5, 0>(row, row_sq, s, &a2[1], &b2[1], ab_ptr);
+      BoxFilterPreProcess8<5>(row, row_sq, s, &a2[1], &b2[1], ab_ptr);
 
-      const uint8x8_t src0 = vld1_u8(src_ptr);
+      const uint8x8_t src0 = vget_low_u8(row[1]);
       const int16x8_t p0 = BoxFilterPass1(src0, a2, b2, sum565_a, sum565_b);
       SelfGuidedSingleMultiplier(src0, p0, w0, w1, dst_ptr);
-      src_ptr += src_stride;
       dst_ptr += dst_stride;
 
-      const uint8x8_t src1 = vld1_u8(src_ptr);
+      const uint8x8_t src1 = vget_low_u8(row[2]);
       const int16x8_t p1 =
           CalculateFilteredOutput<4>(src1, sum565_a[1], sum565_b[1]);
       SelfGuidedSingleMultiplier(src1, p1, w0, w1, dst_ptr);
-      src_ptr += src_stride;
       dst_ptr += dst_stride;
 
       sum565_a[0] = sum565_a[1];
       sum565_b[0] = sum565_b[1];
     }
+
     if ((height & 1) != 0) {
       ab_ptr += 8;
       b2[0] = vld1q_u16(ab_ptr);
@@ -1459,9 +1436,9 @@ inline void BoxFilterProcessPass1(const uint8_t* const src,
       row_sq[3].val[1] = row_sq[4].val[1] =
           vmull_u8(vget_high_u8(row[3]), vget_high_u8(row[3]));
 
-      BoxFilterPreProcess8<5, 0>(row, row_sq, s, &a2[1], &b2[1], ab_ptr);
+      BoxFilterPreProcess8<5>(row, row_sq, s, &a2[1], &b2[1], ab_ptr);
 
-      const uint8x8_t src0 = vld1_u8(src_ptr);
+      const uint8x8_t src0 = vget_low_u8(row[1]);
       const int16x8_t p0 = BoxFilterPass1(src0, a2, b2, sum565_a, sum565_b);
       SelfGuidedSingleMultiplier(src0, p0, w0, w1, dst_ptr);
     }
@@ -1482,9 +1459,9 @@ inline void BoxFilterProcessPass2(const uint8_t* src,
   // unit size is 64x64, we calculate 66x66 pixels.
   // Because of the vectors this calculates start in blocks of 4 so we actually
   // get 68 values.
-  const uint8_t* const src_top_left_corner = src - 2 - 2 * src_stride;
+  const uint8_t* const src_pre_process = src - 2 * src_stride;
   {
-    const uint8_t* column = src_top_left_corner;
+    const uint8_t* column = src_pre_process - 3;
     uint8x8_t row[3];
     uint16x8_t row_sq[3];
     row[0] = vld1_u8(column);
@@ -1523,7 +1500,7 @@ inline void BoxFilterProcessPass2(const uint8_t* src,
     b2[0] = vld1q_u16(ab_ptr);
     a2[0] = vget_low_u8(vreinterpretq_u8_u16(b2[0]));
 
-    const uint8_t* column = src_top_left_corner + x + 4;
+    const uint8_t* column = src_pre_process + x;
     uint8x16_t row[3];
     uint16x8x2_t row_sq[3];
     row[0] = vld1q_u8(column);
@@ -1539,7 +1516,7 @@ inline void BoxFilterProcessPass2(const uint8_t* src,
     row_sq[2].val[0] = vmull_u8(vget_low_u8(row[2]), vget_low_u8(row[2]));
     row_sq[2].val[1] = vmull_u8(vget_high_u8(row[2]), vget_high_u8(row[2]));
 
-    BoxFilterPreProcess8<3, 0>(row, row_sq, s, &a2[1], &b2[1], ab_ptr);
+    BoxFilterPreProcess8<3>(row, row_sq, s, &a2[1], &b2[1], ab_ptr);
 
     sum343_a[0] = Sum343(a2);
     sum343_a[0] = vsubq_u16(vdupq_n_u16((3 + 4 + 3) * 256), sum343_a[0]);
@@ -1560,14 +1537,13 @@ inline void BoxFilterProcessPass2(const uint8_t* src,
     row_sq[2].val[0] = vmull_u8(vget_low_u8(row[2]), vget_low_u8(row[2]));
     row_sq[2].val[1] = vmull_u8(vget_high_u8(row[2]), vget_high_u8(row[2]));
 
-    BoxFilterPreProcess8<3, 0>(row, row_sq, s, &a2[1], &b2[1], ab_ptr);
+    BoxFilterPreProcess8<3>(row, row_sq, s, &a2[1], &b2[1], ab_ptr);
 
     Sum343_444(a2, &sum343_a[1], &sum444_a[0]);
     sum343_a[1] = vsubq_u16(vdupq_n_u16((3 + 4 + 3) * 256), sum343_a[1]);
     sum444_a[0] = vsubq_u16(vdupq_n_u16((4 + 4 + 4) * 256), sum444_a[0]);
     Sum343_444W(b2, &sum343_b[1], &sum444_b[0]);
 
-    const uint8_t* src_ptr = src + x;
     uint8_t* dst_ptr = dst + x;
     int y = height;
     do {
@@ -1586,9 +1562,9 @@ inline void BoxFilterProcessPass2(const uint8_t* src,
       row_sq[2].val[0] = vmull_u8(vget_low_u8(row[2]), vget_low_u8(row[2]));
       row_sq[2].val[1] = vmull_u8(vget_high_u8(row[2]), vget_high_u8(row[2]));
 
-      BoxFilterPreProcess8<3, 0>(row, row_sq, s, &a2[1], &b2[1], ab_ptr);
+      BoxFilterPreProcess8<3>(row, row_sq, s, &a2[1], &b2[1], ab_ptr);
 
-      uint8x8_t src_u8 = vld1_u8(src_ptr);
+      const uint8x8_t src_u8 = vget_low_u8(row[0]);
       int16x8_t p = BoxFilterPass2(src_u8, a2, b2, sum343_a, sum444_a, sum343_b,
                                    sum444_b);
       SelfGuidedSingleMultiplier(src_u8, p, w0, w1, dst_ptr);
@@ -1598,7 +1574,6 @@ inline void BoxFilterProcessPass2(const uint8_t* src,
       sum343_b[0] = sum343_b[1];
       sum343_b[1] = sum343_b[2];
       sum444_b[0] = sum444_b[1];
-      src_ptr += src_stride;
       dst_ptr += dst_stride;
     } while (--y != 0);
     x += 8;
