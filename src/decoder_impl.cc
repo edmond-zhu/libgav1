@@ -52,11 +52,17 @@ constexpr int kMaxBlockHeight4x4 = 32;
 // Computes the bottom border size in pixels. If CDEF, loop restoration or
 // SuperRes is enabled, adds extra border pixels to facilitate those steps to
 // happen nearly in-place (a few extra rows instead of an entire frame buffer).
+// The logic in this function should match the corresponding logic for
+// |vertical_shift| in the PostFilter constructor.
 int GetBottomBorderPixels(const bool do_cdef, const bool do_restoration,
                           const bool do_superres) {
   int border = kBorderPixels;
-  if (do_cdef) border += 2 * kCdefBorder;
-  if (do_restoration) border += 2 * kRestorationVerticalBorder;
+  if (do_cdef) {
+    border += 2 * kCdefBorder;
+  } else if (do_restoration) {
+    // If CDEF is enabled, loop restoration is safe without extra border.
+    border += 2 * kRestorationVerticalBorder;
+  }
   if (do_superres) border += 2 * kSuperResVerticalBorder;
   return border;
 }
