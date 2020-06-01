@@ -475,16 +475,32 @@ Tile::Tile(int tile_number, const uint8_t* const data, size_t size,
     // Verify that the borders are big enough for Reconstruct(). max_tx_length
     // is the maximum value of tx_width and tx_height for the plane.
     const int max_tx_length = (plane == kPlaneY) ? 64 : 32;
-    static_cast<void>(max_tx_length);
     // Reconstruct() may overwrite on the right. Since the right border of a
     // row is followed in memory by the left border of the next row, the
     // number of extra pixels to the right of a row is at least the sum of the
     // left and right borders.
+    //
+    // Note: This assertion actually checks the sum of the left and right
+    // borders of post_filter_.GetUnfilteredBuffer(), which is a horizontally
+    // and vertically shifted version of |buffer|. Since the sum of the left and
+    // right borders is not changed by the shift, we can just check the sum of
+    // the left and right borders of |buffer|.
     assert(buffer.left_border(plane) + buffer.right_border(plane) >=
            max_tx_length - 1);
     // Reconstruct() may overwrite on the bottom. We need an extra border row
     // on the bottom because we need the left border of that row.
-    assert(buffer.bottom_border(plane) >= max_tx_length);
+    //
+    // Note: This assertion checks the bottom border of
+    // post_filter_.GetUnfilteredBuffer(). So we need to calculate the vertical
+    // shift that the PostFilter constructor applied to |buffer| and reduce the
+    // bottom border by that amount.
+#ifndef NDEBUG
+    const int vertical_shift = static_cast<int>(
+        (post_filter_.GetUnfilteredBuffer(plane) - buffer.data(plane)) /
+        buffer.stride(plane));
+    const int bottom_border = buffer.bottom_border(plane) - vertical_shift;
+    assert(bottom_border >= max_tx_length);
+#endif
     // In AV1, a transform block of height H starts at a y coordinate that is
     // a multiple of H. If a transform block at the bottom of the frame has
     // height H, then Reconstruct() will write up to the row with index

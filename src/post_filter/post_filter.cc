@@ -234,6 +234,8 @@ PostFilter::PostFilter(const ObuFrameHeader& frame_header,
         horizontal_shift += frame_buffer_.alignment();
         vertical_shift += kCdefBorder;
       }
+      assert(horizontal_shift <= frame_buffer_.right_border(plane));
+      assert(vertical_shift <= frame_buffer_.bottom_border(plane));
       source_buffer_[plane] += vertical_shift * frame_buffer_.stride(plane) +
                                horizontal_shift * pixel_size_;
     }
