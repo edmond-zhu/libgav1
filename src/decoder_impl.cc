@@ -192,7 +192,8 @@ StatusCode DecoderImpl::InitializeFrameThreadPoolAndTemporalUnitQueue(
       return kStatusOutOfMemory;
     }
   }
-  const int max_allowed_frames = GetMaxAllowedFrames();
+  const int max_allowed_frames =
+      (frame_thread_pool_ != nullptr) ? frame_thread_pool_->num_threads() : 1;
   assert(max_allowed_frames > 0);
   if (!temporal_units_.Init(max_allowed_frames)) {
     LIBGAV1_DLOG(ERROR, "temporal_units_.Init() failed.");

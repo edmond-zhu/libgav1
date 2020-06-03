@@ -72,11 +72,6 @@ Libgav1StatusCode Libgav1DecoderSignalEOS(Libgav1Decoder* decoder) {
   return cxx_decoder->SignalEOS();
 }
 
-int Libgav1DecoderGetMaxAllowedFrames(const Libgav1Decoder* decoder) {
-  const auto* cxx_decoder = reinterpret_cast<const libgav1::Decoder*>(decoder);
-  return cxx_decoder->GetMaxAllowedFrames();
-}
-
 int Libgav1DecoderGetMaxBitdepth() {
   return libgav1::Decoder::GetMaxBitdepth();
 }
@@ -115,11 +110,6 @@ StatusCode Decoder::SignalEOS() {
   // existing references are released and the state is cleared.
   impl_ = nullptr;
   return DecoderImpl::Create(&settings_, &impl_);
-}
-
-int Decoder::GetMaxAllowedFrames() const {
-  if (impl_ == nullptr) return 1;
-  return impl_->GetMaxAllowedFrames();
 }
 
 // static.

@@ -57,9 +57,6 @@ LIBGAV1_PUBLIC Libgav1StatusCode Libgav1DecoderDequeueFrame(
 LIBGAV1_PUBLIC Libgav1StatusCode
 Libgav1DecoderSignalEOS(Libgav1Decoder* decoder);
 
-LIBGAV1_PUBLIC int Libgav1DecoderGetMaxAllowedFrames(
-    const Libgav1Decoder* decoder);
-
 LIBGAV1_PUBLIC int Libgav1DecoderGetMaxBitdepth(void);
 
 #if defined(__cplusplus)
@@ -80,11 +77,12 @@ class LIBGAV1_PUBLIC Decoder {
   // default settings. Returns kStatusOk on success, an error status otherwise.
   StatusCode Init(const DecoderSettings* settings);
 
-  // Enqueues a compressed frame to be decoded. Applications can continue
-  // enqueue'ing up to |GetMaxAllowedFrames()|. The decoder can be thought of as
-  // a queue of size |GetMaxAllowedFrames()|. Returns kStatusOk on success and
-  // an error status otherwise. Returning an error status here isn't a fatal
-  // error and the decoder can continue decoding further frames.
+  // Enqueues a compressed frame to be decoded.
+  //
+  // This function returns:
+  //   * kStatusOk on success
+  //   * kStatusTryAgain if the decoder queue is full
+  //   * an error status otherwise.
   //
   // |user_private_data| may be used to associate application specific private
   // data with the compressed frame. It will be copied to the user_private_data
@@ -130,11 +128,6 @@ class LIBGAV1_PUBLIC Decoder {
   // Once this function returns successfully, the decoder state will be reset
   // and the decoder is ready to start decoding a new coded video sequence.
   StatusCode SignalEOS();
-
-  // Returns the maximum number of frames allowed to be enqueued at a time. The
-  // decoder will reject frames beyond this count. If |settings_.frame_parallel|
-  // is false, then this function will always return 1.
-  int GetMaxAllowedFrames() const;
 
   // Returns the maximum bitdepth that is supported by this decoder.
   static int GetMaxBitdepth();
