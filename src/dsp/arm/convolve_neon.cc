@@ -36,7 +36,6 @@ namespace low_bitdepth {
 namespace {
 
 constexpr int kIntermediateStride = kMaxSuperBlockSizeInPixels;
-constexpr int kSubPixelMask = (1 << kSubPixelBits) - 1;
 constexpr int kHorizontalOffset = 3;
 constexpr int kFilterIndexShift = 6;
 

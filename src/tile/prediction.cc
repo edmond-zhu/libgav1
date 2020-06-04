@@ -1187,9 +1187,11 @@ bool Tile::BlockInterPrediction(
   }
 
   const int has_horizontal_filter = static_cast<int>(
-      ((mv.mv[MotionVector::kColumn] * (1 << (1 - subsampling_x))) & 15) != 0);
+      ((mv.mv[MotionVector::kColumn] * (1 << (1 - subsampling_x))) &
+       kSubPixelMask) != 0);
   const int has_vertical_filter = static_cast<int>(
-      ((mv.mv[MotionVector::kRow] * (1 << (1 - subsampling_y))) & 15) != 0);
+      ((mv.mv[MotionVector::kRow] * (1 << (1 - subsampling_y))) &
+       kSubPixelMask) != 0);
   void* const output =
       (is_compound || is_inter_intra) ? prediction : static_cast<void*>(dest);
   ptrdiff_t output_stride = (is_compound || is_inter_intra)

@@ -136,6 +136,7 @@ enum {
   // integer pixel. Sub pixel values are interpolated using adjacent integer
   // pixel values. The interpolation is a filtering process.
   kSubPixelBits = 4,
+  kSubPixelMask = (1 << kSubPixelBits) - 1,
   // Precision bits when computing inter prediction locations.
   kScaleSubPixelBits = 10,
   kWarpParamRoundingBits = 6,
