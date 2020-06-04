@@ -85,6 +85,7 @@ struct TemporalUnit : public Allocable {
         decoded(false),
         status(kStatusOk),
         has_displayable_frame(false),
+        output_frame_position(-1),
         decoded_count(0),
         output_layer_count(0),
         released_input_buffer(false) {}

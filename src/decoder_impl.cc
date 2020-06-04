@@ -496,6 +496,7 @@ StatusCode DecoderImpl::DecodeFrame(EncodedFrame* const encoded_frame) {
   TemporalUnit& temporal_unit = encoded_frame->temporal_unit;
   std::lock_guard<std::mutex> lock(mutex_);
   if (temporal_unit.has_displayable_frame && !settings_.output_all_layers) {
+    assert(temporal_unit.output_frame_position >= 0);
     // A displayable frame was already found in this temporal unit. This can
     // happen if there are multiple spatial/temporal layers. Since
     // |settings_.output_all_layers| is false, we will output only the last
