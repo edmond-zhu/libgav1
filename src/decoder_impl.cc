@@ -231,13 +231,16 @@ StatusCode DecoderImpl::EnqueueFrame(const uint8_t* data, size_t size,
 
 StatusCode DecoderImpl::SignalFailure(StatusCode status) {
   if (status == kStatusOk || status == kStatusTryAgain) return status;
-  // Make sure all waiting threads exit.
-  buffer_pool_.Abort();
-  frame_thread_pool_ = nullptr;
+  // Set the |failure_status_| first so that any pending jobs in
+  // |frame_thread_pool_| will exit right away when the thread pool is being
+  // released below.
   {
     std::lock_guard<std::mutex> lock(mutex_);
     failure_status_ = status;
   }
+  // Make sure all waiting threads exit.
+  buffer_pool_.Abort();
+  frame_thread_pool_ = nullptr;
   while (!temporal_units_.Empty()) {
     if (settings_.release_input_buffer != nullptr) {
       settings_.release_input_buffer(
