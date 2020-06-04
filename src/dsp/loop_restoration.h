@@ -51,6 +51,20 @@ enum {
 extern const int kXByXPlus1[256];
 extern const uint8_t kSgrMa2Lookup[256];
 
+inline int CountZeroCoefficients(const int16_t* const filter) {
+  int number_zero_coefficients = 0;
+  if (filter[0] == 0) {
+    number_zero_coefficients++;
+    if (filter[1] == 0) {
+      number_zero_coefficients++;
+      if (filter[2] == 0) {
+        number_zero_coefficients++;
+      }
+    }
+  }
+  return number_zero_coefficients;
+}
+
 // Initializes Dsp::loop_restorations. This function is not thread-safe.
 void LoopRestorationInit_C();
 

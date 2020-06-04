@@ -72,23 +72,6 @@ inline void PopulateWienerCoefficients(
   filter[3] = filter_3;
 }
 
-inline int CountZeroCoefficients(const int16_t filter[2][kSubPixelTaps]) {
-  int number_zero_coefficients = 0;
-  if ((filter[WienerInfo::kHorizontal][0] | filter[WienerInfo::kVertical][0]) ==
-      0) {
-    number_zero_coefficients++;
-    if ((filter[WienerInfo::kHorizontal][1] |
-         filter[WienerInfo::kVertical][1]) == 0) {
-      number_zero_coefficients++;
-      if ((filter[WienerInfo::kHorizontal][2] |
-           filter[WienerInfo::kVertical][2]) == 0) {
-        number_zero_coefficients++;
-      }
-    }
-  }
-  return number_zero_coefficients;
-}
-
 inline int16x8_t HorizontalSum(const uint8x8_t a[3], const int16_t filter[2],
                                int16x8_t sum) {
   const int16x8_t a_0_2 = vreinterpretq_s16_u16(vaddl_u8(a[0], a[2]));
@@ -143,25 +126,31 @@ void WienerFilter_NEON(const void* const source, void* const dest,
                        const ptrdiff_t dest_stride, const int width,
                        const int height, RestorationBuffer* const buffer) {
   constexpr int kCenterTap = (kSubPixelTaps - 1) / 2;
-  const int number_zero_coefficients =
-      CountZeroCoefficients(restoration_info.wiener_info.filter);
-  const auto* src = static_cast<const uint8_t*>(source);
-  auto* dst = static_cast<uint8_t*>(dest);
+  const int number_zero_coefficients_horizontal = CountZeroCoefficients(
+      restoration_info.wiener_info.filter[WienerInfo::kHorizontal]);
+  const int number_zero_coefficients_vertical = CountZeroCoefficients(
+      restoration_info.wiener_info.filter[WienerInfo::kVertical]);
+  const int number_rows_to_skip =
+      std::max(number_zero_coefficients_vertical, 1);
   // Casting once here saves a lot of vreinterpret() calls. The values are
   // saturated to 13 bits before storing.
-  int16_t* wiener_buffer = reinterpret_cast<int16_t*>(buffer->wiener_buffer);
+  int16_t* wiener_buffer = reinterpret_cast<int16_t*>(buffer->wiener_buffer) +
+                           number_rows_to_skip * width;
   int16_t filter_horizontal[kSubPixelTaps / 2];
   int16_t filter_vertical[kSubPixelTaps / 2];
   PopulateWienerCoefficients(restoration_info, WienerInfo::kHorizontal,
                              filter_horizontal);
   PopulateWienerCoefficients(restoration_info, WienerInfo::kVertical,
                              filter_vertical);
-  if (number_zero_coefficients == 0) {
+
+  // horizontal filtering.
+  const auto* src = static_cast<const uint8_t*>(source) -
+                    (kCenterTap - number_rows_to_skip) * source_stride;
+  int y = height + kSubPixelTaps - 2 - 2 * number_rows_to_skip;
+  if (number_zero_coefficients_horizontal == 0) {
     // 7-tap
-    src -= (kCenterTap - 1) * source_stride + kCenterTap;
-    int y = height + kSubPixelTaps - 4;
+    src -= 3;
     do {
-      wiener_buffer += width;
       int x = 0;
       do {
         // This is just as fast as an 8x8 transpose but avoids over-reading
@@ -185,17 +174,78 @@ void WienerFilter_NEON(const void* const source, void* const dest,
         x += 8;
       } while (x < width);
       src += source_stride;
+      wiener_buffer += width;
     } while (--y != 0);
+  } else if (number_zero_coefficients_horizontal == 1) {
+    // 5-tap
+    src -= 2;
+    do {
+      int x = 0;
+      do {
+        const uint8x16_t r = vld1q_u8(src + x);
+        uint8x8_t s[5];
+        s[0] = vget_low_u8(r);
+        s[1] = vext_u8(s[0], vget_high_u8(r), 1);
+        s[2] = vext_u8(s[0], vget_high_u8(r), 2);
+        s[3] = vext_u8(s[0], vget_high_u8(r), 3);
+        s[4] = vext_u8(s[0], vget_high_u8(r), 4);
+        const int16x8_t s_0_4 = vreinterpretq_s16_u16(vaddl_u8(s[0], s[4]));
+        const int16x8_t sum = vmulq_n_s16(s_0_4, filter_horizontal[1]);
+        const int16x8_t a = HorizontalSum(s + 1, filter_horizontal + 2, sum);
+        vst1q_s16(wiener_buffer + x, a);
+        x += 8;
+      } while (x < width);
+      src += source_stride;
+      wiener_buffer += width;
+    } while (--y != 0);
+  } else if (number_zero_coefficients_horizontal == 2) {
+    // 3-tap
+    src -= 1;
+    do {
+      int x = 0;
+      do {
+        const uint8x16_t r = vld1q_u8(src + x);
+        uint8x8_t s[3];
+        s[0] = vget_low_u8(r);
+        s[1] = vext_u8(s[0], vget_high_u8(r), 1);
+        s[2] = vext_u8(s[0], vget_high_u8(r), 2);
+        const int16x8_t a =
+            HorizontalSum(s, filter_horizontal + 2, vdupq_n_s16(0));
+        vst1q_s16(wiener_buffer + x, a);
+        x += 8;
+      } while (x < width);
+      src += source_stride;
+      wiener_buffer += width;
+    } while (--y != 0);
+  } else {
+    // 1-tap
+    do {
+      int x = 0;
+      do {
+        const uint8x8_t s = vld1_u8(src + x);
+        const int16x8_t a = vaddq_s16(vdupq_n_s16(1 << 11),
+                                      vreinterpretq_s16_u16(vshll_n_u8(s, 4)));
+        vst1q_s16(wiener_buffer + x, a);
+        x += 8;
+      } while (x < width);
+      src += source_stride;
+      wiener_buffer += width;
+    } while (--y != 0);
+  }
+
+  // vertical filtering.
+  auto* dst = static_cast<uint8_t*>(dest);
+  y = height;
+  if (number_zero_coefficients_vertical == 0) {
+    // 7-tap
     // Because the top row of |source| is a duplicate of the second row, and the
     // bottom row of |source| is a duplicate of its above row, we can duplicate
     // the top and bottom row of |wiener_buffer| accordingly.
-    memcpy(wiener_buffer + width, wiener_buffer,
+    memcpy(wiener_buffer, wiener_buffer - width,
+           sizeof(*wiener_buffer) * width);
+    memcpy(buffer->wiener_buffer, buffer->wiener_buffer + width,
            sizeof(*wiener_buffer) * width);
     wiener_buffer = reinterpret_cast<int16_t*>(buffer->wiener_buffer);
-    memcpy(wiener_buffer, wiener_buffer + width,
-           sizeof(*wiener_buffer) * width);
-
-    y = height;
     do {
       int x = 0;
       do {
@@ -222,32 +272,9 @@ void WienerFilter_NEON(const void* const source, void* const dest,
       wiener_buffer += width;
       dst += dest_stride;
     } while (--y != 0);
-  } else if (number_zero_coefficients == 1) {
+  } else if (number_zero_coefficients_vertical == 1) {
     // 5-tap
-    src -= (kCenterTap - 1) * source_stride + kCenterTap - 1;
-    int y = height + kSubPixelTaps - 4;
-    do {
-      int x = 0;
-      do {
-        const uint8x16_t r = vld1q_u8(src + x);
-        uint8x8_t s[5];
-        s[0] = vget_low_u8(r);
-        s[1] = vext_u8(s[0], vget_high_u8(r), 1);
-        s[2] = vext_u8(s[0], vget_high_u8(r), 2);
-        s[3] = vext_u8(s[0], vget_high_u8(r), 3);
-        s[4] = vext_u8(s[0], vget_high_u8(r), 4);
-        const int16x8_t s_0_4 = vreinterpretq_s16_u16(vaddl_u8(s[0], s[4]));
-        const int16x8_t sum = vmulq_n_s16(s_0_4, filter_horizontal[1]);
-        const int16x8_t a = HorizontalSum(s + 1, filter_horizontal + 2, sum);
-        vst1q_s16(wiener_buffer + x, a);
-        x += 8;
-      } while (x < width);
-      src += source_stride;
-      wiener_buffer += width;
-    } while (--y != 0);
-
-    wiener_buffer = reinterpret_cast<int16_t*>(buffer->wiener_buffer);
-    y = height;
+    wiener_buffer = reinterpret_cast<int16_t*>(buffer->wiener_buffer) + width;
     do {
       int x = 0;
       do {
@@ -269,29 +296,10 @@ void WienerFilter_NEON(const void* const source, void* const dest,
       wiener_buffer += width;
       dst += dest_stride;
     } while (--y != 0);
-  } else {
+  } else if (number_zero_coefficients_vertical == 2) {
     // 3-tap
-    src -= (kCenterTap - 2) * source_stride + kCenterTap - 2;
-    int y = height + kSubPixelTaps - 6;
-    do {
-      int x = 0;
-      do {
-        const uint8x16_t r = vld1q_u8(src + x);
-        uint8x8_t s[3];
-        s[0] = vget_low_u8(r);
-        s[1] = vext_u8(s[0], vget_high_u8(r), 1);
-        s[2] = vext_u8(s[0], vget_high_u8(r), 2);
-        const int16x8_t a =
-            HorizontalSum(s, filter_horizontal + 2, vdupq_n_s16(0));
-        vst1q_s16(wiener_buffer + x, a);
-        x += 8;
-      } while (x < width);
-      src += source_stride;
-      wiener_buffer += width;
-    } while (--y != 0);
-
-    wiener_buffer = reinterpret_cast<int16_t*>(buffer->wiener_buffer);
-    y = height;
+    wiener_buffer =
+        reinterpret_cast<int16_t*>(buffer->wiener_buffer) + 2 * width;
     do {
       int x = 0;
       do {
@@ -302,6 +310,24 @@ void WienerFilter_NEON(const void* const source, void* const dest,
         int32x4_t sum[2];
         sum[0] = sum[1] = vdupq_n_s32(0);
         const uint8x8_t r = WienerVertical(a, filter_vertical + 2, sum);
+        vst1_u8(dst + x, r);
+        x += 8;
+      } while (x < width);
+      wiener_buffer += width;
+      dst += dest_stride;
+    } while (--y != 0);
+  } else {
+    // 1-tap
+    wiener_buffer =
+        reinterpret_cast<int16_t*>(buffer->wiener_buffer) + 3 * width;
+    do {
+      int x = 0;
+      do {
+        const int16x8_t a = vld1q_s16(wiener_buffer + x);
+        constexpr int vertical_rounding = -(1 << 11);
+        const int16x8_t rounding = vdupq_n_s16(vertical_rounding);
+        const int32x4_t sum = vaddq_s16(a, rounding);
+        const uint8x8_t r = vqrshrun_n_s16(sum, 4);
         vst1_u8(dst + x, r);
         x += 8;
       } while (x < width);

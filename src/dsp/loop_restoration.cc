@@ -144,20 +144,6 @@ inline void PopulateWienerCoefficients(
   }
 }
 
-inline int CountZeroCoefficients(const int16_t* const filter) {
-  int number_zero_coefficients = 0;
-  if (filter[0] == 0) {
-    number_zero_coefficients++;
-    if (filter[1] == 0) {
-      number_zero_coefficients++;
-      if (filter[2] == 0) {
-        number_zero_coefficients++;
-      }
-    }
-  }
-  return number_zero_coefficients;
-}
-
 template <int bitdepth, typename Pixel>
 inline void WienerHorizontal(const Pixel* source, const ptrdiff_t source_stride,
                              const int width, const int height,
@@ -770,7 +756,6 @@ void LoopRestorationInit_C() {
 #endif
   // Local functions that may be unused depending on the optimizations
   // available.
-  static_cast<void>(CountZeroCoefficients);
   static_cast<void>(PopulateWienerCoefficients);
   static_cast<void>(Sum565);
 }
