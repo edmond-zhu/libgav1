@@ -55,16 +55,19 @@ constexpr int kMaxBlockHeight4x4 = 32;
 // The logic in this function should match the corresponding logic for
 // |vertical_shift| in the PostFilter constructor.
 int GetBottomBorderPixels(const bool do_cdef, const bool do_restoration,
-                          const bool do_superres) {
-  int border = kBorderPixels;
+                          const bool do_superres, const int subsampling_y) {
+  int extra_border = 0;
   if (do_cdef) {
-    border += 2 * kCdefBorder;
+    extra_border += kCdefBorder;
   } else if (do_restoration) {
     // If CDEF is enabled, loop restoration is safe without extra border.
-    border += 2 * kRestorationVerticalBorder;
+    extra_border += kRestorationVerticalBorder;
   }
-  if (do_superres) border += 2 * kSuperResVerticalBorder;
-  return border;
+  if (do_superres) extra_border += kSuperResVerticalBorder;
+  // Double the number of extra bottom border pixels if the bottom border will
+  // be subsampled.
+  extra_border <<= subsampling_y;
+  return Align(kBorderPixels + extra_border, 2);  // Must be a multiple of 2.
 }
 
 // Sets |frame_scratch_buffer->tile_decoding_failed| to true (while holding on
@@ -377,9 +380,9 @@ StatusCode DecoderImpl::ParseAndSchedule() {
           ComposeImageFormat(sequence_header.color_config.is_monochrome,
                              sequence_header.color_config.subsampling_x,
                              sequence_header.color_config.subsampling_y);
-      const int max_bottom_border =
-          GetBottomBorderPixels(/*do_cdef=*/true, /*do_restoration=*/true,
-                                /*do_superres=*/true);
+      const int max_bottom_border = GetBottomBorderPixels(
+          /*do_cdef=*/true, /*do_restoration=*/true,
+          /*do_superres=*/true, sequence_header.color_config.subsampling_y);
       // TODO(vigneshv): This may not be the right place to call this callback
       // for the frame parallel case. Investigate and fix it.
       if (!buffer_pool_.OnFrameBufferSizeChanged(
@@ -560,9 +563,9 @@ StatusCode DecoderImpl::DecodeTemporalUnit(const TemporalUnit& temporal_unit,
           ComposeImageFormat(sequence_header.color_config.is_monochrome,
                              sequence_header.color_config.subsampling_x,
                              sequence_header.color_config.subsampling_y);
-      const int max_bottom_border =
-          GetBottomBorderPixels(/*do_cdef=*/true, /*do_restoration=*/true,
-                                /*do_superres=*/true);
+      const int max_bottom_border = GetBottomBorderPixels(
+          /*do_cdef=*/true, /*do_restoration=*/true,
+          /*do_superres=*/true, sequence_header.color_config.subsampling_y);
       if (!buffer_pool_.OnFrameBufferSizeChanged(
               sequence_header.color_config.bitdepth, image_format,
               sequence_header.max_frame_width, sequence_header.max_frame_height,
@@ -730,7 +733,8 @@ StatusCode DecoderImpl::DecodeTiles(
       do_cdef, do_restoration,
       do_superres &&
           frame_scratch_buffer->threading_strategy.post_filter_thread_pool() ==
-              nullptr);
+              nullptr,
+      sequence_header.color_config.subsampling_y);
   if (!AllocateCurrentFrame(current_frame, sequence_header.color_config,
                             frame_header, kBorderPixels, kBorderPixels,
                             kBorderPixels, bottom_border)) {
