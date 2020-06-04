@@ -38,6 +38,7 @@ namespace {
 struct Options {
   const char* input_file_name = nullptr;
   const char* output_file_name = nullptr;
+  const char* frame_timing_file_name = nullptr;
   libgav1::FileWriter::FileType output_file_type =
       libgav1::FileWriter::kFileTypeRaw;
   uint8_t post_filter_mask = 0x1f;
@@ -52,6 +53,11 @@ struct Options {
 struct Timing {
   absl::Duration input;
   absl::Duration dequeue;
+};
+
+struct FrameTiming {
+  absl::Time enqueue;
+  absl::Time dequeue;
 };
 
 void PrintHelp(FILE* const fout) {
@@ -71,6 +77,10 @@ void PrintHelp(FILE* const fout) {
   fprintf(fout, "  --raw (Default true).\n");
   fprintf(fout, "  -v logging verbosity, can be used multiple times.\n");
   fprintf(fout, "  --all_layers.\n");
+  fprintf(fout,
+          "  --frame_timing <file> Output per-frame timing to <file> in tsv"
+          " format.\n   Yields meaningful results only when frame parallel is"
+          " off.\n");
   fprintf(fout, "  --post_filter_mask <integer> (Default 0x1f).\n");
   fprintf(fout,
           "   Mask indicating which post filters should be applied to the"
@@ -95,6 +105,13 @@ void ParseOptions(int argc, char* argv[], Options* const options) {
         exit(EXIT_FAILURE);
       }
       options->output_file_name = argv[i];
+    } else if (strcmp(argv[i], "--frame_timing") == 0) {
+      if (++i >= argc) {
+        fprintf(stderr, "Missing argument for '--frame_timing'\n");
+        PrintHelp(stderr);
+        exit(EXIT_FAILURE);
+      }
+      options->frame_timing_file_name = argv[i];
     } else if (strcmp(argv[i], "--version") == 0) {
       printf("gav1_decode, a libgav1 based AV1 decoder\n");
       printf("libgav1 %s\n", libgav1::GetVersionString());
@@ -200,6 +217,8 @@ void ReleaseInputBuffer(void* callback_private_data,
       static_cast<InputBuffer*>(buffer_private_data));
 }
 
+int CloseFile(FILE* stream) { return (stream == nullptr) ? 0 : fclose(stream); }
+
 }  // namespace
 
 int main(int argc, char* argv[]) {
@@ -211,6 +230,17 @@ int main(int argc, char* argv[]) {
   if (file_reader == nullptr) {
     fprintf(stderr, "Cannot open input file!\n");
     return EXIT_FAILURE;
+  }
+
+  std::unique_ptr<FILE, decltype(&CloseFile)> frame_timing_file(nullptr,
+                                                                &CloseFile);
+  if (options.frame_timing_file_name != nullptr) {
+    frame_timing_file.reset(fopen(options.frame_timing_file_name, "wb"));
+    if (frame_timing_file == nullptr) {
+      fprintf(stderr, "Cannot open frame timing file '%s'!\n",
+              options.frame_timing_file_name);
+      return EXIT_FAILURE;
+    }
   }
 
 #ifdef GAV1_DECODE_USE_CV_PIXEL_BUFFER_POOL
@@ -260,6 +290,8 @@ int main(int argc, char* argv[]) {
   int input_frames = 0;
   int decoded_frames = 0;
   Timing timing = {};
+  std::vector<FrameTiming> frame_timing;
+  const bool record_frame_timing = frame_timing_file != nullptr;
   std::unique_ptr<libgav1::FileWriter> file_writer;
   InputBuffer* input_buffer = nullptr;
   bool limit_reached = false;
@@ -291,13 +323,20 @@ int main(int argc, char* argv[]) {
         input_buffer = nullptr;
         continue;
       }
+
+      const absl::Time enqueue_start = absl::Now();
       status = decoder.EnqueueFrame(input_buffer->data(), input_buffer->size(),
-                                    /*user_private_data=*/0,
+                                    static_cast<int64_t>(frame_timing.size()),
                                     /*buffer_private_data=*/input_buffer);
       if (status == libgav1::kStatusOk) {
         if (options.verbose > 1) {
           fprintf(stderr, "enqueue frame (length %zu)\n", input_buffer->size());
         }
+        if (record_frame_timing) {
+          FrameTiming enqueue_time = {enqueue_start, absl::UnixEpoch()};
+          frame_timing.emplace_back(enqueue_time);
+        }
+
         input_buffer = nullptr;
         // Continue to enqueue frames until we get a kStatusTryAgain status.
         continue;
@@ -326,6 +365,11 @@ int main(int argc, char* argv[]) {
     ++decoded_frames;
     if (options.verbose > 1) {
       fprintf(stderr, "buffer dequeued\n");
+    }
+
+    if (record_frame_timing) {
+      frame_timing[static_cast<int>(buffer->user_private_data)].dequeue =
+          absl::Now();
     }
 
     if (options.output_file_name != nullptr && file_writer == nullptr) {
@@ -361,6 +405,18 @@ int main(int argc, char* argv[]) {
            (!file_reader->IsEndOfFile() && !limit_reached) ||
            !dequeue_finished);
   timing.dequeue = absl::Now() - decode_loop_start - timing.input;
+
+  if (record_frame_timing) {
+    // Note timing for frame parallel will be skewed by the time spent queueing
+    // additional frames and in the output queue waiting for previous frames,
+    // the values reported won't be that meaningful.
+    fprintf(frame_timing_file.get(), "frame number\tdecode time us\n");
+    for (size_t i = 0; i < frame_timing.size(); ++i) {
+      const int decode_time_us = static_cast<int>(absl::ToInt64Microseconds(
+          frame_timing[i].dequeue - frame_timing[i].enqueue));
+      fprintf(frame_timing_file.get(), "%zu\t%d\n", i, decode_time_us);
+    }
+  }
 
   if (options.verbose > 0) {
     fprintf(stderr, "time to read input: %d us\n",
