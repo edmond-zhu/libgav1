@@ -97,6 +97,10 @@ class LIBGAV1_PUBLIC Decoder {
   // |buffer_private_data| passed into this EnqueueFrame call.
   // 2) If |settings_.release_input_buffer| is nullptr, then |data| buffer must
   // be kept alive until the corresponding DequeueFrame() call is completed.
+  //
+  // If the call to |EnqueueFrame()| is not successful, then libgav1 will not
+  // hold any references to the |data| buffer. |settings_.release_input_buffer|
+  // callback will not be called in that case.
   StatusCode EnqueueFrame(const uint8_t* data, size_t size,
                           int64_t user_private_data, void* buffer_private_data);
 

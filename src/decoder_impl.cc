@@ -216,20 +216,19 @@ StatusCode DecoderImpl::EnqueueFrame(const uint8_t* data, size_t size,
     const StatusCode status =
         InitializeFrameThreadPoolAndTemporalUnitQueue(data, size);
     if (status != kStatusOk) {
-      if (settings_.release_input_buffer != nullptr) {
-        settings_.release_input_buffer(settings_.callback_private_data,
-                                       buffer_private_data);
-      }
       return SignalFailure(status);
     }
   }
   if (temporal_units_.Full()) {
     return kStatusTryAgain;
   }
+  if (is_frame_parallel_) {
+    return ParseAndSchedule(data, size, user_private_data, buffer_private_data);
+  }
   TemporalUnit temporal_unit(data, size, user_private_data,
                              buffer_private_data);
   temporal_units_.Push(std::move(temporal_unit));
-  return is_frame_parallel_ ? SignalFailure(ParseAndSchedule()) : kStatusOk;
+  return kStatusOk;
 }
 
 StatusCode DecoderImpl::SignalFailure(StatusCode status) {
@@ -354,8 +353,11 @@ StatusCode DecoderImpl::DequeueFrame(const DecoderBuffer** out_ptr) {
   return kStatusOk;
 }
 
-StatusCode DecoderImpl::ParseAndSchedule() {
-  TemporalUnit& temporal_unit = temporal_units_.Back();
+StatusCode DecoderImpl::ParseAndSchedule(const uint8_t* data, size_t size,
+                                         int64_t user_private_data,
+                                         void* buffer_private_data) {
+  TemporalUnit temporal_unit(data, size, user_private_data,
+                             buffer_private_data);
   std::unique_ptr<ObuParser> obu(new (std::nothrow) ObuParser(
       temporal_unit.data, temporal_unit.size, &buffer_pool_, &state_));
   if (obu == nullptr) {
@@ -398,8 +400,10 @@ StatusCode DecoderImpl::ParseAndSchedule() {
     if (current_frame == nullptr) {
       continue;
     }
-    if (!temporal_unit.frames.emplace_back(obu.get(), state_, &temporal_unit,
-                                           current_frame,
+    // Note that we cannot set EncodedFrame.temporal_unit here. It will be set
+    // in the code below after |temporal_unit| is std::move'd into the
+    // |temporal_units_| queue.
+    if (!temporal_unit.frames.emplace_back(obu.get(), state_, current_frame,
                                            position_in_temporal_unit++)) {
       LIBGAV1_DLOG(ERROR, "temporal_unit.frames.emplace_back failed.");
       return kStatusOutOfMemory;
@@ -407,20 +411,24 @@ StatusCode DecoderImpl::ParseAndSchedule() {
     state_.UpdateReferenceFrames(current_frame,
                                  obu->frame_header().refresh_frame_flags);
   }
-  if (temporal_unit.frames.empty()) {
+  // This function cannot fail after this point. So it is okay to move the
+  // |temporal_unit| into |temporal_units_| queue.
+  temporal_units_.Push(std::move(temporal_unit));
+  if (temporal_units_.Back().frames.empty()) {
     std::lock_guard<std::mutex> lock(mutex_);
-    temporal_unit.has_displayable_frame = false;
-    temporal_unit.decoded = true;
+    temporal_units_.Back().has_displayable_frame = false;
+    temporal_units_.Back().decoded = true;
     return kStatusOk;
   }
-  for (auto& frame : temporal_unit.frames) {
+  for (auto& frame : temporal_units_.Back().frames) {
     EncodedFrame* const encoded_frame = &frame;
+    encoded_frame->temporal_unit = &temporal_units_.Back();
     frame_thread_pool_->Schedule([this, encoded_frame]() {
       if (HasFailure()) return;
       const StatusCode status = DecodeFrame(encoded_frame);
       encoded_frame->state = {};
       encoded_frame->frame = nullptr;
-      TemporalUnit& temporal_unit = encoded_frame->temporal_unit;
+      TemporalUnit& temporal_unit = *encoded_frame->temporal_unit;
       std::lock_guard<std::mutex> lock(mutex_);
       if (failure_status_ != kStatusOk) return;
       // temporal_unit's status defaults to kStatusOk. So we need to set it only
@@ -499,7 +507,7 @@ StatusCode DecoderImpl::DecodeFrame(EncodedFrame* const encoded_frame) {
     return status;
   }
 
-  TemporalUnit& temporal_unit = encoded_frame->temporal_unit;
+  TemporalUnit& temporal_unit = *encoded_frame->temporal_unit;
   std::lock_guard<std::mutex> lock(mutex_);
   if (temporal_unit.has_displayable_frame && !settings_.output_all_layers) {
     assert(temporal_unit.output_frame_position >= 0);

@@ -50,12 +50,11 @@ struct TemporalUnit;
 
 struct EncodedFrame {
   EncodedFrame(ObuParser* const obu, const DecoderState& state,
-               TemporalUnit* const temporal_unit,
                const RefCountedBufferPtr& frame, int position_in_temporal_unit)
       : sequence_header(obu->sequence_header()),
         frame_header(obu->frame_header()),
         state(state),
-        temporal_unit(*temporal_unit),
+        temporal_unit(nullptr),
         frame(frame),
         position_in_temporal_unit(position_in_temporal_unit) {
     obu->MoveTileGroups(&tile_groups);
@@ -66,7 +65,7 @@ struct EncodedFrame {
   const ObuFrameHeader frame_header;
   Vector<ObuTileGroup> tile_groups;
   DecoderState state;
-  TemporalUnit& temporal_unit;
+  TemporalUnit* temporal_unit;
   RefCountedBufferPtr frame;
   const int position_in_temporal_unit;
 };
@@ -182,11 +181,11 @@ class DecoderImpl : public Allocable {
   // non frame parallel mode.
   StatusCode DecodeTemporalUnit(const TemporalUnit& temporal_unit,
                                 const DecoderBuffer** out_ptr);
-  // Used only in frame parallel mode. EnqueueFrame pushes the last enqueued
-  // temporal unit into |temporal_units_| and this function will do the OBU
-  // parsing for the last temporal unit that was pushed into the queue and
-  // schedule the frames for decoding.
-  StatusCode ParseAndSchedule();
+  // Used only in frame parallel mode. Does the OBU parsing for |data| and
+  // schedules the individual frames for decoding in the |frame_thread_pool_|.
+  StatusCode ParseAndSchedule(const uint8_t* data, size_t size,
+                              int64_t user_private_data,
+                              void* buffer_private_data);
   // Decodes the |encoded_frame| and updates the
   // |encoded_frame->temporal_unit|'s parameters if the decoded frame is a
   // displayable frame. Used only in frame parallel mode.
@@ -269,6 +268,8 @@ class DecoderImpl : public Allocable {
     return failure_status_ != kStatusOk;
   }
 
+  // Elements in this queue cannot be moved with std::move since the
+  // |EncodedFrame.temporal_unit| stores a pointer to elements in this queue.
   Queue<TemporalUnit> temporal_units_;
   DecoderState state_;
 
