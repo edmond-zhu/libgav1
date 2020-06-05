@@ -105,12 +105,6 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
     }
 
     if (input_buffer != nullptr) {
-      if (input_buffer->empty()) {
-        input_buffers.free_buffers.push_back(input_buffer);
-        input_buffer = nullptr;
-        continue;
-      }
-
       libgav1::StatusCode status =
           decoder.EnqueueFrame(input_buffer->data(), input_buffer->size(),
                                /*user_private_data=*/0,
