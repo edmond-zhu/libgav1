@@ -784,7 +784,12 @@ int DaalaBitReader::ReadSymbol4(uint16_t* const cdf) {
       const uint16x4_t delta = vshl_u16(cdf_vec, negative_rate);
       cdf_vec = vsub_u16(cdf_vec, delta);
       vst1_u16(cdf, cdf_vec);
-#else
+#elif LIBGAV1_ENTROPY_DECODER_ENABLE_SSE4
+      __m128i cdf_vec = LoadLo8(cdf);
+      const __m128i delta = _mm_sra_epi16(cdf_vec, _mm_cvtsi32_si128(rate));
+      cdf_vec = _mm_sub_epi16(cdf_vec, delta);
+      StoreLo8(cdf, cdf_vec);
+#else  // !LIBGAV1_ENTROPY_DECODER_ENABLE_SSE4
       cdf[0] -= cdf[0] >> rate;
       cdf[1] -= cdf[1] >> rate;
       cdf[2] -= cdf[2] >> rate;
@@ -856,7 +861,16 @@ int DaalaBitReader::ReadSymbol4(uint16_t* const cdf) {
     cdf_vec = vadd_u16(cdf_vec, delta);
     vst1_u16(cdf, cdf_vec);
     cdf[3] = 0;
-#else
+#elif LIBGAV1_ENTROPY_DECODER_ENABLE_SSE4
+    __m128i cdf_vec = LoadLo8(cdf);
+    const __m128i cdf_max_probability =
+        _mm_shufflelo_epi16(_mm_cvtsi32_si128(kCdfMaxProbability), 0);
+    const __m128i diff = _mm_sub_epi16(cdf_max_probability, cdf_vec);
+    const __m128i delta = _mm_sra_epi16(diff, _mm_cvtsi32_si128(rate));
+    cdf_vec = _mm_add_epi16(cdf_vec, delta);
+    StoreLo8(cdf, cdf_vec);
+    cdf[3] = 0;
+#else  // !LIBGAV1_ENTROPY_DECODER_ENABLE_SSE4
     cdf[0] += (kCdfMaxProbability - cdf[0]) >> rate;
     cdf[1] += (kCdfMaxProbability - cdf[1]) >> rate;
     cdf[2] += (kCdfMaxProbability - cdf[2]) >> rate;
