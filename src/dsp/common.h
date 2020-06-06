@@ -36,7 +36,7 @@ struct WienerInfo {
   static const int kVertical = 0;
   static const int kHorizontal = 1;
 
-  alignas(kMaxAlignment) int16_t filter[2][kSubPixelTaps];
+  alignas(kMaxAlignment) int16_t filter[2][kWienerFilterTaps];
 };
 
 struct RestorationUnitInfo : public MaxAlignedAllocable {
@@ -52,7 +52,7 @@ union RestorationBuffer {
   // The array |intermediate| in Section 7.17.4, the intermediate results
   // between the horizontal and vertical filters.
   alignas(kMaxAlignment) uint16_t
-      wiener_buffer[(kRestorationUnitHeight + kSubPixelTaps - 1) *
+      wiener_buffer[(kRestorationUnitHeight + kWienerFilterTaps - 1) *
                     kRestorationUnitWidth];
 };
 

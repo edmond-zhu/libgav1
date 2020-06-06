@@ -72,6 +72,7 @@ enum {
   kConvolveBorderBottom = 4,
   kSubPixelTaps = 8,
   kWienerFilterBits = 7,
+  kWienerFilterTaps = 7,
   kMaxPaletteSize = 8,
   kMinPaletteSize = 2,
   kMaxPaletteSquare = 64,

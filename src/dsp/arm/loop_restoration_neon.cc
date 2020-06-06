@@ -367,7 +367,7 @@ void WienerFilter_NEON(const void* const source, void* const dest,
                        const ptrdiff_t source_stride,
                        const ptrdiff_t dest_stride, const int width,
                        const int height, RestorationBuffer* const buffer) {
-  constexpr int kCenterTap = (kSubPixelTaps - 1) / 2;
+  constexpr int kCenterTap = kWienerFilterTaps / 2;
   const int number_zero_coefficients_horizontal = CountZeroCoefficients(
       restoration_info.wiener_info.filter[WienerInfo::kHorizontal]);
   const int number_zero_coefficients_vertical = CountZeroCoefficients(
@@ -380,8 +380,8 @@ void WienerFilter_NEON(const void* const source, void* const dest,
   // The values are saturated to 13 bits before storing.
   int16_t* wiener_buffer_horizontal =
       wiener_buffer_vertical + number_rows_to_skip * width;
-  int16_t filter_horizontal[kSubPixelTaps / 2];
-  int16_t filter_vertical[kSubPixelTaps / 2];
+  int16_t filter_horizontal[(kWienerFilterTaps + 1) / 2];
+  int16_t filter_vertical[(kWienerFilterTaps + 1) / 2];
   PopulateWienerCoefficients(restoration_info, WienerInfo::kHorizontal,
                              filter_horizontal);
   PopulateWienerCoefficients(restoration_info, WienerInfo::kVertical,
@@ -390,7 +390,7 @@ void WienerFilter_NEON(const void* const source, void* const dest,
   // horizontal filtering.
   // Over-reads up to 16 - 2 * |kRestorationHorizontalBorder| values.
   const int height_horizontal =
-      height + kSubPixelTaps - 2 - 2 * number_rows_to_skip;
+      height + kWienerFilterTaps - 1 - 2 * number_rows_to_skip;
   const auto* src = static_cast<const uint8_t*>(source) -
                     (kCenterTap - number_rows_to_skip) * source_stride;
   if (number_zero_coefficients_horizontal == 0) {

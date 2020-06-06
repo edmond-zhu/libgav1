@@ -65,14 +65,14 @@ inline void PopulateWienerCoefficients(
 
 // This function calls LoadUnaligned16() to read 10 bytes from the |source|
 // buffer. Since the LoadUnaligned16() call over-reads 6 bytes, the |source|
-// buffer must be at least (height + kSubPixelTaps - 2) * source_stride + 6
+// buffer must be at least (height + kWienerFilterTaps - 1) * source_stride + 6
 // bytes long.
 void WienerFilter_SSE4_1(const void* source, void* const dest,
                          const RestorationUnitInfo& restoration_info,
                          ptrdiff_t source_stride, ptrdiff_t dest_stride,
                          int width, int height,
                          RestorationBuffer* const buffer) {
-  int8_t filter[kSubPixelTaps];
+  int8_t filter[kWienerFilterTaps + 1];
   const int limit =
       (1 << (8 + 1 + kWienerFilterBits - kInterRoundBitsHorizontal)) - 1;
   const auto* src = static_cast<const uint8_t*>(source);
@@ -100,7 +100,7 @@ void WienerFilter_SSE4_1(const void* source, void* const dest,
   const __m128i v_offset_shift =
       _mm_cvtsi32_si128(7 - kInterRoundBitsHorizontal);
 
-  int y = height + kSubPixelTaps - 4;
+  int y = height + kWienerFilterTaps - 3;
   do {
     int x = 0;
     do {

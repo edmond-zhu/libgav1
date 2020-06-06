@@ -150,7 +150,7 @@ inline void WienerHorizontal(const Pixel* source, const ptrdiff_t source_stride,
                              const int16_t* const filter,
                              const int number_zero_coefficients,
                              uint16_t** wiener_buffer) {
-  constexpr int kCenterTap = (kSubPixelTaps - 1) / 2;
+  constexpr int kCenterTap = kWienerFilterTaps / 2;
   constexpr int kRoundBitsHorizontal = (bitdepth == 12)
                                            ? kInterRoundBitsHorizontal12bpp
                                            : kInterRoundBitsHorizontal;
@@ -164,7 +164,8 @@ inline void WienerHorizontal(const Pixel* source, const ptrdiff_t source_stride,
       // sum fits into 16 bits only when bitdepth = 8.
       int sum = horizontal_rounding;
       for (int k = number_zero_coefficients; k < kCenterTap; ++k) {
-        sum += filter[k] * (source[x + k] + source[x + kSubPixelTaps - 2 - k]);
+        sum +=
+            filter[k] * (source[x + k] + source[x + kWienerFilterTaps - 1 - k]);
       }
       sum += filter[kCenterTap] * source[x + kCenterTap];
       const int rounded_sum = RightShiftWithRounding(sum, kRoundBitsHorizontal);
@@ -180,7 +181,7 @@ inline void WienerVertical(const uint16_t* wiener_buffer, const int width,
                            const int height, const int16_t* const filter,
                            const int number_zero_coefficients, void* const dest,
                            const ptrdiff_t dest_stride) {
-  constexpr int kCenterTap = (kSubPixelTaps - 1) / 2;
+  constexpr int kCenterTap = kWienerFilterTaps / 2;
   constexpr int kRoundBitsVertical =
       (bitdepth == 12) ? kInterRoundBitsVertical12bpp : kInterRoundBitsVertical;
   constexpr int vertical_rounding = -(1 << (bitdepth + kRoundBitsVertical - 1));
@@ -192,8 +193,9 @@ inline void WienerVertical(const uint16_t* wiener_buffer, const int width,
       // sum needs 32 bits.
       int sum = vertical_rounding;
       for (int k = number_zero_coefficients; k < kCenterTap; ++k) {
-        sum += filter[k] * (wiener_buffer[k * width + x] +
-                            wiener_buffer[(kSubPixelTaps - 2 - k) * width + x]);
+        sum += filter[k] *
+               (wiener_buffer[k * width + x] +
+                wiener_buffer[(kWienerFilterTaps - 1 - k) * width + x]);
       }
       sum += filter[kCenterTap] * wiener_buffer[kCenterTap * width + x];
       const int rounded_sum = RightShiftWithRounding(sum, kRoundBitsVertical);
@@ -226,9 +228,9 @@ void LoopRestorationFuncs_C<bitdepth, Pixel>::WienerFilter(
     const RestorationUnitInfo& restoration_info, ptrdiff_t source_stride,
     ptrdiff_t dest_stride, int width, int height,
     RestorationBuffer* const buffer) {
-  constexpr int kCenterTap = (kSubPixelTaps - 1) / 2;
-  int16_t filter_horizontal[kSubPixelTaps / 2];
-  int16_t filter_vertical[kSubPixelTaps / 2];
+  constexpr int kCenterTap = kWienerFilterTaps / 2;
+  int16_t filter_horizontal[(kWienerFilterTaps + 1) / 2];
+  int16_t filter_vertical[(kWienerFilterTaps + 1) / 2];
   PopulateWienerCoefficients(restoration_info, WienerInfo::kHorizontal,
                              filter_horizontal);
   PopulateWienerCoefficients(restoration_info, WienerInfo::kVertical,
@@ -245,7 +247,7 @@ void LoopRestorationFuncs_C<bitdepth, Pixel>::WienerFilter(
   src -= (kCenterTap - number_rows_to_skip) * source_stride + kCenterTap;
   auto* wiener_buffer = buffer->wiener_buffer + number_rows_to_skip * width;
   const int height_horizontal =
-      height + kSubPixelTaps - 2 - 2 * number_rows_to_skip;
+      height + kWienerFilterTaps - 1 - 2 * number_rows_to_skip;
 
   if (number_zero_coefficients_horizontal == 0) {
     WienerHorizontal<bitdepth, Pixel>(src, source_stride, width,
