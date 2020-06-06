@@ -119,15 +119,14 @@ void PostFilter::ApplyLoopRestorationForOneRowInWindow(
       }
     } else {
       const ptrdiff_t block_buffer_stride = kRestorationUnitWidthWithBorders;
-      // The SIMD implementation of wiener filter over-reads 6 bytes, and the
-      // SIMD implementation of self-guided filter over-reads up to 7 bytes, so
-      // add 7 extra bytes at the end of block_buffer for 8 bit. 7 byte
-      // over-reads happen when |current_process_unit_width| equals
+      // The SIMD implementation of wiener filter over-reads 8 bytes, and the
+      // SIMD implementation of self-guided filter over-reads up to 7 bytes
+      // which happens when |current_process_unit_width| equals
       // |kRestorationUnitWidth| - 7, and the radius of the first pass in sfg is
-      // 0.
+      // 0. So add 8 extra bytes at the end of block_buffer for 8 bit.
       Pixel
           block_buffer[kRestorationUnitHeightWithBorders * block_buffer_stride +
-                       ((sizeof(Pixel) == 1) ? 7 : 0)];
+                       ((sizeof(Pixel) == 1) ? 8 : 0)];
       RestorationBuffer restoration_buffer;
       const Pixel* source;
       ptrdiff_t source_stride;

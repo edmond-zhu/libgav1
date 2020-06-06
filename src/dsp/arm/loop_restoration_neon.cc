@@ -72,11 +72,28 @@ inline void PopulateWienerCoefficients(
   filter[3] = filter_3;
 }
 
-inline int16x8_t HorizontalSum(const uint8x8_t a[3], const int16_t filter[2],
-                               int16x8_t sum) {
-  const int16x8_t a_0_2 = vreinterpretq_s16_u16(vaddl_u8(a[0], a[2]));
-  sum = vmlaq_n_s16(sum, a_0_2, filter[0]);
-  sum = vmlaq_n_s16(sum, vreinterpretq_s16_u16(vmovl_u8(a[1])), filter[1]);
+inline int16x8_t WienerHorizontal2(const uint8x8_t s0, const uint8x8_t s1,
+                                   const int16_t filter, const int16x8_t sum) {
+  const int16x8_t ss = vreinterpretq_s16_u16(vaddl_u8(s0, s1));
+  return vmlaq_n_s16(sum, ss, filter);
+}
+
+inline int16x8x2_t WienerHorizontal2(const uint8x16_t s0, const uint8x16_t s1,
+                                     const int16_t filter,
+                                     const int16x8x2_t sum) {
+  int16x8x2_t d;
+  d.val[0] =
+      WienerHorizontal2(vget_low_u8(s0), vget_low_u8(s1), filter, sum.val[0]);
+  d.val[1] =
+      WienerHorizontal2(vget_high_u8(s0), vget_high_u8(s1), filter, sum.val[1]);
+  return d;
+}
+
+inline void WienerHorizontalSum(const uint8x8_t s[3], const int16_t filter[2],
+                                int16x8_t sum, int16_t* const dst) {
+  const int16x8_t s_0_2 = vreinterpretq_s16_u16(vaddl_u8(s[0], s[2]));
+  sum = vmlaq_n_s16(sum, s_0_2, filter[0]);
+  sum = vmlaq_n_s16(sum, vreinterpretq_s16_u16(vmovl_u8(s[1])), filter[1]);
   sum = vrshrq_n_s16(sum, kInterRoundBitsHorizontal);
   // Delaying |horizontal_rounding| until after down shifting allows the sum to
   // stay in 16 bits.
@@ -89,32 +106,257 @@ inline int16x8_t HorizontalSum(const uint8x8_t a[3], const int16_t filter[2],
   // But wait! We *did* calculate |filter[3]| and used it in the sum! But it was
   // offset by 128. Fix that here:
   // |src[3]| * 128 >> 3 == |src[3]| << 4
-  sum = vaddq_s16(sum, vreinterpretq_s16_u16(vshll_n_u8(a[1], 4)));
+  sum = vaddq_s16(sum, vreinterpretq_s16_u16(vshll_n_u8(s[1], 4)));
   // Saturate to
   // [0,
   // (1 << (bitdepth + 1 + kWienerFilterBits - kInterRoundBitsHorizontal)) - 1)]
   // (1 << (       8 + 1 +                 7 -                         3)) - 1)
   sum = vminq_s16(sum, vdupq_n_s16((1 << 13) - 1));
   sum = vmaxq_s16(sum, vdupq_n_s16(0));
-  return sum;
+  vst1q_s16(dst, sum);
+}
+
+inline void WienerHorizontalSum(const uint8x16_t src[3],
+                                const int16_t filter[2], int16x8x2_t sum,
+                                int16_t* const dst) {
+  uint8x8_t s[3];
+  s[0] = vget_low_u8(src[0]);
+  s[1] = vget_low_u8(src[1]);
+  s[2] = vget_low_u8(src[2]);
+  WienerHorizontalSum(s, filter, sum.val[0], dst);
+  s[0] = vget_high_u8(src[0]);
+  s[1] = vget_high_u8(src[1]);
+  s[2] = vget_high_u8(src[2]);
+  WienerHorizontalSum(s, filter, sum.val[1], dst + 8);
+}
+
+inline void WienerHorizontalTap7(const uint8_t* src, const ptrdiff_t stride,
+                                 const int width, const int height,
+                                 const int16_t filter[4],
+                                 int16_t** const wiener_buffer) {
+  int y = height;
+  do {
+    int x = 0;
+    uint8x16_t s[8];
+    s[0] = vld1q_u8(src + x);
+    do {
+      s[7] = vld1q_u8(src + x + 16);
+      s[1] = vextq_u8(s[0], s[7], 1);
+      s[2] = vextq_u8(s[0], s[7], 2);
+      s[3] = vextq_u8(s[0], s[7], 3);
+      s[4] = vextq_u8(s[0], s[7], 4);
+      s[5] = vextq_u8(s[0], s[7], 5);
+      s[6] = vextq_u8(s[0], s[7], 6);
+      int16x8x2_t sum;
+      sum.val[0] = vdupq_n_s16(0);
+      sum.val[1] = vdupq_n_s16(0);
+      sum = WienerHorizontal2(s[0], s[6], filter[0], sum);
+      sum = WienerHorizontal2(s[1], s[5], filter[1], sum);
+      WienerHorizontalSum(s + 2, filter + 2, sum, *wiener_buffer + x);
+      s[0] = s[7];
+      x += 16;
+    } while (x < width);
+    src += stride;
+    *wiener_buffer += width;
+  } while (--y != 0);
+}
+
+inline void WienerHorizontalTap5(const uint8_t* src, const ptrdiff_t stride,
+                                 const int width, const int height,
+                                 const int16_t filter[4],
+                                 int16_t** const wiener_buffer) {
+  int y = height;
+  do {
+    int x = 0;
+    uint8x16_t s[6];
+    s[0] = vld1q_u8(src + x);
+    do {
+      s[5] = vld1q_u8(src + x + 16);
+      s[1] = vextq_u8(s[0], s[5], 1);
+      s[2] = vextq_u8(s[0], s[5], 2);
+      s[3] = vextq_u8(s[0], s[5], 3);
+      s[4] = vextq_u8(s[0], s[5], 4);
+      int16x8x2_t sum;
+      sum.val[0] = vdupq_n_s16(0);
+      sum.val[1] = vdupq_n_s16(0);
+      sum = WienerHorizontal2(s[0], s[4], filter[1], sum);
+      WienerHorizontalSum(s + 1, filter + 2, sum, *wiener_buffer + x);
+      s[0] = s[5];
+      x += 16;
+    } while (x < width);
+    src += stride;
+    *wiener_buffer += width;
+  } while (--y != 0);
+}
+
+inline void WienerHorizontalTap3(const uint8_t* src, const ptrdiff_t stride,
+                                 const int width, const int height,
+                                 const int16_t filter[4],
+                                 int16_t** const wiener_buffer) {
+  int y = height;
+  do {
+    int x = 0;
+    uint8x16_t s[4];
+    s[0] = vld1q_u8(src + x);
+    do {
+      s[3] = vld1q_u8(src + x + 16);
+      s[1] = vextq_u8(s[0], s[3], 1);
+      s[2] = vextq_u8(s[0], s[3], 2);
+      int16x8x2_t sum;
+      sum.val[0] = vdupq_n_s16(0);
+      sum.val[1] = vdupq_n_s16(0);
+      WienerHorizontalSum(s, filter + 2, sum, *wiener_buffer + x);
+      s[0] = s[3];
+      x += 16;
+    } while (x < width);
+    src += stride;
+    *wiener_buffer += width;
+  } while (--y != 0);
+}
+
+inline void WienerHorizontalTap1(const uint8_t* src, const ptrdiff_t stride,
+                                 const int width, const int height,
+                                 int16_t** const wiener_buffer) {
+  int y = height;
+  do {
+    int x = 0;
+    do {
+      const uint8x16_t s = vld1q_u8(src + x);
+      const uint8x8_t s0 = vget_low_u8(s);
+      const uint8x8_t s1 = vget_high_u8(s);
+      const int16x8_t d0 = vaddq_s16(vdupq_n_s16(1 << 11),
+                                     vreinterpretq_s16_u16(vshll_n_u8(s0, 4)));
+      const int16x8_t d1 = vaddq_s16(vdupq_n_s16(1 << 11),
+                                     vreinterpretq_s16_u16(vshll_n_u8(s1, 4)));
+      vst1q_s16(*wiener_buffer + x, d0);
+      vst1q_s16(*wiener_buffer + x + 8, d1);
+      x += 16;
+    } while (x < width);
+    src += stride;
+    *wiener_buffer += width;
+  } while (--y != 0);
+}
+
+inline int32x4x2_t WienerVertical2(const int16x8_t a0, const int16x8_t a1,
+                                   const int16_t filter,
+                                   const int32x4x2_t sum) {
+  const int16x8_t aa = vaddq_s16(a0, a1);
+  int32x4x2_t d;
+  d.val[0] = vmlal_n_s16(sum.val[0], vget_low_s16(aa), filter);
+  d.val[1] = vmlal_n_s16(sum.val[1], vget_high_s16(aa), filter);
+  return d;
 }
 
 inline uint8x8_t WienerVertical(const int16x8_t a[3], const int16_t filter[2],
-                                int32x4_t sum[2]) {
+                                const int32x4x2_t sum) {
   // -(1 << (bitdepth + kInterRoundBitsVertical - 1))
   // -(1 << (       8 +                      11 - 1))
   constexpr int vertical_rounding = -(1 << 18);
   const int32x4_t rounding = vdupq_n_s32(vertical_rounding);
-  const int16x8_t a_0_2 = vaddq_s16(a[0], a[2]);
-  sum[0] = vaddq_s32(sum[0], rounding);
-  sum[1] = vaddq_s32(sum[1], rounding);
-  sum[0] = vmlal_n_s16(sum[0], vget_low_s16(a_0_2), filter[0]);
-  sum[1] = vmlal_n_s16(sum[1], vget_high_s16(a_0_2), filter[0]);
-  sum[0] = vmlal_n_s16(sum[0], vget_low_s16(a[1]), filter[1]);
-  sum[1] = vmlal_n_s16(sum[1], vget_high_s16(a[1]), filter[1]);
-  const uint16x4_t sum_lo_16 = vqrshrun_n_s32(sum[0], 11);
-  const uint16x4_t sum_hi_16 = vqrshrun_n_s32(sum[1], 11);
+  int32x4x2_t d;
+  d.val[0] = vaddq_s32(sum.val[0], rounding);
+  d.val[1] = vaddq_s32(sum.val[1], rounding);
+  d = WienerVertical2(a[0], a[2], filter[0], d);
+  d.val[0] = vmlal_n_s16(d.val[0], vget_low_s16(a[1]), filter[1]);
+  d.val[1] = vmlal_n_s16(d.val[1], vget_high_s16(a[1]), filter[1]);
+  const uint16x4_t sum_lo_16 = vqrshrun_n_s32(d.val[0], 11);
+  const uint16x4_t sum_hi_16 = vqrshrun_n_s32(d.val[1], 11);
   return vqmovn_u16(vcombine_u16(sum_lo_16, sum_hi_16));
+}
+
+inline void WienerVerticalTap7(const int16_t* wiener_buffer, const int width,
+                               const int height, const int16_t filter[4],
+                               uint8_t* dst, const ptrdiff_t stride) {
+  int y = height;
+  do {
+    int x = 0;
+    do {
+      int16x8_t a[7];
+      a[0] = vld1q_s16(wiener_buffer + x + 0 * width);
+      a[1] = vld1q_s16(wiener_buffer + x + 1 * width);
+      a[2] = vld1q_s16(wiener_buffer + x + 2 * width);
+      a[3] = vld1q_s16(wiener_buffer + x + 3 * width);
+      a[4] = vld1q_s16(wiener_buffer + x + 4 * width);
+      a[5] = vld1q_s16(wiener_buffer + x + 5 * width);
+      a[6] = vld1q_s16(wiener_buffer + x + 6 * width);
+      int32x4x2_t sum;
+      sum.val[0] = sum.val[1] = vdupq_n_s32(0);
+      sum = WienerVertical2(a[0], a[6], filter[0], sum);
+      sum = WienerVertical2(a[1], a[5], filter[1], sum);
+      const uint8x8_t r = WienerVertical(a + 2, filter + 2, sum);
+      vst1_u8(dst + x, r);
+      x += 8;
+    } while (x < width);
+    wiener_buffer += width;
+    dst += stride;
+  } while (--y != 0);
+}
+
+inline void WienerVerticalTap5(const int16_t* wiener_buffer, const int width,
+                               const int height, const int16_t filter[4],
+                               uint8_t* dst, const ptrdiff_t stride) {
+  int y = height;
+  do {
+    int x = 0;
+    do {
+      int16x8_t a[5];
+      a[0] = vld1q_s16(wiener_buffer + x + 0 * width);
+      a[1] = vld1q_s16(wiener_buffer + x + 1 * width);
+      a[2] = vld1q_s16(wiener_buffer + x + 2 * width);
+      a[3] = vld1q_s16(wiener_buffer + x + 3 * width);
+      a[4] = vld1q_s16(wiener_buffer + x + 4 * width);
+      int32x4x2_t sum;
+      sum.val[0] = sum.val[1] = vdupq_n_s32(0);
+      sum = WienerVertical2(a[0], a[4], filter[1], sum);
+      const uint8x8_t r = WienerVertical(a + 1, filter + 2, sum);
+      vst1_u8(dst + x, r);
+      x += 8;
+    } while (x < width);
+    wiener_buffer += width;
+    dst += stride;
+  } while (--y != 0);
+}
+
+inline void WienerVerticalTap3(const int16_t* wiener_buffer, const int width,
+                               const int height, const int16_t filter[4],
+                               uint8_t* dst, const ptrdiff_t stride) {
+  int y = height;
+  do {
+    int x = 0;
+    do {
+      int16x8_t a[3];
+      a[0] = vld1q_s16(wiener_buffer + x + 0 * width);
+      a[1] = vld1q_s16(wiener_buffer + x + 1 * width);
+      a[2] = vld1q_s16(wiener_buffer + x + 2 * width);
+      int32x4x2_t sum;
+      sum.val[0] = sum.val[1] = vdupq_n_s32(0);
+      const uint8x8_t r = WienerVertical(a, filter + 2, sum);
+      vst1_u8(dst + x, r);
+      x += 8;
+    } while (x < width);
+    wiener_buffer += width;
+    dst += stride;
+  } while (--y != 0);
+}
+
+inline void WienerVerticalTap1(const int16_t* wiener_buffer, const int width,
+                               const int height, uint8_t* dst,
+                               const ptrdiff_t stride) {
+  int y = height;
+  do {
+    int x = 0;
+    do {
+      const int16x8_t a = vld1q_s16(wiener_buffer + x);
+      constexpr int vertical_rounding = -(1 << 11);
+      const int16x8_t rounding = vdupq_n_s16(vertical_rounding);
+      const int16x8_t sum = vaddq_s16(a, rounding);
+      const uint8x8_t r = vqrshrun_n_s16(sum, 4);
+      vst1_u8(dst + x, r);
+      x += 8;
+    } while (x < width);
+    wiener_buffer += width;
+    dst += stride;
+  } while (--y != 0);
 }
 
 // For width 16 and up, store the horizontal results, and then do the vertical
@@ -132,10 +374,12 @@ void WienerFilter_NEON(const void* const source, void* const dest,
       restoration_info.wiener_info.filter[WienerInfo::kVertical]);
   const int number_rows_to_skip =
       std::max(number_zero_coefficients_vertical, 1);
-  // Casting once here saves a lot of vreinterpret() calls. The values are
-  // saturated to 13 bits before storing.
-  int16_t* wiener_buffer = reinterpret_cast<int16_t*>(buffer->wiener_buffer) +
-                           number_rows_to_skip * width;
+  // Casting once here saves a lot of vreinterpret() calls.
+  int16_t* const wiener_buffer_vertical =
+      reinterpret_cast<int16_t*>(buffer->wiener_buffer);
+  // The values are saturated to 13 bits before storing.
+  int16_t* wiener_buffer_horizontal =
+      wiener_buffer_vertical + number_rows_to_skip * width;
   int16_t filter_horizontal[kSubPixelTaps / 2];
   int16_t filter_vertical[kSubPixelTaps / 2];
   PopulateWienerCoefficients(restoration_info, WienerInfo::kHorizontal,
@@ -144,196 +388,49 @@ void WienerFilter_NEON(const void* const source, void* const dest,
                              filter_vertical);
 
   // horizontal filtering.
+  // Over-reads up to 16 - 2 * |kRestorationHorizontalBorder| values.
+  const int height_horizontal =
+      height + kSubPixelTaps - 2 - 2 * number_rows_to_skip;
   const auto* src = static_cast<const uint8_t*>(source) -
                     (kCenterTap - number_rows_to_skip) * source_stride;
-  int y = height + kSubPixelTaps - 2 - 2 * number_rows_to_skip;
   if (number_zero_coefficients_horizontal == 0) {
-    // 7-tap
-    src -= 3;
-    do {
-      int x = 0;
-      do {
-        // This is just as fast as an 8x8 transpose but avoids over-reading
-        // extra rows. It always over-reads by at least 1 value. On small widths
-        // (4xH) it over-reads by 9 values.
-        const uint8x16_t r = vld1q_u8(src + x);
-        uint8x8_t s[7];
-        s[0] = vget_low_u8(r);
-        s[1] = vext_u8(s[0], vget_high_u8(r), 1);
-        s[2] = vext_u8(s[0], vget_high_u8(r), 2);
-        s[3] = vext_u8(s[0], vget_high_u8(r), 3);
-        s[4] = vext_u8(s[0], vget_high_u8(r), 4);
-        s[5] = vext_u8(s[0], vget_high_u8(r), 5);
-        s[6] = vext_u8(s[0], vget_high_u8(r), 6);
-        const int16x8_t s_0_6 = vreinterpretq_s16_u16(vaddl_u8(s[0], s[6]));
-        const int16x8_t s_1_5 = vreinterpretq_s16_u16(vaddl_u8(s[1], s[5]));
-        int16x8_t sum = vmulq_n_s16(s_0_6, filter_horizontal[0]);
-        sum = vmlaq_n_s16(sum, s_1_5, filter_horizontal[1]);
-        const int16x8_t a = HorizontalSum(s + 2, filter_horizontal + 2, sum);
-        vst1q_s16(wiener_buffer + x, a);
-        x += 8;
-      } while (x < width);
-      src += source_stride;
-      wiener_buffer += width;
-    } while (--y != 0);
+    WienerHorizontalTap7(src - 3, source_stride, width, height_horizontal,
+                         filter_horizontal, &wiener_buffer_horizontal);
   } else if (number_zero_coefficients_horizontal == 1) {
-    // 5-tap
-    src -= 2;
-    do {
-      int x = 0;
-      do {
-        const uint8x16_t r = vld1q_u8(src + x);
-        uint8x8_t s[5];
-        s[0] = vget_low_u8(r);
-        s[1] = vext_u8(s[0], vget_high_u8(r), 1);
-        s[2] = vext_u8(s[0], vget_high_u8(r), 2);
-        s[3] = vext_u8(s[0], vget_high_u8(r), 3);
-        s[4] = vext_u8(s[0], vget_high_u8(r), 4);
-        const int16x8_t s_0_4 = vreinterpretq_s16_u16(vaddl_u8(s[0], s[4]));
-        const int16x8_t sum = vmulq_n_s16(s_0_4, filter_horizontal[1]);
-        const int16x8_t a = HorizontalSum(s + 1, filter_horizontal + 2, sum);
-        vst1q_s16(wiener_buffer + x, a);
-        x += 8;
-      } while (x < width);
-      src += source_stride;
-      wiener_buffer += width;
-    } while (--y != 0);
+    WienerHorizontalTap5(src - 2, source_stride, width, height_horizontal,
+                         filter_horizontal, &wiener_buffer_horizontal);
   } else if (number_zero_coefficients_horizontal == 2) {
-    // 3-tap
-    src -= 1;
-    do {
-      int x = 0;
-      do {
-        const uint8x16_t r = vld1q_u8(src + x);
-        uint8x8_t s[3];
-        s[0] = vget_low_u8(r);
-        s[1] = vext_u8(s[0], vget_high_u8(r), 1);
-        s[2] = vext_u8(s[0], vget_high_u8(r), 2);
-        const int16x8_t a =
-            HorizontalSum(s, filter_horizontal + 2, vdupq_n_s16(0));
-        vst1q_s16(wiener_buffer + x, a);
-        x += 8;
-      } while (x < width);
-      src += source_stride;
-      wiener_buffer += width;
-    } while (--y != 0);
+    WienerHorizontalTap3(src - 1, source_stride, width, height_horizontal,
+                         filter_horizontal, &wiener_buffer_horizontal);
   } else {
-    // 1-tap
-    do {
-      int x = 0;
-      do {
-        const uint8x8_t s = vld1_u8(src + x);
-        const int16x8_t a = vaddq_s16(vdupq_n_s16(1 << 11),
-                                      vreinterpretq_s16_u16(vshll_n_u8(s, 4)));
-        vst1q_s16(wiener_buffer + x, a);
-        x += 8;
-      } while (x < width);
-      src += source_stride;
-      wiener_buffer += width;
-    } while (--y != 0);
+    assert(number_zero_coefficients_horizontal == 3);
+    WienerHorizontalTap1(src, source_stride, width, height_horizontal,
+                         &wiener_buffer_horizontal);
   }
 
   // vertical filtering.
+  // Over-writes up to 7 values.
   auto* dst = static_cast<uint8_t*>(dest);
-  y = height;
   if (number_zero_coefficients_vertical == 0) {
-    // 7-tap
     // Because the top row of |source| is a duplicate of the second row, and the
     // bottom row of |source| is a duplicate of its above row, we can duplicate
     // the top and bottom row of |wiener_buffer| accordingly.
-    memcpy(wiener_buffer, wiener_buffer - width,
-           sizeof(*wiener_buffer) * width);
+    memcpy(wiener_buffer_horizontal, wiener_buffer_horizontal - width,
+           sizeof(*wiener_buffer_horizontal) * width);
     memcpy(buffer->wiener_buffer, buffer->wiener_buffer + width,
-           sizeof(*wiener_buffer) * width);
-    wiener_buffer = reinterpret_cast<int16_t*>(buffer->wiener_buffer);
-    do {
-      int x = 0;
-      do {
-        int16x8_t a[7];
-        a[0] = vld1q_s16(wiener_buffer + x + 0 * width);
-        a[1] = vld1q_s16(wiener_buffer + x + 1 * width);
-        a[2] = vld1q_s16(wiener_buffer + x + 2 * width);
-        a[3] = vld1q_s16(wiener_buffer + x + 3 * width);
-        a[4] = vld1q_s16(wiener_buffer + x + 4 * width);
-        a[5] = vld1q_s16(wiener_buffer + x + 5 * width);
-        a[6] = vld1q_s16(wiener_buffer + x + 6 * width);
-        const int16x8_t a_0_6 = vaddq_s16(a[0], a[6]);
-        const int16x8_t a_1_5 = vaddq_s16(a[1], a[5]);
-        int32x4_t sum[2];
-        sum[0] = sum[1] = vdupq_n_s32(0);
-        sum[0] = vmlal_n_s16(sum[0], vget_low_s16(a_0_6), filter_vertical[0]);
-        sum[1] = vmlal_n_s16(sum[1], vget_high_s16(a_0_6), filter_vertical[0]);
-        sum[0] = vmlal_n_s16(sum[0], vget_low_s16(a_1_5), filter_vertical[1]);
-        sum[1] = vmlal_n_s16(sum[1], vget_high_s16(a_1_5), filter_vertical[1]);
-        const uint8x8_t r = WienerVertical(a + 2, filter_vertical + 2, sum);
-        vst1_u8(dst + x, r);
-        x += 8;
-      } while (x < width);
-      wiener_buffer += width;
-      dst += dest_stride;
-    } while (--y != 0);
+           sizeof(*buffer->wiener_buffer) * width);
+    WienerVerticalTap7(wiener_buffer_vertical, width, height, filter_vertical,
+                       dst, dest_stride);
   } else if (number_zero_coefficients_vertical == 1) {
-    // 5-tap
-    wiener_buffer = reinterpret_cast<int16_t*>(buffer->wiener_buffer) + width;
-    do {
-      int x = 0;
-      do {
-        int16x8_t a[5];
-        a[0] = vld1q_s16(wiener_buffer + x + 0 * width);
-        a[1] = vld1q_s16(wiener_buffer + x + 1 * width);
-        a[2] = vld1q_s16(wiener_buffer + x + 2 * width);
-        a[3] = vld1q_s16(wiener_buffer + x + 3 * width);
-        a[4] = vld1q_s16(wiener_buffer + x + 4 * width);
-        const int16x8_t a_0_4 = vaddq_s16(a[0], a[4]);
-        int32x4_t sum[2];
-        sum[0] = sum[1] = vdupq_n_s32(0);
-        sum[0] = vmlal_n_s16(sum[0], vget_low_s16(a_0_4), filter_vertical[1]);
-        sum[1] = vmlal_n_s16(sum[1], vget_high_s16(a_0_4), filter_vertical[1]);
-        const uint8x8_t r = WienerVertical(a + 1, filter_vertical + 2, sum);
-        vst1_u8(dst + x, r);
-        x += 8;
-      } while (x < width);
-      wiener_buffer += width;
-      dst += dest_stride;
-    } while (--y != 0);
+    WienerVerticalTap5(wiener_buffer_vertical + width, width, height,
+                       filter_vertical, dst, dest_stride);
   } else if (number_zero_coefficients_vertical == 2) {
-    // 3-tap
-    wiener_buffer =
-        reinterpret_cast<int16_t*>(buffer->wiener_buffer) + 2 * width;
-    do {
-      int x = 0;
-      do {
-        int16x8_t a[3];
-        a[0] = vld1q_s16(wiener_buffer + x + 0 * width);
-        a[1] = vld1q_s16(wiener_buffer + x + 1 * width);
-        a[2] = vld1q_s16(wiener_buffer + x + 2 * width);
-        int32x4_t sum[2];
-        sum[0] = sum[1] = vdupq_n_s32(0);
-        const uint8x8_t r = WienerVertical(a, filter_vertical + 2, sum);
-        vst1_u8(dst + x, r);
-        x += 8;
-      } while (x < width);
-      wiener_buffer += width;
-      dst += dest_stride;
-    } while (--y != 0);
+    WienerVerticalTap3(wiener_buffer_vertical + 2 * width, width, height,
+                       filter_vertical, dst, dest_stride);
   } else {
-    // 1-tap
-    wiener_buffer =
-        reinterpret_cast<int16_t*>(buffer->wiener_buffer) + 3 * width;
-    do {
-      int x = 0;
-      do {
-        const int16x8_t a = vld1q_s16(wiener_buffer + x);
-        constexpr int vertical_rounding = -(1 << 11);
-        const int16x8_t rounding = vdupq_n_s16(vertical_rounding);
-        const int32x4_t sum = vaddq_s16(a, rounding);
-        const uint8x8_t r = vqrshrun_n_s16(sum, 4);
-        vst1_u8(dst + x, r);
-        x += 8;
-      } while (x < width);
-      wiener_buffer += width;
-      dst += dest_stride;
-    } while (--y != 0);
+    assert(number_zero_coefficients_vertical == 3);
+    WienerVerticalTap1(wiener_buffer_vertical + 3 * width, width, height, dst,
+                       dest_stride);
   }
 }
 
