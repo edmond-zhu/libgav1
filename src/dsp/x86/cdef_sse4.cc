@@ -381,11 +381,8 @@ inline uint32_t CostOdd(const __m128i a, const __m128i b,
 
 // Sum of squared elements.
 inline uint32_t SquareSum_S16(const __m128i a) {
-  const __m128i square_lo = Square_S32(_mm_cvtepi16_epi32(a));
-  const __m128i square_hi =
-      Square_S32(_mm_cvtepi16_epi32(_mm_srli_si128(a, 8)));
-  const __m128i c = _mm_add_epi32(square_hi, square_lo);
-  return SumVector_S32(c);
+  const __m128i square = _mm_madd_epi16(a, a);
+  return SumVector_S32(square);
 }
 
 void CdefDirection_SSE4_1(const void* const source, ptrdiff_t stride,
