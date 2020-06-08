@@ -45,6 +45,7 @@ struct Options {
   int threads = 1;
   bool frame_parallel = false;
   bool output_all_layers = false;
+  int operating_point = 0;
   int limit = 0;
   int skip = 0;
   int verbose = 0;
@@ -77,6 +78,8 @@ void PrintHelp(FILE* const fout) {
   fprintf(fout, "  --raw (Default true).\n");
   fprintf(fout, "  -v logging verbosity, can be used multiple times.\n");
   fprintf(fout, "  --all_layers.\n");
+  fprintf(fout,
+          "  --operating_point <integer between 0 and 31> (Default 0).\n");
   fprintf(fout,
           "  --frame_timing <file> Output per-frame timing to <file> in tsv"
           " format.\n   Yields meaningful results only when frame parallel is"
@@ -136,6 +139,14 @@ void ParseOptions(int argc, char* argv[], Options* const options) {
       options->frame_parallel = true;
     } else if (strcmp(argv[i], "--all_layers") == 0) {
       options->output_all_layers = true;
+    } else if (strcmp(argv[i], "--operating_point") == 0) {
+      if (++i >= argc || !absl::SimpleAtoi(argv[i], &value) || value < 0 ||
+          value >= 32) {
+        fprintf(stderr, "Missing/Invalid value for --operating_point.\n");
+        PrintHelp(stderr);
+        exit(EXIT_FAILURE);
+      }
+      options->operating_point = value;
     } else if (strcmp(argv[i], "--limit") == 0) {
       if (++i >= argc || !absl::SimpleAtoi(argv[i], &value) || value < 0) {
         fprintf(stderr, "Missing/Invalid value for --limit.\n");
@@ -263,6 +274,7 @@ int main(int argc, char* argv[]) {
   settings.threads = options.threads;
   settings.frame_parallel = options.frame_parallel;
   settings.output_all_layers = options.output_all_layers;
+  settings.operating_point = options.operating_point;
   settings.blocking_dequeue = true;
   settings.callback_private_data = &input_buffers;
   settings.release_input_buffer = ReleaseInputBuffer;

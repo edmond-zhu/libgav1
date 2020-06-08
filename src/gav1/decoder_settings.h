@@ -69,6 +69,8 @@ typedef struct Libgav1DecoderSettings {
   // A boolean. If set to 1, the decoder will output all the spatial and
   // temporal layers.
   int output_all_layers;
+  // Index of the operating point to decode.
+  int operating_point;
   // Mask indicating the post processing filters that need to be applied to the
   // reconstructed frame. Note this is an advanced setting and does not
   // typically need to be changed.
@@ -122,6 +124,8 @@ struct DecoderSettings {
   // If set to true, the decoder will output all the spatial and temporal
   // layers.
   bool output_all_layers = false;
+  // Index of the operating point to decode.
+  int operating_point = 0;
   // Mask indicating the post processing filters that need to be applied to the
   // reconstructed frame. Note this is an advanced setting and does not
   // typically need to be changed.

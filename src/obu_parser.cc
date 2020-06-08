@@ -31,10 +31,6 @@
 namespace libgav1 {
 namespace {
 
-// This is set to 0 since we only support one layer. This should be part of
-// DecoderSettings if we support more than one layer.
-constexpr int kOperatingPoint = 0;
-
 // 5.9.16.
 // Find the smallest value of k such that block_size << k is greater than or
 // equal to target.
@@ -335,6 +331,13 @@ bool ObuParser::ParseSequenceHeader(bool seen_frame_header) {
     const auto initial_display_delay_present_flag = static_cast<bool>(scratch);
     OBU_READ_LITERAL_OR_FAIL(5);
     sequence_header.operating_points = static_cast<int>(1 + scratch);
+    if (operating_point_ >= sequence_header.operating_points) {
+      LIBGAV1_DLOG(
+          ERROR,
+          "Invalid operating point: %d (valid range is [0,%d] inclusive).",
+          operating_point_, sequence_header.operating_points - 1);
+      return false;
+    }
     for (int i = 0; i < sequence_header.operating_points; ++i) {
       OBU_READ_LITERAL_OR_FAIL(12);
       sequence_header.operating_point_idc[i] = static_cast<int>(scratch);
@@ -474,7 +477,7 @@ bool ObuParser::ParseSequenceHeader(bool seen_frame_header) {
   // OperatingPointIdc is equal to 0, then obu_extension_flag is equal to 0 for
   // all OBUs that follow this sequence header until the next sequence header.
   extension_disallowed_ =
-      (sequence_header_.operating_point_idc[kOperatingPoint] == 0);
+      (sequence_header_.operating_point_idc[operating_point_] == 0);
   return true;
 }
 
@@ -2669,11 +2672,12 @@ StatusCode ObuParser::ParseOneFrame(RefCountedBufferPtr* const current_frame) {
     const ObuType obu_type = obu_header.type;
     if (obu_type != kObuSequenceHeader && obu_type != kObuTemporalDelimiter &&
         has_sequence_header_ &&
-        sequence_header_.operating_point_idc[kOperatingPoint] != 0 &&
+        sequence_header_.operating_point_idc[operating_point_] != 0 &&
         obu_header.has_extension &&
-        (!InTemporalLayer(sequence_header_.operating_point_idc[kOperatingPoint],
-                          obu_header.temporal_id) ||
-         !InSpatialLayer(sequence_header_.operating_point_idc[kOperatingPoint],
+        (!InTemporalLayer(
+             sequence_header_.operating_point_idc[operating_point_],
+             obu_header.temporal_id) ||
+         !InSpatialLayer(sequence_header_.operating_point_idc[operating_point_],
                          obu_header.spatial_id))) {
       obu_headers_.pop_back();
       bit_reader_->SkipBytes(obu_size);

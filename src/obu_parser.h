@@ -248,10 +248,11 @@ struct ObuTileGroup {
 
 class ObuParser : public Allocable {
  public:
-  ObuParser(const uint8_t* const data, size_t size,
+  ObuParser(const uint8_t* const data, size_t size, int operating_point,
             BufferPool* const buffer_pool, DecoderState* const decoder_state)
       : data_(data),
         size_(size),
+        operating_point_(operating_point),
         buffer_pool_(buffer_pool),
         decoder_state_(*decoder_state) {}
 
@@ -379,6 +380,7 @@ class ObuParser : public Allocable {
   std::unique_ptr<RawBitReader> bit_reader_;
   const uint8_t* data_;
   size_t size_;
+  const int operating_point_;
 
   // OBU elements. Only valid if ParseOneFrame() completes successfully.
   Vector<ObuHeader> obu_headers_;

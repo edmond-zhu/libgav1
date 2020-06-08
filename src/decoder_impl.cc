@@ -171,8 +171,8 @@ StatusCode DecoderImpl::InitializeFrameThreadPoolAndTemporalUnitQueue(
   is_frame_parallel_ = false;
   if (settings_.frame_parallel) {
     DecoderState state;
-    std::unique_ptr<ObuParser> obu(
-        new (std::nothrow) ObuParser(data, size, &buffer_pool_, &state));
+    std::unique_ptr<ObuParser> obu(new (std::nothrow) ObuParser(
+        data, size, settings_.operating_point, &buffer_pool_, &state));
     if (obu == nullptr) {
       LIBGAV1_DLOG(ERROR, "Failed to allocate OBU parser.");
       return kStatusOutOfMemory;
@@ -359,7 +359,8 @@ StatusCode DecoderImpl::ParseAndSchedule(const uint8_t* data, size_t size,
   TemporalUnit temporal_unit(data, size, user_private_data,
                              buffer_private_data);
   std::unique_ptr<ObuParser> obu(new (std::nothrow) ObuParser(
-      temporal_unit.data, temporal_unit.size, &buffer_pool_, &state_));
+      temporal_unit.data, temporal_unit.size, settings_.operating_point,
+      &buffer_pool_, &state_));
   if (obu == nullptr) {
     LIBGAV1_DLOG(ERROR, "Failed to allocate OBU parser.");
     return kStatusOutOfMemory;
@@ -538,7 +539,8 @@ StatusCode DecoderImpl::DecodeFrame(EncodedFrame* const encoded_frame) {
 StatusCode DecoderImpl::DecodeTemporalUnit(const TemporalUnit& temporal_unit,
                                            const DecoderBuffer** out_ptr) {
   std::unique_ptr<ObuParser> obu(new (std::nothrow) ObuParser(
-      temporal_unit.data, temporal_unit.size, &buffer_pool_, &state_));
+      temporal_unit.data, temporal_unit.size, settings_.operating_point,
+      &buffer_pool_, &state_));
   if (obu == nullptr) {
     LIBGAV1_DLOG(ERROR, "Failed to allocate OBU parser.");
     return kStatusOutOfMemory;
