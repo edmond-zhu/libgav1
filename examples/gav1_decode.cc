@@ -12,9 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <cerrno>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <deque>
 #include <memory>
@@ -88,7 +90,8 @@ void PrintHelp(FILE* const fout) {
   fprintf(fout, "  --post_filter_mask <integer> (Default 0x1f).\n");
   fprintf(fout,
           "   Mask indicating which post filters should be applied to the"
-          " reconstructed\n   frame. From LSB:\n");
+          " reconstructed\n   frame. This may be given as octal, decimal or"
+          " hexadecimal. From LSB:\n");
   fprintf(fout, "     Bit 0: Loop filter (deblocking filter)\n");
   fprintf(fout, "     Bit 1: Cdef\n");
   fprintf(fout, "     Bit 2: SuperRes\n");
@@ -162,9 +165,13 @@ void ParseOptions(int argc, char* argv[], Options* const options) {
       }
       options->skip = value;
     } else if (strcmp(argv[i], "--post_filter_mask") == 0) {
+      errno = 0;
+      char* endptr = nullptr;
+      value = (++i >= argc) ? -1
+                            // NOLINTNEXTLINE(runtime/deprecated_fn)
+                            : static_cast<int32_t>(strtol(argv[i], &endptr, 0));
       // Only the last 5 bits of the mask can be set.
-      if (++i >= argc || !absl::SimpleAtoi(argv[i], &value) ||
-          (value & ~31) != 0) {
+      if ((value & ~31) != 0 || errno != 0 || endptr == argv[i]) {
         fprintf(stderr, "Invalid value for --post_filter_mask.\n");
         PrintHelp(stderr);
         exit(EXIT_FAILURE);
