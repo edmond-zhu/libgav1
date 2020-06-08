@@ -81,6 +81,7 @@ void PrintHelp(FILE* const fout) {
           "  --frame_timing <file> Output per-frame timing to <file> in tsv"
           " format.\n   Yields meaningful results only when frame parallel is"
           " off.\n");
+  fprintf(fout, "\nAdvanced settings:\n");
   fprintf(fout, "  --post_filter_mask <integer> (Default 0x1f).\n");
   fprintf(fout,
           "   Mask indicating which post filters should be applied to the"
@@ -257,7 +258,7 @@ int main(int argc, char* argv[]) {
 
   InputBuffers input_buffers;
   libgav1::Decoder decoder;
-  libgav1::DecoderSettings settings = {};
+  libgav1::DecoderSettings settings;
   settings.post_filter_mask = options.post_filter_mask;
   settings.threads = options.threads;
   settings.frame_parallel = options.frame_parallel;
