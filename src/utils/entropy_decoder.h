@@ -75,7 +75,7 @@ class DaalaBitReader : public BitReader {
   // symbol_count == 2.
   inline int ReadSymbolImpl(const uint16_t* cdf);
   // ReadSymbolN is a specialization of ReadSymbol for symbol_count == N.
-  int ReadSymbol4(uint16_t* cdf);
+  LIBGAV1_ALWAYS_INLINE int ReadSymbol4(uint16_t* cdf);
   // ReadSymbolImplN is a specialization of ReadSymbolImpl for
   // symbol_count == N.
   LIBGAV1_ALWAYS_INLINE int ReadSymbolImpl8(const uint16_t* cdf);
