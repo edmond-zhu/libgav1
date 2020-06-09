@@ -40,6 +40,11 @@ namespace {
 
 #include "src/dsp/cdef.inc"
 
+// Used when calculating odd |cost[x]| values.
+// Holds elements 1 3 5 7 7 7 7 7
+alignas(16) constexpr uint32_t kCdefDivisionTableOddPadded[] = {
+    420, 210, 140, 105, 105, 105, 105, 105};
+
 // ----------------------------------------------------------------------------
 // Refer to CdefDirection_C().
 //
@@ -335,8 +340,6 @@ inline uint32_t SumVector_S32(__m128i a) {
   return _mm_cvtsi128_si32(a);
 }
 
-inline __m128i Square_S32(__m128i a) { return _mm_mullo_epi32(a, a); }
-
 // |cost[0]| and |cost[4]| square the input and sum with the corresponding
 // element from the other end of the vector:
 // |kCdefDivisionTable[]| element:
@@ -345,7 +348,6 @@ inline __m128i Square_S32(__m128i a) { return _mm_mullo_epi32(a, a); }
 // cost[0] += Square(partial[0][7]) * kCdefDivisionTable[8];
 inline uint32_t Cost0Or4(const __m128i a, const __m128i b,
                          const __m128i division_table[2]) {
-  // TODO(slavarnway): Change AddPartial high output order, then remove shuffle.
   // Reverse and clear upper 2 bytes.
   const __m128i reverser =
       _mm_set_epi32(0x80800100, 0x03020504, 0x07060908, 0x0b0a0d0c);
@@ -366,24 +368,24 @@ inline uint32_t Cost0Or4(const __m128i a, const __m128i b,
 }
 
 inline uint32_t CostOdd(const __m128i a, const __m128i b,
-                        const __m128i division_table) {
-  const __m128i a_lo_square = Square_S32(_mm_cvtepi16_epi32(a));
-  const __m128i a_hi_square =
-      Square_S32(_mm_cvtepi16_epi32(_mm_srli_si128(a, 8)));
-  // Swap element 0 and element 2. This pairs partial[i][10 - j] with
-  // kCdefDivisionTable[2*j+1].
-  const __m128i b_lo_square =
-      _mm_shuffle_epi32(Square_S32(_mm_cvtepi16_epi32(b)), 0x06);
-  // First terms are indices 3-7.
-  __m128i c = _mm_srli_si128(a_lo_square, 12);
-  c = _mm_add_epi32(c, a_hi_square);
-  c = _mm_mullo_epi32(c, _mm_set1_epi32(kCdefDivisionTable[7]));
+                        const __m128i division_table[2]) {
+  // Reverse and clear upper 10 bytes.
+  const __m128i reverser =
+      _mm_set_epi32(0x80808080, 0x80808080, 0x80800100, 0x03020504);
+  // 10 09 08 ZZ ZZ ZZ ZZ ZZ
+  const __m128i b_reversed = _mm_shuffle_epi8(b, reverser);
+  // 00 10 01 09 02 08 03 ZZ
+  const __m128i ab_lo = _mm_unpacklo_epi16(a, b_reversed);
+  // 04 ZZ 05 ZZ 06 ZZ 07 ZZ
+  const __m128i ab_hi = _mm_unpackhi_epi16(a, b_reversed);
 
-  // cost[i] += (Square(base_partial[i][j]) + Square(base_partial[i][10 - j])) *
-  //          kCdefDivisionTable[2 * j + 1];
-  const __m128i second_cost = _mm_add_epi32(a_lo_square, b_lo_square);
-  c = _mm_add_epi32(c, _mm_mullo_epi32(second_cost, division_table));
-  return SumVector_S32(c);
+  // Square(partial[0][i]) + Square(partial[0][10 - i])
+  const __m128i square_lo = _mm_madd_epi16(ab_lo, ab_lo);
+  const __m128i square_hi = _mm_madd_epi16(ab_hi, ab_hi);
+
+  const __m128i c = _mm_mullo_epi32(square_lo, division_table[0]);
+  const __m128i d = _mm_mullo_epi32(square_hi, division_table[1]);
+  return SumVector_S32(_mm_add_epi32(c, d));
 }
 
 // Sum of squared elements.
@@ -411,7 +413,9 @@ void CdefDirection_SSE4_1(const void* const source, ptrdiff_t stride,
   cost[0] = Cost0Or4(partial_lo[0], partial_hi[0], division_table);
   cost[4] = Cost0Or4(partial_lo[4], partial_hi[4], division_table);
 
-  const __m128i division_table_odd = LoadAligned16(kCdefDivisionTableOdd);
+  const __m128i division_table_odd[2] = {
+      LoadUnaligned16(kCdefDivisionTableOddPadded),
+      LoadUnaligned16(kCdefDivisionTableOddPadded + 4)};
 
   cost[1] = CostOdd(partial_lo[1], partial_hi[1], division_table_odd);
   cost[3] = CostOdd(partial_lo[3], partial_hi[3], division_table_odd);
