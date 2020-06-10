@@ -51,7 +51,7 @@ union RestorationBuffer {
   // For wiener filter.
   // The array |intermediate| in Section 7.17.4, the intermediate results
   // between the horizontal and vertical filters.
-  alignas(kMaxAlignment) uint16_t
+  alignas(kMaxAlignment) int16_t
       wiener_buffer[(kRestorationUnitHeight + kWienerFilterTaps - 1) *
                     kRestorationUnitWidth];
 };

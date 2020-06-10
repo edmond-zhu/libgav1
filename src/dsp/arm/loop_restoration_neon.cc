@@ -92,28 +92,18 @@ inline int16x8x2_t WienerHorizontal2(const uint8x16_t s0, const uint8x16_t s1,
 
 inline void WienerHorizontalSum(const uint8x8_t s[3], const int16_t filter[2],
                                 int16x8_t sum, int16_t* const dst) {
+  constexpr int offset =
+      1 << (8 + kWienerFilterBits - kInterRoundBitsHorizontal - 1);
+  constexpr int limit = (offset << 2) - 1;
   const int16x8_t s_0_2 = vreinterpretq_s16_u16(vaddl_u8(s[0], s[2]));
+  const int16x8_t s_1 = vreinterpretq_s16_u16(vmovl_u8(s[1]));
   sum = vmlaq_n_s16(sum, s_0_2, filter[0]);
-  sum = vmlaq_n_s16(sum, vreinterpretq_s16_u16(vmovl_u8(s[1])), filter[1]);
-  sum = vrshrq_n_s16(sum, kInterRoundBitsHorizontal);
-  // Delaying |horizontal_rounding| until after down shifting allows the sum to
-  // stay in 16 bits.
-  // |horizontal_rounding| = 1 << (bitdepth + kWienerFilterBits - 1)
-  //                         1 << (       8 +                 7 - 1)
-  // Plus |kInterRoundBitsHorizontal| and it works out to 1 << 11.
-  sum = vaddq_s16(sum, vdupq_n_s16(1 << 11));
-  // Just like |horizontal_rounding|, adding |filter[3]| at this point allows
-  // the sum to stay in 16 bits.
-  // But wait! We *did* calculate |filter[3]| and used it in the sum! But it was
-  // offset by 128. Fix that here:
-  // |src[3]| * 128 >> 3 == |src[3]| << 4
-  sum = vaddq_s16(sum, vreinterpretq_s16_u16(vshll_n_u8(s[1], 4)));
-  // Saturate to
-  // [0,
-  // (1 << (bitdepth + 1 + kWienerFilterBits - kInterRoundBitsHorizontal)) - 1)]
-  // (1 << (       8 + 1 +                 7 -                         3)) - 1)
-  sum = vminq_s16(sum, vdupq_n_s16((1 << 13) - 1));
-  sum = vmaxq_s16(sum, vdupq_n_s16(0));
+  sum = vmlaq_n_s16(sum, s_1, filter[1]);
+  // Calculate scaled down offset correction, and add to sum here to prevent
+  // signed 16 bit outranging.
+  sum = vrsraq_n_s16(vshlq_n_s16(s_1, 4), sum, kInterRoundBitsHorizontal);
+  sum = vmaxq_s16(sum, vdupq_n_s16(-offset));
+  sum = vminq_s16(sum, vdupq_n_s16(limit - offset));
   vst1q_s16(dst, sum);
 }
 
@@ -229,10 +219,8 @@ inline void WienerHorizontalTap1(const uint8_t* src, const ptrdiff_t stride,
       const uint8x16_t s = vld1q_u8(src_ptr);
       const uint8x8_t s0 = vget_low_u8(s);
       const uint8x8_t s1 = vget_high_u8(s);
-      const int16x8_t d0 = vaddq_s16(vdupq_n_s16(1 << 11),
-                                     vreinterpretq_s16_u16(vshll_n_u8(s0, 4)));
-      const int16x8_t d1 = vaddq_s16(vdupq_n_s16(1 << 11),
-                                     vreinterpretq_s16_u16(vshll_n_u8(s1, 4)));
+      const int16x8_t d0 = vreinterpretq_s16_u16(vshll_n_u8(s0, 4));
+      const int16x8_t d1 = vreinterpretq_s16_u16(vshll_n_u8(s1, 4));
       vst1q_s16(*wiener_buffer + 0, d0);
       vst1q_s16(*wiener_buffer + 8, d1);
       src_ptr += 16;
@@ -255,14 +243,7 @@ inline int32x4x2_t WienerVertical2(const int16x8_t a0, const int16x8_t a1,
 
 inline uint8x8_t WienerVertical(const int16x8_t a[3], const int16_t filter[2],
                                 const int32x4x2_t sum) {
-  // -(1 << (bitdepth + kInterRoundBitsVertical - 1))
-  // -(1 << (       8 +                      11 - 1))
-  constexpr int vertical_rounding = -(1 << 18);
-  const int32x4_t rounding = vdupq_n_s32(vertical_rounding);
-  int32x4x2_t d;
-  d.val[0] = vaddq_s32(sum.val[0], rounding);
-  d.val[1] = vaddq_s32(sum.val[1], rounding);
-  d = WienerVertical2(a[0], a[2], filter[0], d);
+  int32x4x2_t d = WienerVertical2(a[0], a[2], filter[0], sum);
   d.val[0] = vmlal_n_s16(d.val[0], vget_low_s16(a[1]), filter[1]);
   d.val[1] = vmlal_n_s16(d.val[1], vget_high_s16(a[1]), filter[1]);
   const uint16x4_t sum_lo_16 = vqrshrun_n_s32(d.val[0], 11);
@@ -371,10 +352,7 @@ inline void WienerVerticalTap1(const int16_t* wiener_buffer,
     int x = width8;
     do {
       const int16x8_t a = vld1q_s16(wiener_ptr);
-      constexpr int vertical_rounding = -(1 << 11);
-      const int16x8_t rounding = vdupq_n_s16(vertical_rounding);
-      const int16x8_t sum = vaddq_s16(a, rounding);
-      const uint8x8_t r = vqrshrun_n_s16(sum, 4);
+      const uint8x8_t r = vqrshrun_n_s16(a, 4);
       vst1_u8(dst_ptr, r);
       wiener_ptr += 8;
       dst_ptr += 8;
@@ -401,9 +379,7 @@ void WienerFilter_NEON(const void* const source, void* const dest,
   const int number_rows_to_skip =
       std::max(number_zero_coefficients_vertical, 1);
   const ptrdiff_t wiener_stride = Align(width, 16);
-  // Casting once here saves a lot of vreinterpret() calls.
-  int16_t* const wiener_buffer_vertical =
-      reinterpret_cast<int16_t*>(buffer->wiener_buffer);
+  int16_t* const wiener_buffer_vertical = buffer->wiener_buffer;
   // The values are saturated to 13 bits before storing.
   int16_t* wiener_buffer_horizontal =
       wiener_buffer_vertical + number_rows_to_skip * wiener_stride;

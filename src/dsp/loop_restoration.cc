@@ -149,27 +149,27 @@ inline void WienerHorizontal(const Pixel* source, const ptrdiff_t source_stride,
                              const int width, const int height,
                              const int16_t* const filter,
                              const int number_zero_coefficients,
-                             uint16_t** wiener_buffer) {
+                             int16_t** wiener_buffer) {
   constexpr int kCenterTap = kWienerFilterTaps / 2;
   constexpr int kRoundBitsHorizontal = (bitdepth == 12)
                                            ? kInterRoundBitsHorizontal12bpp
                                            : kInterRoundBitsHorizontal;
-  constexpr int limit =
-      (1 << (bitdepth + 1 + kWienerFilterBits - kRoundBitsHorizontal)) - 1;
-  constexpr int horizontal_rounding = 1 << (bitdepth + kWienerFilterBits - 1);
+  constexpr int offset =
+      1 << (bitdepth + kWienerFilterBits - kRoundBitsHorizontal - 1);
+  constexpr int limit = (offset << 2) - 1;
   int y = height;
   do {
     int x = 0;
     do {
       // sum fits into 16 bits only when bitdepth = 8.
-      int sum = horizontal_rounding;
+      int sum = 0;
       for (int k = number_zero_coefficients; k < kCenterTap; ++k) {
         sum +=
             filter[k] * (source[x + k] + source[x + kWienerFilterTaps - 1 - k]);
       }
       sum += filter[kCenterTap] * source[x + kCenterTap];
       const int rounded_sum = RightShiftWithRounding(sum, kRoundBitsHorizontal);
-      (*wiener_buffer)[x] = static_cast<uint16_t>(Clip3(rounded_sum, 0, limit));
+      (*wiener_buffer)[x] = Clip3(rounded_sum, -offset, limit - offset);
     } while (++x < width);
     source += source_stride;
     *wiener_buffer += width;
@@ -177,21 +177,20 @@ inline void WienerHorizontal(const Pixel* source, const ptrdiff_t source_stride,
 }
 
 template <int bitdepth, typename Pixel>
-inline void WienerVertical(const uint16_t* wiener_buffer, const int width,
+inline void WienerVertical(const int16_t* wiener_buffer, const int width,
                            const int height, const int16_t* const filter,
                            const int number_zero_coefficients, void* const dest,
                            const ptrdiff_t dest_stride) {
   constexpr int kCenterTap = kWienerFilterTaps / 2;
   constexpr int kRoundBitsVertical =
       (bitdepth == 12) ? kInterRoundBitsVertical12bpp : kInterRoundBitsVertical;
-  constexpr int vertical_rounding = -(1 << (bitdepth + kRoundBitsVertical - 1));
   auto* dst = static_cast<Pixel*>(dest);
   int y = height;
   do {
     int x = 0;
     do {
       // sum needs 32 bits.
-      int sum = vertical_rounding;
+      int sum = 0;
       for (int k = number_zero_coefficients; k < kCenterTap; ++k) {
         sum += filter[k] *
                (wiener_buffer[k * width + x] +
