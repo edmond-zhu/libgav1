@@ -499,7 +499,7 @@ class PostFilter {
   LoopRestorationInfo* const restoration_info_;
   // Pointer to the line buffer used by ApplySuperRes(). If SuperRes is on, then
   // the buffer will be large enough to hold one downscaled row +
-  // kSuperResHorizontalBorder.
+  // 2 * kSuperResHorizontalBorder + kSuperResHorizontalPadding.
   uint8_t* const superres_line_buffer_;
   const BlockParametersHolder& block_parameters_;
   // Frame buffer to hold cdef filtered frame.

@@ -142,9 +142,10 @@ void PostFilter::ApplySuperResThreaded() {
   // The size of the line buffer required by each thread. In the multi-threaded
   // case we are guaranteed to have a line buffer which can store |num_threads|
   // rows at the same time.
-  const size_t line_buffer_size = (MultiplyBy4(frame_header_.columns4x4) +
-                                   MultiplyBy2(kSuperResHorizontalBorder)) *
-                                  pixel_size_;
+  const size_t line_buffer_size =
+      (MultiplyBy4(frame_header_.columns4x4) +
+       MultiplyBy2(kSuperResHorizontalBorder) + kSuperResHorizontalPadding) *
+      pixel_size_;
   size_t line_buffer_offset = 0;
   BlockingCounter pending_workers(num_threads - 1);
   for (int i = 0, row4x4_start = 0; i < num_threads; ++i,

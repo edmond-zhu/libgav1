@@ -901,10 +901,10 @@ StatusCode DecoderImpl::DecodeTiles(
                  : threading_strategy.post_filter_thread_pool()->num_threads());
     const size_t superres_line_buffer_size =
         num_threads *
-        ((MultiplyBy4(frame_header.columns4x4) +
-          MultiplyBy2(kSuperResHorizontalBorder)) *
-         (sequence_header.color_config.bitdepth == 8 ? sizeof(uint8_t)
-                                                     : sizeof(uint16_t)));
+        (MultiplyBy4(frame_header.columns4x4) +
+         MultiplyBy2(kSuperResHorizontalBorder) + kSuperResHorizontalPadding) *
+        (sequence_header.color_config.bitdepth == 8 ? sizeof(uint8_t)
+                                                    : sizeof(uint16_t));
     if (!frame_scratch_buffer->superres_line_buffer.Resize(
             superres_line_buffer_size)) {
       LIBGAV1_DLOG(ERROR, "Failed to resize superres line buffer.\n");
