@@ -391,7 +391,7 @@ void WienerFilter_NEON(const void* const source, void* const dest,
                              filter_vertical);
 
   // horizontal filtering.
-  // Over-reads up to 16 - 2 * |kRestorationHorizontalBorder| values.
+  // Over-reads up to 15 - |kRestorationHorizontalBorder| values.
   const int height_horizontal =
       height + kWienerFilterTaps - 1 - 2 * number_rows_to_skip;
   const auto* src = static_cast<const uint8_t*>(source) -
@@ -405,6 +405,7 @@ void WienerFilter_NEON(const void* const source, void* const dest,
                          height_horizontal, filter_horizontal,
                          &wiener_buffer_horizontal);
   } else if (number_zero_coefficients_horizontal == 2) {
+    // The maximum over-reads happen here.
     WienerHorizontalTap3(src - 1, source_stride, wiener_stride,
                          height_horizontal, filter_horizontal,
                          &wiener_buffer_horizontal);
