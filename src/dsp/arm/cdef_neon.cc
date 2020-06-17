@@ -658,7 +658,7 @@ void CdefFilter_NEON(const uint16_t* src, const ptrdiff_t src_stride,
       dst += dst_stride;
       --y;
     } else {
-      src += 2 * src_stride;
+      src += src_stride << 1;
       StoreLo4(dst, dst_pixel);
       dst += dst_stride;
       StoreHi4(dst, dst_pixel);

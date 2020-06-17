@@ -686,7 +686,7 @@ void CdefFilter_SSE4_1(const uint16_t* src, const ptrdiff_t src_stride,
       dst += dst_stride;
       --y;
     } else {
-      src += 2 * src_stride;
+      src += src_stride << 1;
       Store4(dst, result);
       dst += dst_stride;
       Store4(dst, _mm_srli_si128(result, 4));
