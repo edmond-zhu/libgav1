@@ -28,7 +28,6 @@
 #include "src/dsp/dsp.h"
 #include "src/dsp/x86/common_sse4.h"
 #include "src/utils/common.h"
-#include "src/utils/compiler_attributes.h"
 #include "src/utils/constants.h"
 
 namespace libgav1 {
@@ -43,171 +42,574 @@ namespace {
 // filter[1] = filter[5], 5 bits, min = -23, max = 8.
 // filter[2] = filter[4], 6 bits, min = -17, max = 46.
 // filter[3] = 128 - (filter[0] + filter[1] + filter[2]) * 2.
-// int8_t is used for the sse4 code, so in order to fit in an int8_t, the 128
-// offset must be removed from filter[3].
-// filter[3] = 0 - (filter[0] + filter[1] + filter[2]) * 2.
-// The 128 offset will be added back in the loop.
+template <typename T, int center>
 inline void PopulateWienerCoefficients(
-    const RestorationUnitInfo& restoration_info, int direction,
-    int8_t* const filter) {
-  filter[3] = 0;
-  for (int i = 0; i < 3; ++i) {
-    const int8_t coeff = restoration_info.wiener_info.filter[direction][i];
-    filter[i] = coeff;
-    filter[6 - i] = coeff;
-    filter[3] -= MultiplyBy2(coeff);
+    const RestorationUnitInfo& restoration_info, const int direction,
+    T filter[center + 1]) {
+  // In order to keep the horizontal pass intermediate values within 16 bits we
+  // initialize |filter[center]| to 0 instead of 128.
+  // The 128 offset will be added back in the loop.
+  if (direction == WienerInfo::kHorizontal) {
+    filter[center] = 0;
+  } else {
+    assert(direction == WienerInfo::kVertical);
+    filter[center] = static_cast<T>(128);
   }
-
-  // The Wiener filter has only 7 coefficients, but we run it as an 8-tap
-  // filter in SIMD. The 8th coefficient of the filter must be set to 0.
-  filter[7] = 0;
+  for (int i = 0; i < center; ++i) {
+    const T coeff =
+        restoration_info.wiener_info.filter[direction][3 - center + i];
+    filter[i] = coeff;
+    filter[center] -= MultiplyBy2(coeff);
+  }
 }
 
-// This function calls LoadUnaligned16() to read 10 bytes from the |source|
-// buffer. Since the LoadUnaligned16() call over-reads 6 bytes, the |source|
-// buffer must be at least (height + kWienerFilterTaps - 1) * source_stride + 6
-// bytes long.
-void WienerFilter_SSE4_1(const void* source, void* const dest,
-                         const RestorationUnitInfo& restoration_info,
-                         ptrdiff_t source_stride, ptrdiff_t dest_stride,
-                         int width, int height,
-                         RestorationBuffer* const buffer) {
-  int8_t filter[kWienerFilterTaps + 1];
+inline void WienerHorizontalTap7Kernel(const __m128i s[2],
+                                       const __m128i filter[4],
+                                       int16_t* const wiener_buffer) {
   const int limit =
       (1 << (8 + 1 + kWienerFilterBits - kInterRoundBitsHorizontal)) - 1;
-  const auto* src = static_cast<const uint8_t*>(source);
-  auto* dst = static_cast<uint8_t*>(dest);
-  const ptrdiff_t buffer_stride = (width + 7) & ~7;
-  auto* wiener_buffer = buffer->wiener_buffer + buffer_stride;
-  // horizontal filtering.
-  PopulateWienerCoefficients(restoration_info, WienerInfo::kHorizontal, filter);
-  const int center_tap = 3;
-  src -= (center_tap - 1) * source_stride + center_tap;
-
-  const int horizontal_rounding =
+  const int offset =
       1 << (8 + kWienerFilterBits - kInterRoundBitsHorizontal - 1);
-  const __m128i v_horizontal_rounding =
-      _mm_shufflelo_epi16(_mm_cvtsi32_si128(horizontal_rounding), 0);
-  const __m128i v_limit = _mm_shufflelo_epi16(_mm_cvtsi32_si128(limit), 0);
-  const __m128i v_horizontal_filter = LoadLo8(filter);
-  __m128i v_k1k0 = _mm_shufflelo_epi16(v_horizontal_filter, 0x0);
-  __m128i v_k3k2 = _mm_shufflelo_epi16(v_horizontal_filter, 0x55);
-  __m128i v_k5k4 = _mm_shufflelo_epi16(v_horizontal_filter, 0xaa);
-  __m128i v_k7k6 = _mm_shufflelo_epi16(v_horizontal_filter, 0xff);
-  const __m128i v_round_0 = _mm_shufflelo_epi16(
-      _mm_cvtsi32_si128(1 << (kInterRoundBitsHorizontal - 1)), 0);
-  const __m128i v_round_0_shift = _mm_cvtsi32_si128(kInterRoundBitsHorizontal);
-  const __m128i v_offset_shift =
-      _mm_cvtsi32_si128(7 - kInterRoundBitsHorizontal);
+  const __m128i offsets = _mm_set1_epi16(-offset);
+  const __m128i limits = _mm_set1_epi16(limit - offset);
+  const __m128i round = _mm_set1_epi16(1 << (kInterRoundBitsHorizontal - 1));
+  const auto s01 = _mm_alignr_epi8(s[1], s[0], 1);
+  const auto s23 = _mm_alignr_epi8(s[1], s[0], 5);
+  const auto s45 = _mm_alignr_epi8(s[1], s[0], 9);
+  const auto s67 = _mm_alignr_epi8(s[1], s[0], 13);
+  const __m128i madd01 = _mm_maddubs_epi16(s01, filter[0]);
+  const __m128i madd23 = _mm_maddubs_epi16(s23, filter[1]);
+  const __m128i madd45 = _mm_maddubs_epi16(s45, filter[2]);
+  const __m128i madd67 = _mm_maddubs_epi16(s67, filter[3]);
+  const __m128i madd0123 = _mm_add_epi16(madd01, madd23);
+  const __m128i madd4567 = _mm_add_epi16(madd45, madd67);
+  // The sum range here is [-128 * 255, 90 * 255].
+  const __m128i madd = _mm_add_epi16(madd0123, madd4567);
+  const __m128i sum = _mm_add_epi16(madd, round);
+  const __m128i rounded_sum0 = _mm_srai_epi16(sum, kInterRoundBitsHorizontal);
+  // Calculate scaled down offset correction, and add to sum here to prevent
+  // signed 16 bit outranging.
+  const __m128i s_3x128 =
+      _mm_slli_epi16(_mm_srli_epi16(s23, 8), 7 - kInterRoundBitsHorizontal);
+  const __m128i rounded_sum1 = _mm_add_epi16(rounded_sum0, s_3x128);
+  const __m128i d0 = _mm_max_epi16(rounded_sum1, offsets);
+  const __m128i d1 = _mm_min_epi16(d0, limits);
+  StoreAligned16(wiener_buffer, d1);
+}
 
-  int y = height + kWienerFilterTaps - 3;
+inline void WienerHorizontalTap5Kernel(const __m128i s[2],
+                                       const __m128i filter[3],
+                                       int16_t* const wiener_buffer) {
+  const int limit =
+      (1 << (8 + 1 + kWienerFilterBits - kInterRoundBitsHorizontal)) - 1;
+  const int offset =
+      1 << (8 + kWienerFilterBits - kInterRoundBitsHorizontal - 1);
+  const __m128i offsets = _mm_set1_epi16(-offset);
+  const __m128i limits = _mm_set1_epi16(limit - offset);
+  const __m128i round = _mm_set1_epi16(1 << (kInterRoundBitsHorizontal - 1));
+  const auto s01 = _mm_alignr_epi8(s[1], s[0], 1);
+  const auto s23 = _mm_alignr_epi8(s[1], s[0], 5);
+  const auto s45 = _mm_alignr_epi8(s[1], s[0], 9);
+  const __m128i madd01 = _mm_maddubs_epi16(s01, filter[0]);
+  const __m128i madd23 = _mm_maddubs_epi16(s23, filter[1]);
+  const __m128i madd45 = _mm_maddubs_epi16(s45, filter[2]);
+  const __m128i madd0123 = _mm_add_epi16(madd01, madd23);
+  // The sum range here is [-128 * 255, 90 * 255].
+  const __m128i madd = _mm_add_epi16(madd0123, madd45);
+  const __m128i sum = _mm_add_epi16(madd, round);
+  const __m128i rounded_sum0 = _mm_srai_epi16(sum, kInterRoundBitsHorizontal);
+  // Calculate scaled down offset correction, and add to sum here to prevent
+  // signed 16 bit outranging.
+  const __m128i s_3x128 =
+      _mm_srli_epi16(_mm_slli_epi16(s23, 8), kInterRoundBitsHorizontal + 1);
+  const __m128i rounded_sum1 = _mm_add_epi16(rounded_sum0, s_3x128);
+  const __m128i d0 = _mm_max_epi16(rounded_sum1, offsets);
+  const __m128i d1 = _mm_min_epi16(d0, limits);
+  StoreAligned16(wiener_buffer, d1);
+}
+
+inline void WienerHorizontalTap3Kernel(const __m128i s[2],
+                                       const __m128i filter[2],
+                                       int16_t* const wiener_buffer) {
+  const int limit =
+      (1 << (8 + 1 + kWienerFilterBits - kInterRoundBitsHorizontal)) - 1;
+  const int offset =
+      1 << (8 + kWienerFilterBits - kInterRoundBitsHorizontal - 1);
+  const __m128i offsets = _mm_set1_epi16(-offset);
+  const __m128i limits = _mm_set1_epi16(limit - offset);
+  const __m128i round = _mm_set1_epi16(1 << (kInterRoundBitsHorizontal - 1));
+  const auto s01 = _mm_alignr_epi8(s[1], s[0], 1);
+  const auto s23 = _mm_alignr_epi8(s[1], s[0], 5);
+  const __m128i madd01 = _mm_maddubs_epi16(s01, filter[0]);
+  const __m128i madd23 = _mm_maddubs_epi16(s23, filter[1]);
+  // The sum range here is [-128 * 255, 90 * 255].
+  const __m128i madd = _mm_add_epi16(madd01, madd23);
+  const __m128i sum = _mm_add_epi16(madd, round);
+  const __m128i rounded_sum0 = _mm_srai_epi16(sum, kInterRoundBitsHorizontal);
+  // Calculate scaled down offset correction, and add to sum here to prevent
+  // signed 16 bit outranging.
+  const __m128i s_3x128 =
+      _mm_slli_epi16(_mm_srli_epi16(s01, 8), 7 - kInterRoundBitsHorizontal);
+  const __m128i rounded_sum1 = _mm_add_epi16(rounded_sum0, s_3x128);
+  const __m128i d0 = _mm_max_epi16(rounded_sum1, offsets);
+  const __m128i d1 = _mm_min_epi16(d0, limits);
+  StoreAligned16(wiener_buffer, d1);
+}
+
+inline void WienerHorizontalTap7(const uint8_t* src, const ptrdiff_t src_stride,
+                                 const ptrdiff_t width, const int height,
+                                 const __m128i coefficients,
+                                 int16_t** const wiener_buffer) {
+  __m128i filter[4];
+  filter[0] = _mm_shuffle_epi8(coefficients, _mm_set1_epi16(0x0100));
+  filter[1] = _mm_shuffle_epi8(coefficients, _mm_set1_epi16(0x0302));
+  filter[2] = _mm_shuffle_epi8(coefficients, _mm_set1_epi16(0x0102));
+  filter[3] = _mm_shuffle_epi8(coefficients, _mm_set1_epi16(0x8000));
+  int y = height;
   do {
-    int x = 0;
+    const __m128i s0 = LoadUnaligned16(src);
+    __m128i ss[4];
+    ss[0] = _mm_unpacklo_epi8(s0, s0);
+    ss[1] = _mm_unpackhi_epi8(s0, s0);
+    ptrdiff_t x = 0;
     do {
-      // Run the Wiener filter on four sets of source samples at a time:
-      //   src[x + 0] ... src[x + 6]
-      //   src[x + 1] ... src[x + 7]
-      //   src[x + 2] ... src[x + 8]
-      //   src[x + 3] ... src[x + 9]
-
-      // Read 10 bytes (from src[x] to src[x + 9]). We over-read 6 bytes but
-      // their results are discarded.
-      const __m128i v_src = LoadUnaligned16(&src[x]);
-      const __m128i v_src_dup_lo = _mm_unpacklo_epi8(v_src, v_src);
-      const __m128i v_src_dup_hi = _mm_unpackhi_epi8(v_src, v_src);
-      const __m128i v_src_10 = _mm_alignr_epi8(v_src_dup_hi, v_src_dup_lo, 1);
-      const __m128i v_src_32 = _mm_alignr_epi8(v_src_dup_hi, v_src_dup_lo, 5);
-      const __m128i v_src_54 = _mm_alignr_epi8(v_src_dup_hi, v_src_dup_lo, 9);
-      // Shift right by 12 bytes instead of 13 bytes so that src[x + 10] is not
-      // shifted into the low 8 bytes of v_src_66.
-      const __m128i v_src_66 = _mm_alignr_epi8(v_src_dup_hi, v_src_dup_lo, 12);
-      const __m128i v_madd_10 = _mm_maddubs_epi16(v_src_10, v_k1k0);
-      const __m128i v_madd_32 = _mm_maddubs_epi16(v_src_32, v_k3k2);
-      const __m128i v_madd_54 = _mm_maddubs_epi16(v_src_54, v_k5k4);
-      const __m128i v_madd_76 = _mm_maddubs_epi16(v_src_66, v_k7k6);
-      const __m128i v_sum_3210 = _mm_add_epi16(v_madd_10, v_madd_32);
-      const __m128i v_sum_7654 = _mm_add_epi16(v_madd_54, v_madd_76);
-      // The sum range here is [-128 * 255, 90 * 255].
-      const __m128i v_sum_76543210 = _mm_add_epi16(v_sum_7654, v_sum_3210);
-      const __m128i v_sum = _mm_add_epi16(v_sum_76543210, v_round_0);
-      const __m128i v_rounded_sum0 = _mm_sra_epi16(v_sum, v_round_0_shift);
-      // Add scaled down horizontal round here to prevent signed 16 bit
-      // outranging
-      const __m128i v_rounded_sum1 =
-          _mm_add_epi16(v_rounded_sum0, v_horizontal_rounding);
-      // Zero out the even bytes, calculate scaled down offset correction, and
-      // add to sum here to prevent signed 16 bit outranging.
-      // (src[3] * 128) >> kInterRoundBitsHorizontal
-      const __m128i v_src_3x128 =
-          _mm_sll_epi16(_mm_srli_epi16(v_src_32, 8), v_offset_shift);
-      const __m128i v_rounded_sum = _mm_add_epi16(v_rounded_sum1, v_src_3x128);
-      const __m128i v_a = _mm_max_epi16(v_rounded_sum, _mm_setzero_si128());
-      const __m128i v_b = _mm_min_epi16(v_a, v_limit);
-      StoreLo8(&wiener_buffer[x], v_b);
-      x += 4;
+      const __m128i s1 = LoadUnaligned16(src + x + 16);
+      ss[2] = _mm_unpacklo_epi8(s1, s1);
+      ss[3] = _mm_unpackhi_epi8(s1, s1);
+      WienerHorizontalTap7Kernel(ss + 0, filter, *wiener_buffer + x + 0);
+      WienerHorizontalTap7Kernel(ss + 1, filter, *wiener_buffer + x + 8);
+      ss[0] = ss[2];
+      ss[1] = ss[3];
+      x += 16;
     } while (x < width);
-    src += source_stride;
-    wiener_buffer += buffer_stride;
+    src += src_stride;
+    *wiener_buffer += width;
   } while (--y != 0);
-  // Because the top row of |source| is a duplicate of the second row, and the
-  // bottom row of |source| is a duplicate of its above row, we can duplicate
-  // the top and bottom row of |wiener_buffer| accordingly.
-  memcpy(wiener_buffer, wiener_buffer - buffer_stride,
-         sizeof(*wiener_buffer) * width);
-  wiener_buffer = buffer->wiener_buffer;
-  memcpy(wiener_buffer, wiener_buffer + buffer_stride,
-         sizeof(*wiener_buffer) * width);
+}
+
+inline void WienerHorizontalTap5(const uint8_t* src, const ptrdiff_t src_stride,
+                                 const ptrdiff_t width, const int height,
+                                 const __m128i coefficients,
+                                 int16_t** const wiener_buffer) {
+  __m128i filter[3];
+  filter[0] = _mm_shuffle_epi8(coefficients, _mm_set1_epi16(0x0201));
+  filter[1] = _mm_shuffle_epi8(coefficients, _mm_set1_epi16(0x0203));
+  filter[2] = _mm_shuffle_epi8(coefficients, _mm_set1_epi16(0x8001));
+  int y = height;
+  do {
+    const __m128i s0 = LoadUnaligned16(src);
+    __m128i ss[4];
+    ss[0] = _mm_unpacklo_epi8(s0, s0);
+    ss[1] = _mm_unpackhi_epi8(s0, s0);
+    ptrdiff_t x = 0;
+    do {
+      const __m128i s1 = LoadUnaligned16(src + x + 16);
+      ss[2] = _mm_unpacklo_epi8(s1, s1);
+      ss[3] = _mm_unpackhi_epi8(s1, s1);
+      WienerHorizontalTap5Kernel(ss + 0, filter, *wiener_buffer + x + 0);
+      WienerHorizontalTap5Kernel(ss + 1, filter, *wiener_buffer + x + 8);
+      ss[0] = ss[2];
+      ss[1] = ss[3];
+      x += 16;
+    } while (x < width);
+    src += src_stride;
+    *wiener_buffer += width;
+  } while (--y != 0);
+}
+
+inline void WienerHorizontalTap3(const uint8_t* src, const ptrdiff_t src_stride,
+                                 const ptrdiff_t width, const int height,
+                                 const __m128i coefficients,
+                                 int16_t** const wiener_buffer) {
+  __m128i filter[2];
+  filter[0] = _mm_shuffle_epi8(coefficients, _mm_set1_epi16(0x0302));
+  filter[1] = _mm_shuffle_epi8(coefficients, _mm_set1_epi16(0x8002));
+  int y = height;
+  do {
+    const __m128i s0 = LoadUnaligned16(src);
+    __m128i ss[4];
+    ss[0] = _mm_unpacklo_epi8(s0, s0);
+    ss[1] = _mm_unpackhi_epi8(s0, s0);
+    ptrdiff_t x = 0;
+    do {
+      const __m128i s1 = LoadUnaligned16(src + x + 16);
+      ss[2] = _mm_unpacklo_epi8(s1, s1);
+      ss[3] = _mm_unpackhi_epi8(s1, s1);
+      WienerHorizontalTap3Kernel(ss + 0, filter, *wiener_buffer + x + 0);
+      WienerHorizontalTap3Kernel(ss + 1, filter, *wiener_buffer + x + 8);
+      ss[0] = ss[2];
+      ss[1] = ss[3];
+      x += 16;
+    } while (x < width);
+    src += src_stride;
+    *wiener_buffer += width;
+  } while (--y != 0);
+}
+
+inline void WienerHorizontalTap1(const uint8_t* src, const ptrdiff_t src_stride,
+                                 const ptrdiff_t width, const int height,
+                                 int16_t** const wiener_buffer) {
+  int y = height;
+  do {
+    ptrdiff_t x = 0;
+    do {
+      const __m128i s = LoadUnaligned16(src + x);
+      const __m128i s0 = _mm_unpacklo_epi8(s, _mm_setzero_si128());
+      const __m128i s1 = _mm_unpackhi_epi8(s, _mm_setzero_si128());
+      const __m128i d0 = _mm_slli_epi16(s0, 4);
+      const __m128i d1 = _mm_slli_epi16(s1, 4);
+      StoreAligned16(*wiener_buffer + x + 0, d0);
+      StoreAligned16(*wiener_buffer + x + 8, d1);
+      x += 16;
+    } while (x < width);
+    src += src_stride;
+    *wiener_buffer += width;
+  } while (--y != 0);
+}
+
+inline __m128i WienerVertical7(const __m128i a[2], const __m128i filter[2]) {
+  const __m128i round = _mm_set1_epi32(1 << (kInterRoundBitsVertical - 1));
+  const __m128i madd0 = _mm_madd_epi16(a[0], filter[0]);
+  const __m128i madd1 = _mm_madd_epi16(a[1], filter[1]);
+  const __m128i sum0 = _mm_add_epi32(round, madd0);
+  const __m128i sum1 = _mm_add_epi32(sum0, madd1);
+  return _mm_srai_epi32(sum1, kInterRoundBitsVertical);
+}
+
+inline __m128i WienerVertical5(const __m128i a[2], const __m128i filter[2]) {
+  const __m128i madd0 = _mm_madd_epi16(a[0], filter[0]);
+  const __m128i madd1 = _mm_madd_epi16(a[1], filter[1]);
+  const __m128i sum = _mm_add_epi32(madd0, madd1);
+  return _mm_srai_epi32(sum, kInterRoundBitsVertical);
+}
+
+inline __m128i WienerVertical3(const __m128i a, const __m128i filter) {
+  const __m128i round = _mm_set1_epi32(1 << (kInterRoundBitsVertical - 1));
+  const __m128i madd = _mm_madd_epi16(a, filter);
+  const __m128i sum = _mm_add_epi32(round, madd);
+  return _mm_srai_epi32(sum, kInterRoundBitsVertical);
+}
+
+inline __m128i WienerVerticalFilter7(const __m128i a[7],
+                                     const __m128i filter[2]) {
+  __m128i b[2];
+  const __m128i a06 = _mm_add_epi16(a[0], a[6]);
+  const __m128i a15 = _mm_add_epi16(a[1], a[5]);
+  const __m128i a24 = _mm_add_epi16(a[2], a[4]);
+  b[0] = _mm_unpacklo_epi16(a06, a15);
+  b[1] = _mm_unpacklo_epi16(a24, a[3]);
+  const __m128i sum0 = WienerVertical7(b, filter);
+  b[0] = _mm_unpackhi_epi16(a06, a15);
+  b[1] = _mm_unpackhi_epi16(a24, a[3]);
+  const __m128i sum1 = WienerVertical7(b, filter);
+  return _mm_packs_epi32(sum0, sum1);
+}
+
+inline __m128i WienerVerticalFilter5(const __m128i a[5],
+                                     const __m128i filter[2]) {
+  const __m128i round = _mm_set1_epi16(1 << (kInterRoundBitsVertical - 1));
+  __m128i b[2];
+  const __m128i a04 = _mm_add_epi16(a[0], a[4]);
+  const __m128i a13 = _mm_add_epi16(a[1], a[3]);
+  b[0] = _mm_unpacklo_epi16(a04, a13);
+  b[1] = _mm_unpacklo_epi16(a[2], round);
+  const __m128i sum0 = WienerVertical5(b, filter);
+  b[0] = _mm_unpackhi_epi16(a04, a13);
+  b[1] = _mm_unpackhi_epi16(a[2], round);
+  const __m128i sum1 = WienerVertical5(b, filter);
+  return _mm_packs_epi32(sum0, sum1);
+}
+
+inline __m128i WienerVerticalFilter3(const __m128i a[3], const __m128i filter) {
+  __m128i b;
+  const __m128i a02 = _mm_add_epi16(a[0], a[2]);
+  b = _mm_unpacklo_epi16(a02, a[1]);
+  const __m128i sum0 = WienerVertical3(b, filter);
+  b = _mm_unpackhi_epi16(a02, a[1]);
+  const __m128i sum1 = WienerVertical3(b, filter);
+  return _mm_packs_epi32(sum0, sum1);
+}
+
+inline __m128i WienerVerticalTap7Kernel(const int16_t* wiener_buffer,
+                                        const ptrdiff_t wiener_stride,
+                                        const __m128i filter[2], __m128i a[7]) {
+  a[0] = LoadAligned16(wiener_buffer + 0 * wiener_stride);
+  a[1] = LoadAligned16(wiener_buffer + 1 * wiener_stride);
+  a[2] = LoadAligned16(wiener_buffer + 2 * wiener_stride);
+  a[3] = LoadAligned16(wiener_buffer + 3 * wiener_stride);
+  a[4] = LoadAligned16(wiener_buffer + 4 * wiener_stride);
+  a[5] = LoadAligned16(wiener_buffer + 5 * wiener_stride);
+  a[6] = LoadAligned16(wiener_buffer + 6 * wiener_stride);
+  return WienerVerticalFilter7(a, filter);
+}
+
+inline __m128i WienerVerticalTap5Kernel(const int16_t* wiener_buffer,
+                                        const ptrdiff_t wiener_stride,
+                                        const __m128i filter[2], __m128i a[5]) {
+  a[0] = LoadAligned16(wiener_buffer + 0 * wiener_stride);
+  a[1] = LoadAligned16(wiener_buffer + 1 * wiener_stride);
+  a[2] = LoadAligned16(wiener_buffer + 2 * wiener_stride);
+  a[3] = LoadAligned16(wiener_buffer + 3 * wiener_stride);
+  a[4] = LoadAligned16(wiener_buffer + 4 * wiener_stride);
+  return WienerVerticalFilter5(a, filter);
+}
+
+inline __m128i WienerVerticalTap3Kernel(const int16_t* wiener_buffer,
+                                        const ptrdiff_t wiener_stride,
+                                        const __m128i filter, __m128i a[3]) {
+  a[0] = LoadAligned16(wiener_buffer + 0 * wiener_stride);
+  a[1] = LoadAligned16(wiener_buffer + 1 * wiener_stride);
+  a[2] = LoadAligned16(wiener_buffer + 2 * wiener_stride);
+  return WienerVerticalFilter3(a, filter);
+}
+
+inline void WienerVerticalTap7Kernel2(const int16_t* wiener_buffer,
+                                      const ptrdiff_t wiener_stride,
+                                      const __m128i filter[2], __m128i d[2]) {
+  __m128i a[8];
+  d[0] = WienerVerticalTap7Kernel(wiener_buffer, wiener_stride, filter, a);
+  a[7] = LoadAligned16(wiener_buffer + 7 * wiener_stride);
+  d[1] = WienerVerticalFilter7(a + 1, filter);
+}
+
+inline void WienerVerticalTap5Kernel2(const int16_t* wiener_buffer,
+                                      const ptrdiff_t wiener_stride,
+                                      const __m128i filter[2], __m128i d[2]) {
+  __m128i a[6];
+  d[0] = WienerVerticalTap5Kernel(wiener_buffer, wiener_stride, filter, a);
+  a[5] = LoadAligned16(wiener_buffer + 5 * wiener_stride);
+  d[1] = WienerVerticalFilter5(a + 1, filter);
+}
+
+inline void WienerVerticalTap3Kernel2(const int16_t* wiener_buffer,
+                                      const ptrdiff_t wiener_stride,
+                                      const __m128i filter, __m128i d[2]) {
+  __m128i a[4];
+  d[0] = WienerVerticalTap3Kernel(wiener_buffer, wiener_stride, filter, a);
+  a[3] = LoadAligned16(wiener_buffer + 3 * wiener_stride);
+  d[1] = WienerVerticalFilter3(a + 1, filter);
+}
+
+inline void WienerVerticalTap7(const int16_t* wiener_buffer,
+                               const ptrdiff_t width, const int height,
+                               const int16_t coefficients[4], uint8_t* dst,
+                               const ptrdiff_t dst_stride) {
+  const __m128i c = LoadLo8(coefficients);
+  __m128i filter[2];
+  filter[0] = _mm_shuffle_epi32(c, 0x0);
+  filter[1] = _mm_shuffle_epi32(c, 0x55);
+  for (int y = height >> 1; y > 0; --y) {
+    ptrdiff_t x = 0;
+    do {
+      __m128i d[2][2];
+      WienerVerticalTap7Kernel2(wiener_buffer + x + 0, width, filter, d[0]);
+      WienerVerticalTap7Kernel2(wiener_buffer + x + 8, width, filter, d[1]);
+      StoreAligned16(dst + x, _mm_packus_epi16(d[0][0], d[1][0]));
+      StoreAligned16(dst + dst_stride + x, _mm_packus_epi16(d[0][1], d[1][1]));
+      x += 16;
+    } while (x < width);
+    dst += 2 * dst_stride;
+    wiener_buffer += 2 * width;
+  }
+
+  if ((height & 1) != 0) {
+    ptrdiff_t x = 0;
+    do {
+      __m128i a[7];
+      const __m128i d0 =
+          WienerVerticalTap7Kernel(wiener_buffer + x + 0, width, filter, a);
+      const __m128i d1 =
+          WienerVerticalTap7Kernel(wiener_buffer + x + 8, width, filter, a);
+      StoreAligned16(dst + x, _mm_packus_epi16(d0, d1));
+      x += 16;
+    } while (x < width);
+  }
+}
+
+inline void WienerVerticalTap5(const int16_t* wiener_buffer,
+                               const ptrdiff_t width, const int height,
+                               const int16_t coefficients[3], uint8_t* dst,
+                               const ptrdiff_t dst_stride) {
+  __m128i filter[2];
+  filter[0] = _mm_set1_epi32(*reinterpret_cast<const int32_t*>(coefficients));
+  filter[1] =
+      _mm_set1_epi32((1 << 16) | static_cast<uint16_t>(coefficients[2]));
+  for (int y = height >> 1; y > 0; --y) {
+    ptrdiff_t x = 0;
+    do {
+      __m128i d[2][2];
+      WienerVerticalTap5Kernel2(wiener_buffer + x + 0, width, filter, d[0]);
+      WienerVerticalTap5Kernel2(wiener_buffer + x + 8, width, filter, d[1]);
+      StoreAligned16(dst + x, _mm_packus_epi16(d[0][0], d[1][0]));
+      StoreAligned16(dst + dst_stride + x, _mm_packus_epi16(d[0][1], d[1][1]));
+      x += 16;
+    } while (x < width);
+    dst += 2 * dst_stride;
+    wiener_buffer += 2 * width;
+  }
+
+  if ((height & 1) != 0) {
+    ptrdiff_t x = 0;
+    do {
+      __m128i a[5];
+      const __m128i d0 =
+          WienerVerticalTap5Kernel(wiener_buffer + x + 0, width, filter, a);
+      const __m128i d1 =
+          WienerVerticalTap5Kernel(wiener_buffer + x + 8, width, filter, a);
+      StoreAligned16(dst + x, _mm_packus_epi16(d0, d1));
+      x += 16;
+    } while (x < width);
+  }
+}
+
+inline void WienerVerticalTap3(const int16_t* wiener_buffer,
+                               const ptrdiff_t width, const int height,
+                               const int16_t coefficients[2], uint8_t* dst,
+                               const ptrdiff_t dst_stride) {
+  const __m128i filter =
+      _mm_set1_epi32(*reinterpret_cast<const int32_t*>(coefficients));
+  for (int y = height >> 1; y > 0; --y) {
+    ptrdiff_t x = 0;
+    do {
+      __m128i d[2][2];
+      WienerVerticalTap3Kernel2(wiener_buffer + x + 0, width, filter, d[0]);
+      WienerVerticalTap3Kernel2(wiener_buffer + x + 8, width, filter, d[1]);
+      StoreAligned16(dst + x, _mm_packus_epi16(d[0][0], d[1][0]));
+      StoreAligned16(dst + dst_stride + x, _mm_packus_epi16(d[0][1], d[1][1]));
+      x += 16;
+    } while (x < width);
+    dst += 2 * dst_stride;
+    wiener_buffer += 2 * width;
+  }
+
+  if ((height & 1) != 0) {
+    ptrdiff_t x = 0;
+    do {
+      __m128i a[3];
+      const __m128i d0 =
+          WienerVerticalTap3Kernel(wiener_buffer + x + 0, width, filter, a);
+      const __m128i d1 =
+          WienerVerticalTap3Kernel(wiener_buffer + x + 8, width, filter, a);
+      StoreAligned16(dst + x, _mm_packus_epi16(d0, d1));
+      x += 16;
+    } while (x < width);
+  }
+}
+
+inline void WienerVerticalTap1Kernel(const int16_t* const wiener_buffer,
+                                     uint8_t* const dst) {
+  const __m128i a0 = LoadAligned16(wiener_buffer + 0);
+  const __m128i a1 = LoadAligned16(wiener_buffer + 8);
+  const __m128i b0 = _mm_add_epi16(a0, _mm_set1_epi16(8));
+  const __m128i b1 = _mm_add_epi16(a1, _mm_set1_epi16(8));
+  const __m128i c0 = _mm_srai_epi16(b0, 4);
+  const __m128i c1 = _mm_srai_epi16(b1, 4);
+  const __m128i d = _mm_packus_epi16(c0, c1);
+  StoreAligned16(dst, d);
+}
+
+inline void WienerVerticalTap1(const int16_t* wiener_buffer,
+                               const ptrdiff_t width, const int height,
+                               uint8_t* dst, const ptrdiff_t dst_stride) {
+  for (int y = height >> 1; y > 0; --y) {
+    ptrdiff_t x = 0;
+    do {
+      WienerVerticalTap1Kernel(wiener_buffer + x, dst + x);
+      WienerVerticalTap1Kernel(wiener_buffer + width + x, dst + dst_stride + x);
+      x += 16;
+    } while (x < width);
+    dst += 2 * dst_stride;
+    wiener_buffer += 2 * width;
+  }
+
+  if ((height & 1) != 0) {
+    ptrdiff_t x = 0;
+    do {
+      WienerVerticalTap1Kernel(wiener_buffer + x, dst + x);
+      x += 16;
+    } while (x < width);
+  }
+}
+
+void WienerFilter_SSE4_1(const void* const source, void* const dest,
+                         const RestorationUnitInfo& restoration_info,
+                         const ptrdiff_t source_stride,
+                         const ptrdiff_t dest_stride, const int width,
+                         const int height, RestorationBuffer* const buffer) {
+  constexpr int kCenterTap = kWienerFilterTaps / 2;
+  const int number_zero_coefficients_horizontal = CountZeroCoefficients(
+      restoration_info.wiener_info.filter[WienerInfo::kHorizontal]);
+  const int number_zero_coefficients_vertical = CountZeroCoefficients(
+      restoration_info.wiener_info.filter[WienerInfo::kVertical]);
+  const int number_rows_to_skip =
+      std::max(number_zero_coefficients_vertical, 1);
+  const ptrdiff_t wiener_stride = Align(width, 16);
+  int16_t* const wiener_buffer_vertical = buffer->wiener_buffer;
+  // The values are saturated to 13 bits before storing.
+  int16_t* wiener_buffer_horizontal =
+      wiener_buffer_vertical + number_rows_to_skip * wiener_stride;
+  int8_t filter_horizontal[(kWienerFilterTaps + 1) / 2];
+  int16_t filter_vertical[(kWienerFilterTaps + 1) / 2];
+
+  // horizontal filtering.
+  // Over-reads up to 15 - |kRestorationHorizontalBorder| values.
+  const int height_horizontal =
+      height + kWienerFilterTaps - 1 - 2 * number_rows_to_skip;
+  const auto* src = static_cast<const uint8_t*>(source) -
+                    (kCenterTap - number_rows_to_skip) * source_stride;
+  PopulateWienerCoefficients<int8_t, 3>(
+      restoration_info, WienerInfo::kHorizontal, filter_horizontal);
+  const __m128i coefficients_horizontal = Load4(filter_horizontal);
+  if (number_zero_coefficients_horizontal == 0) {
+    WienerHorizontalTap7(src - 3, source_stride, wiener_stride,
+                         height_horizontal, coefficients_horizontal,
+                         &wiener_buffer_horizontal);
+  } else if (number_zero_coefficients_horizontal == 1) {
+    WienerHorizontalTap5(src - 2, source_stride, wiener_stride,
+                         height_horizontal, coefficients_horizontal,
+                         &wiener_buffer_horizontal);
+  } else if (number_zero_coefficients_horizontal == 2) {
+    // The maximum over-reads happen here.
+    WienerHorizontalTap3(src - 1, source_stride, wiener_stride,
+                         height_horizontal, coefficients_horizontal,
+                         &wiener_buffer_horizontal);
+  } else {
+    assert(number_zero_coefficients_horizontal == 3);
+    WienerHorizontalTap1(src, source_stride, wiener_stride, height_horizontal,
+                         &wiener_buffer_horizontal);
+  }
 
   // vertical filtering.
-  PopulateWienerCoefficients(restoration_info, WienerInfo::kVertical, filter);
-
-  const int vertical_rounding = -(1 << (8 + kInterRoundBitsVertical - 1));
-  const __m128i v_vertical_rounding =
-      _mm_shuffle_epi32(_mm_cvtsi32_si128(vertical_rounding), 0);
-  const __m128i v_offset_correction = _mm_set_epi16(0, 0, 0, 0, 128, 0, 0, 0);
-  const __m128i v_round_1 = _mm_shuffle_epi32(
-      _mm_cvtsi32_si128(1 << (kInterRoundBitsVertical - 1)), 0);
-  const __m128i v_round_1_shift = _mm_cvtsi32_si128(kInterRoundBitsVertical);
-  const __m128i v_vertical_filter0 = _mm_cvtepi8_epi16(LoadLo8(filter));
-  const __m128i v_vertical_filter =
-      _mm_add_epi16(v_vertical_filter0, v_offset_correction);
-  v_k1k0 = _mm_shuffle_epi32(v_vertical_filter, 0x0);
-  v_k3k2 = _mm_shuffle_epi32(v_vertical_filter, 0x55);
-  v_k5k4 = _mm_shuffle_epi32(v_vertical_filter, 0xaa);
-  v_k7k6 = _mm_shuffle_epi32(v_vertical_filter, 0xff);
-  y = 0;
-  do {
-    int x = 0;
-    do {
-      const __m128i v_wb_0 = LoadLo8(&wiener_buffer[0 * buffer_stride + x]);
-      const __m128i v_wb_1 = LoadLo8(&wiener_buffer[1 * buffer_stride + x]);
-      const __m128i v_wb_2 = LoadLo8(&wiener_buffer[2 * buffer_stride + x]);
-      const __m128i v_wb_3 = LoadLo8(&wiener_buffer[3 * buffer_stride + x]);
-      const __m128i v_wb_4 = LoadLo8(&wiener_buffer[4 * buffer_stride + x]);
-      const __m128i v_wb_5 = LoadLo8(&wiener_buffer[5 * buffer_stride + x]);
-      const __m128i v_wb_6 = LoadLo8(&wiener_buffer[6 * buffer_stride + x]);
-      const __m128i v_wb_10 = _mm_unpacklo_epi16(v_wb_0, v_wb_1);
-      const __m128i v_wb_32 = _mm_unpacklo_epi16(v_wb_2, v_wb_3);
-      const __m128i v_wb_54 = _mm_unpacklo_epi16(v_wb_4, v_wb_5);
-      const __m128i v_wb_76 = _mm_unpacklo_epi16(v_wb_6, _mm_setzero_si128());
-      const __m128i v_madd_10 = _mm_madd_epi16(v_wb_10, v_k1k0);
-      const __m128i v_madd_32 = _mm_madd_epi16(v_wb_32, v_k3k2);
-      const __m128i v_madd_54 = _mm_madd_epi16(v_wb_54, v_k5k4);
-      const __m128i v_madd_76 = _mm_madd_epi16(v_wb_76, v_k7k6);
-      const __m128i v_sum_3210 = _mm_add_epi32(v_madd_10, v_madd_32);
-      const __m128i v_sum_7654 = _mm_add_epi32(v_madd_54, v_madd_76);
-      const __m128i v_sum_76543210 = _mm_add_epi32(v_sum_7654, v_sum_3210);
-      const __m128i v_sum = _mm_add_epi32(v_sum_76543210, v_vertical_rounding);
-      const __m128i v_rounded_sum =
-          _mm_sra_epi32(_mm_add_epi32(v_sum, v_round_1), v_round_1_shift);
-      const __m128i v_a = _mm_packs_epi32(v_rounded_sum, v_rounded_sum);
-      const __m128i v_b = _mm_packus_epi16(v_a, v_a);
-      Store4(&dst[x], v_b);
-      x += 4;
-    } while (x < width);
-    dst += dest_stride;
-    wiener_buffer += buffer_stride;
-  } while (++y < height);
+  // Over-writes up to 15 values.
+  auto* dst = static_cast<uint8_t*>(dest);
+  if (number_zero_coefficients_vertical == 0) {
+    // Because the top row of |source| is a duplicate of the second row, and the
+    // bottom row of |source| is a duplicate of its above row, we can duplicate
+    // the top and bottom row of |wiener_buffer| accordingly.
+    memcpy(wiener_buffer_horizontal, wiener_buffer_horizontal - wiener_stride,
+           sizeof(*wiener_buffer_horizontal) * wiener_stride);
+    memcpy(buffer->wiener_buffer, buffer->wiener_buffer + wiener_stride,
+           sizeof(*buffer->wiener_buffer) * wiener_stride);
+    PopulateWienerCoefficients<int16_t, 3>(
+        restoration_info, WienerInfo::kVertical, filter_vertical);
+    WienerVerticalTap7(wiener_buffer_vertical, wiener_stride, height,
+                       filter_vertical, dst, dest_stride);
+  } else if (number_zero_coefficients_vertical == 1) {
+    PopulateWienerCoefficients<int16_t, 2>(
+        restoration_info, WienerInfo::kVertical, filter_vertical);
+    WienerVerticalTap5(wiener_buffer_vertical + wiener_stride, wiener_stride,
+                       height, filter_vertical, dst, dest_stride);
+  } else if (number_zero_coefficients_vertical == 2) {
+    PopulateWienerCoefficients<int16_t, 1>(
+        restoration_info, WienerInfo::kVertical, filter_vertical);
+    WienerVerticalTap3(wiener_buffer_vertical + 2 * wiener_stride,
+                       wiener_stride, height, filter_vertical, dst,
+                       dest_stride);
+  } else {
+    assert(number_zero_coefficients_vertical == 3);
+    WienerVerticalTap1(wiener_buffer_vertical + 3 * wiener_stride,
+                       wiener_stride, height, dst, dest_stride);
+  }
 }
 
 //------------------------------------------------------------------------------
