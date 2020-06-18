@@ -248,7 +248,7 @@ constexpr uint8_t kTransformSizeContext[kNumTransformSizes] = {
 
 constexpr int8_t kSgrProjDefaultMultiplier[2] = {-32, 31};
 
-constexpr int8_t kWienerDefaultFilter[3] = {3, -7, 15};
+constexpr int8_t kWienerDefaultFilter[kNumWienerCoefficients] = {3, -7, 15};
 
 // Maps compound prediction modes into single modes. For e.g.
 // kPredictionModeNearestNewMv will map to kPredictionModeNearestMv for index 0

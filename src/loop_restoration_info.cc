@@ -159,6 +159,7 @@ void LoopRestorationInfo::ReadWienerInfo(
     if (plane != kPlaneY) {
       loop_restoration_info_[plane][unit_id].wiener_info.filter[i][0] = 0;
     }
+    int sum = 0;
     for (int j = static_cast<int>(plane != kPlaneY); j < kNumWienerCoefficients;
          ++j) {
       const int8_t wiener_min = kWienerTapsMin[j];
@@ -177,7 +178,10 @@ void LoopRestorationInfo::ReadWienerInfo(
       }
       loop_restoration_info_[plane][unit_id].wiener_info.filter[i][j] = value;
       (*reference_unit_info)[plane].wiener_info.filter[i][j] = value;
+      sum += value;
     }
+    loop_restoration_info_[plane][unit_id].wiener_info.filter[i][3] =
+        128 - 2 * sum;
   }
 }
 

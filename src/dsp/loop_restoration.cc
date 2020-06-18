@@ -123,27 +123,6 @@ struct LoopRestorationFuncs_C {
                                     Pixel* dst, ptrdiff_t dst_stride);
 };
 
-// Note: range of wiener filter coefficients.
-// Wiener filter coefficients are symmetric, and their sum is 1 (128).
-// The range of each coefficient:
-// filter[0] = filter[6], 4 bits, min = -5, max = 10.
-// filter[1] = filter[5], 5 bits, min = -23, max = 8.
-// filter[2] = filter[4], 6 bits, min = -17, max = 46.
-// filter[3] = 128 - (filter[0] + filter[1] + filter[2]) * 2.
-// The difference from libaom is that in libaom:
-// filter[3] = 0 - (filter[0] + filter[1] + filter[2]) * 2.
-// Thus in libaom's computation, an offset of 128 is needed for filter[3].
-inline void PopulateWienerCoefficients(
-    const RestorationUnitInfo& restoration_info, const int direction,
-    int16_t* const filter) {
-  filter[3] = 128;
-  for (int i = 0; i < 3; ++i) {
-    const int16_t coeff = restoration_info.wiener_info.filter[direction][i];
-    filter[i] = coeff;
-    filter[3] -= MultiplyBy2(coeff);
-  }
-}
-
 template <int bitdepth, typename Pixel>
 inline void WienerHorizontal(const Pixel* source, const ptrdiff_t source_stride,
                              const int width, const int height,
@@ -221,6 +200,16 @@ inline void WienerVertical(const int16_t* wiener_buffer, const int width,
 // than 16 bit and smaller than 32 bits.
 // The accumulator of the vertical filter is larger than 16 bits and smaller
 // than 32 bits.
+// Note: range of wiener filter coefficients.
+// Wiener filter coefficients are symmetric, and their sum is 1 (128).
+// The range of each coefficient:
+// filter[0] = filter[6], 4 bits, min = -5, max = 10.
+// filter[1] = filter[5], 5 bits, min = -23, max = 8.
+// filter[2] = filter[4], 6 bits, min = -17, max = 46.
+// filter[3] = 128 - 2 * (filter[0] + filter[1] + filter[2]).
+// The difference from libaom is that in libaom:
+// filter[3] = 0 - 2 * (filter[0] + filter[1] + filter[2]).
+// Thus in libaom's computation, an offset of 128 is needed for filter[3].
 template <int bitdepth, typename Pixel>
 void LoopRestorationFuncs_C<bitdepth, Pixel>::WienerFilter(
     const void* const source, void* const dest,
@@ -228,12 +217,10 @@ void LoopRestorationFuncs_C<bitdepth, Pixel>::WienerFilter(
     ptrdiff_t dest_stride, int width, int height,
     RestorationBuffer* const buffer) {
   constexpr int kCenterTap = kWienerFilterTaps / 2;
-  int16_t filter_horizontal[(kWienerFilterTaps + 1) / 2];
-  int16_t filter_vertical[(kWienerFilterTaps + 1) / 2];
-  PopulateWienerCoefficients(restoration_info, WienerInfo::kHorizontal,
-                             filter_horizontal);
-  PopulateWienerCoefficients(restoration_info, WienerInfo::kVertical,
-                             filter_vertical);
+  const int16_t* const filter_horizontal =
+      restoration_info.wiener_info.filter[WienerInfo::kHorizontal];
+  const int16_t* const filter_vertical =
+      restoration_info.wiener_info.filter[WienerInfo::kVertical];
   const int number_zero_coefficients_horizontal =
       CountZeroCoefficients(filter_horizontal);
   const int number_zero_coefficients_vertical =
@@ -757,7 +744,6 @@ void LoopRestorationInit_C() {
 #endif
   // Local functions that may be unused depending on the optimizations
   // available.
-  static_cast<void>(PopulateWienerCoefficients);
   static_cast<void>(Sum565);
 }
 

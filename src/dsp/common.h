@@ -35,8 +35,7 @@ struct SgrProjInfo {
 struct WienerInfo {
   static const int kVertical = 0;
   static const int kHorizontal = 1;
-
-  alignas(kMaxAlignment) int16_t filter[2][kWienerFilterTaps];
+  alignas(kMaxAlignment) int16_t filter[2][(kWienerFilterTaps + 1) / 2];
 };
 
 struct RestorationUnitInfo : public MaxAlignedAllocable {

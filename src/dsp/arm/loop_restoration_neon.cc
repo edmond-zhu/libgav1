@@ -58,18 +58,12 @@ inline void PopulateWienerCoefficients(
     const RestorationUnitInfo& restoration_info, const int direction,
     int16_t filter[4]) {
   // In order to keep the horizontal pass intermediate values within 16 bits we
-  // initialize |filter[3]| to 0 instead of 128.
-  // The 128 offset will be added back in the loop.
-  if (direction == WienerInfo::kHorizontal) {
-    filter[3] = 0;
-  } else {
-    assert(direction == WienerInfo::kVertical);
-    filter[3] = 128;
+  // offset |filter[3]| by 128. The 128 offset will be added back in the loop.
+  for (int i = 0; i < 4; ++i) {
+    filter[i] = restoration_info.wiener_info.filter[direction][i];
   }
-  for (int i = 0; i < 3; ++i) {
-    const int16_t coeff = restoration_info.wiener_info.filter[direction][i];
-    filter[i] = coeff;
-    filter[3] -= MultiplyBy2(coeff);
+  if (direction == WienerInfo::kHorizontal) {
+    filter[3] -= 128;
   }
 }
 

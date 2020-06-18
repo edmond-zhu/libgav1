@@ -35,34 +35,6 @@ namespace dsp {
 namespace low_bitdepth {
 namespace {
 
-// Note: range of wiener filter coefficients.
-// Wiener filter coefficients are symmetric, and their sum is 1 (128).
-// The range of each coefficient:
-// filter[0] = filter[6], 4 bits, min = -5, max = 10.
-// filter[1] = filter[5], 5 bits, min = -23, max = 8.
-// filter[2] = filter[4], 6 bits, min = -17, max = 46.
-// filter[3] = 128 - (filter[0] + filter[1] + filter[2]) * 2.
-template <typename T, int center>
-inline void PopulateWienerCoefficients(
-    const RestorationUnitInfo& restoration_info, const int direction,
-    T filter[center + 1]) {
-  // In order to keep the horizontal pass intermediate values within 16 bits we
-  // initialize |filter[center]| to 0 instead of 128.
-  // The 128 offset will be added back in the loop.
-  if (direction == WienerInfo::kHorizontal) {
-    filter[center] = 0;
-  } else {
-    assert(direction == WienerInfo::kVertical);
-    filter[center] = static_cast<T>(128);
-  }
-  for (int i = 0; i < center; ++i) {
-    const T coeff =
-        restoration_info.wiener_info.filter[direction][3 - center + i];
-    filter[i] = coeff;
-    filter[center] -= MultiplyBy2(coeff);
-  }
-}
-
 inline void WienerHorizontalTap7Kernel(const __m128i s[2],
                                        const __m128i filter[4],
                                        int16_t* const wiener_buffer) {
@@ -161,9 +133,9 @@ inline void WienerHorizontalTap7(const uint8_t* src, const ptrdiff_t src_stride,
                                  const __m128i coefficients,
                                  int16_t** const wiener_buffer) {
   __m128i filter[4];
-  filter[0] = _mm_shuffle_epi8(coefficients, _mm_set1_epi16(0x0100));
-  filter[1] = _mm_shuffle_epi8(coefficients, _mm_set1_epi16(0x0302));
-  filter[2] = _mm_shuffle_epi8(coefficients, _mm_set1_epi16(0x0102));
+  filter[0] = _mm_shuffle_epi8(coefficients, _mm_set1_epi16(0x0200));
+  filter[1] = _mm_shuffle_epi8(coefficients, _mm_set1_epi16(0x0604));
+  filter[2] = _mm_shuffle_epi8(coefficients, _mm_set1_epi16(0x0204));
   filter[3] = _mm_shuffle_epi8(coefficients, _mm_set1_epi16(0x8000));
   int y = height;
   do {
@@ -192,9 +164,9 @@ inline void WienerHorizontalTap5(const uint8_t* src, const ptrdiff_t src_stride,
                                  const __m128i coefficients,
                                  int16_t** const wiener_buffer) {
   __m128i filter[3];
-  filter[0] = _mm_shuffle_epi8(coefficients, _mm_set1_epi16(0x0201));
-  filter[1] = _mm_shuffle_epi8(coefficients, _mm_set1_epi16(0x0203));
-  filter[2] = _mm_shuffle_epi8(coefficients, _mm_set1_epi16(0x8001));
+  filter[0] = _mm_shuffle_epi8(coefficients, _mm_set1_epi16(0x0402));
+  filter[1] = _mm_shuffle_epi8(coefficients, _mm_set1_epi16(0x0406));
+  filter[2] = _mm_shuffle_epi8(coefficients, _mm_set1_epi16(0x8002));
   int y = height;
   do {
     const __m128i s0 = LoadUnaligned16(src);
@@ -222,8 +194,8 @@ inline void WienerHorizontalTap3(const uint8_t* src, const ptrdiff_t src_stride,
                                  const __m128i coefficients,
                                  int16_t** const wiener_buffer) {
   __m128i filter[2];
-  filter[0] = _mm_shuffle_epi8(coefficients, _mm_set1_epi16(0x0302));
-  filter[1] = _mm_shuffle_epi8(coefficients, _mm_set1_epi16(0x8002));
+  filter[0] = _mm_shuffle_epi8(coefficients, _mm_set1_epi16(0x0604));
+  filter[1] = _mm_shuffle_epi8(coefficients, _mm_set1_epi16(0x8004));
   int y = height;
   do {
     const __m128i s0 = LoadUnaligned16(src);
@@ -430,8 +402,9 @@ inline void WienerVerticalTap5(const int16_t* wiener_buffer,
                                const ptrdiff_t width, const int height,
                                const int16_t coefficients[3], uint8_t* dst,
                                const ptrdiff_t dst_stride) {
+  const __m128i c = Load4(coefficients);
   __m128i filter[2];
-  filter[0] = _mm_set1_epi32(*reinterpret_cast<const int32_t*>(coefficients));
+  filter[0] = _mm_shuffle_epi32(c, 0);
   filter[1] =
       _mm_set1_epi32((1 << 16) | static_cast<uint16_t>(coefficients[2]));
   for (int y = height >> 1; y > 0; --y) {
@@ -548,18 +521,19 @@ void WienerFilter_SSE4_1(const void* const source, void* const dest,
   // The values are saturated to 13 bits before storing.
   int16_t* wiener_buffer_horizontal =
       wiener_buffer_vertical + number_rows_to_skip * wiener_stride;
-  int8_t filter_horizontal[(kWienerFilterTaps + 1) / 2];
-  int16_t filter_vertical[(kWienerFilterTaps + 1) / 2];
 
   // horizontal filtering.
   // Over-reads up to 15 - |kRestorationHorizontalBorder| values.
   const int height_horizontal =
       height + kWienerFilterTaps - 1 - 2 * number_rows_to_skip;
-  const auto* src = static_cast<const uint8_t*>(source) -
-                    (kCenterTap - number_rows_to_skip) * source_stride;
-  PopulateWienerCoefficients<int8_t, 3>(
-      restoration_info, WienerInfo::kHorizontal, filter_horizontal);
-  const __m128i coefficients_horizontal = Load4(filter_horizontal);
+  const auto* const src = static_cast<const uint8_t*>(source) -
+                          (kCenterTap - number_rows_to_skip) * source_stride;
+  const __m128i c =
+      LoadLo8(restoration_info.wiener_info.filter[WienerInfo::kHorizontal]);
+  // In order to keep the horizontal pass intermediate values within 16 bits we
+  // offset |filter[3]| by 128. The 128 offset will be added back in the loop.
+  const __m128i coefficients_horizontal =
+      _mm_sub_epi16(c, _mm_setr_epi16(0, 0, 0, 128, 0, 0, 0, 0));
   if (number_zero_coefficients_horizontal == 0) {
     WienerHorizontalTap7(src - 3, source_stride, wiener_stride,
                          height_horizontal, coefficients_horizontal,
@@ -581,6 +555,8 @@ void WienerFilter_SSE4_1(const void* const source, void* const dest,
 
   // vertical filtering.
   // Over-writes up to 15 values.
+  const int16_t* const filter_vertical =
+      restoration_info.wiener_info.filter[WienerInfo::kVertical];
   auto* dst = static_cast<uint8_t*>(dest);
   if (number_zero_coefficients_vertical == 0) {
     // Because the top row of |source| is a duplicate of the second row, and the
@@ -590,20 +566,14 @@ void WienerFilter_SSE4_1(const void* const source, void* const dest,
            sizeof(*wiener_buffer_horizontal) * wiener_stride);
     memcpy(buffer->wiener_buffer, buffer->wiener_buffer + wiener_stride,
            sizeof(*buffer->wiener_buffer) * wiener_stride);
-    PopulateWienerCoefficients<int16_t, 3>(
-        restoration_info, WienerInfo::kVertical, filter_vertical);
     WienerVerticalTap7(wiener_buffer_vertical, wiener_stride, height,
                        filter_vertical, dst, dest_stride);
   } else if (number_zero_coefficients_vertical == 1) {
-    PopulateWienerCoefficients<int16_t, 2>(
-        restoration_info, WienerInfo::kVertical, filter_vertical);
     WienerVerticalTap5(wiener_buffer_vertical + wiener_stride, wiener_stride,
-                       height, filter_vertical, dst, dest_stride);
+                       height, filter_vertical + 1, dst, dest_stride);
   } else if (number_zero_coefficients_vertical == 2) {
-    PopulateWienerCoefficients<int16_t, 1>(
-        restoration_info, WienerInfo::kVertical, filter_vertical);
     WienerVerticalTap3(wiener_buffer_vertical + 2 * wiener_stride,
-                       wiener_stride, height, filter_vertical, dst,
+                       wiener_stride, height, filter_vertical + 2, dst,
                        dest_stride);
   } else {
     assert(number_zero_coefficients_vertical == 3);
