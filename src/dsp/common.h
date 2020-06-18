@@ -35,6 +35,7 @@ struct SgrProjInfo {
 struct WienerInfo {
   static const int kVertical = 0;
   static const int kHorizontal = 1;
+  int16_t number_leading_zero_coefficients[2];
   alignas(kMaxAlignment) int16_t filter[2][(kWienerFilterTaps + 1) / 2];
 };
 

@@ -217,44 +217,44 @@ void LoopRestorationFuncs_C<bitdepth, Pixel>::WienerFilter(
     ptrdiff_t dest_stride, int width, int height,
     RestorationBuffer* const buffer) {
   constexpr int kCenterTap = kWienerFilterTaps / 2;
-  const int16_t* const filter_horizontal =
-      restoration_info.wiener_info.filter[WienerInfo::kHorizontal];
-  const int16_t* const filter_vertical =
-      restoration_info.wiener_info.filter[WienerInfo::kVertical];
-  const int number_zero_coefficients_horizontal =
-      CountZeroCoefficients(filter_horizontal);
-  const int number_zero_coefficients_vertical =
-      CountZeroCoefficients(filter_vertical);
-  const int number_rows_to_skip =
-      std::max(number_zero_coefficients_vertical, 1);
+  const int16_t* const number_leading_zero_coefficients =
+      restoration_info.wiener_info.number_leading_zero_coefficients;
+  const int number_rows_to_skip = std::max(
+      static_cast<int>(number_leading_zero_coefficients[WienerInfo::kVertical]),
+      1);
 
   // horizontal filtering.
+  const int height_horizontal =
+      height + kWienerFilterTaps - 1 - 2 * number_rows_to_skip;
+  const int16_t* const filter_horizontal =
+      restoration_info.wiener_info.filter[WienerInfo::kHorizontal];
   const auto* src = static_cast<const Pixel*>(source);
   src -= (kCenterTap - number_rows_to_skip) * source_stride + kCenterTap;
   auto* wiener_buffer = buffer->wiener_buffer + number_rows_to_skip * width;
-  const int height_horizontal =
-      height + kWienerFilterTaps - 1 - 2 * number_rows_to_skip;
 
-  if (number_zero_coefficients_horizontal == 0) {
+  if (number_leading_zero_coefficients[WienerInfo::kHorizontal] == 0) {
     WienerHorizontal<bitdepth, Pixel>(src, source_stride, width,
                                       height_horizontal, filter_horizontal, 0,
                                       &wiener_buffer);
-  } else if (number_zero_coefficients_horizontal == 1) {
+  } else if (number_leading_zero_coefficients[WienerInfo::kHorizontal] == 1) {
     WienerHorizontal<bitdepth, Pixel>(src, source_stride, width,
                                       height_horizontal, filter_horizontal, 1,
                                       &wiener_buffer);
-  } else if (number_zero_coefficients_horizontal == 2) {
+  } else if (number_leading_zero_coefficients[WienerInfo::kHorizontal] == 2) {
     WienerHorizontal<bitdepth, Pixel>(src, source_stride, width,
                                       height_horizontal, filter_horizontal, 2,
                                       &wiener_buffer);
   } else {
+    assert(number_leading_zero_coefficients[WienerInfo::kHorizontal] == 3);
     WienerHorizontal<bitdepth, Pixel>(src, source_stride, width,
                                       height_horizontal, filter_horizontal, 3,
                                       &wiener_buffer);
   }
 
   // vertical filtering.
-  if (number_zero_coefficients_vertical == 0) {
+  const int16_t* const filter_vertical =
+      restoration_info.wiener_info.filter[WienerInfo::kVertical];
+  if (number_leading_zero_coefficients[WienerInfo::kVertical] == 0) {
     // Because the top row of |source| is a duplicate of the second row, and the
     // bottom row of |source| is a duplicate of its above row, we can duplicate
     // the top and bottom row of |wiener_buffer| accordingly.
@@ -264,13 +264,14 @@ void LoopRestorationFuncs_C<bitdepth, Pixel>::WienerFilter(
            sizeof(*wiener_buffer) * width);
     WienerVertical<bitdepth, Pixel>(buffer->wiener_buffer, width, height,
                                     filter_vertical, 0, dest, dest_stride);
-  } else if (number_zero_coefficients_vertical == 1) {
+  } else if (number_leading_zero_coefficients[WienerInfo::kVertical] == 1) {
     WienerVertical<bitdepth, Pixel>(buffer->wiener_buffer, width, height,
                                     filter_vertical, 1, dest, dest_stride);
-  } else if (number_zero_coefficients_vertical == 2) {
+  } else if (number_leading_zero_coefficients[WienerInfo::kVertical] == 2) {
     WienerVertical<bitdepth, Pixel>(buffer->wiener_buffer, width, height,
                                     filter_vertical, 2, dest, dest_stride);
   } else {
+    assert(number_leading_zero_coefficients[WienerInfo::kVertical] == 3);
     WienerVertical<bitdepth, Pixel>(buffer->wiener_buffer, width, height,
                                     filter_vertical, 3, dest, dest_stride);
   }

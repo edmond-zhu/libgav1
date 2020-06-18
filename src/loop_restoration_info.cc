@@ -38,6 +38,20 @@ constexpr LoopRestorationType kBitstreamRestorationTypeMap[] = {
     kLoopRestorationTypeNone, kLoopRestorationTypeWiener,
     kLoopRestorationTypeSgrProj};
 
+inline int CountLeadingZeroCoefficients(const int16_t* const filter) {
+  int number_zero_coefficients = 0;
+  if (filter[0] == 0) {
+    number_zero_coefficients++;
+    if (filter[1] == 0) {
+      number_zero_coefficients++;
+      if (filter[2] == 0) {
+        number_zero_coefficients++;
+      }
+    }
+  }
+  return number_zero_coefficients;
+}
+
 }  // namespace
 
 bool LoopRestorationInfo::Reset(const LoopRestoration* const loop_restoration,
@@ -182,6 +196,10 @@ void LoopRestorationInfo::ReadWienerInfo(
     }
     loop_restoration_info_[plane][unit_id].wiener_info.filter[i][3] =
         128 - 2 * sum;
+    loop_restoration_info_[plane][unit_id]
+        .wiener_info.number_leading_zero_coefficients[i] =
+        CountLeadingZeroCoefficients(
+            loop_restoration_info_[plane][unit_id].wiener_info.filter[i]);
   }
 }
 

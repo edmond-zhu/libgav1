@@ -510,12 +510,11 @@ void WienerFilter_SSE4_1(const void* const source, void* const dest,
                          const ptrdiff_t dest_stride, const int width,
                          const int height, RestorationBuffer* const buffer) {
   constexpr int kCenterTap = kWienerFilterTaps / 2;
-  const int number_zero_coefficients_horizontal = CountZeroCoefficients(
-      restoration_info.wiener_info.filter[WienerInfo::kHorizontal]);
-  const int number_zero_coefficients_vertical = CountZeroCoefficients(
-      restoration_info.wiener_info.filter[WienerInfo::kVertical]);
-  const int number_rows_to_skip =
-      std::max(number_zero_coefficients_vertical, 1);
+  const int16_t* const number_leading_zero_coefficients =
+      restoration_info.wiener_info.number_leading_zero_coefficients;
+  const int number_rows_to_skip = std::max(
+      static_cast<int>(number_leading_zero_coefficients[WienerInfo::kVertical]),
+      1);
   const ptrdiff_t wiener_stride = Align(width, 16);
   int16_t* const wiener_buffer_vertical = buffer->wiener_buffer;
   // The values are saturated to 13 bits before storing.
@@ -534,21 +533,21 @@ void WienerFilter_SSE4_1(const void* const source, void* const dest,
   // offset |filter[3]| by 128. The 128 offset will be added back in the loop.
   const __m128i coefficients_horizontal =
       _mm_sub_epi16(c, _mm_setr_epi16(0, 0, 0, 128, 0, 0, 0, 0));
-  if (number_zero_coefficients_horizontal == 0) {
+  if (number_leading_zero_coefficients[WienerInfo::kHorizontal] == 0) {
     WienerHorizontalTap7(src - 3, source_stride, wiener_stride,
                          height_horizontal, coefficients_horizontal,
                          &wiener_buffer_horizontal);
-  } else if (number_zero_coefficients_horizontal == 1) {
+  } else if (number_leading_zero_coefficients[WienerInfo::kHorizontal] == 1) {
     WienerHorizontalTap5(src - 2, source_stride, wiener_stride,
                          height_horizontal, coefficients_horizontal,
                          &wiener_buffer_horizontal);
-  } else if (number_zero_coefficients_horizontal == 2) {
+  } else if (number_leading_zero_coefficients[WienerInfo::kHorizontal] == 2) {
     // The maximum over-reads happen here.
     WienerHorizontalTap3(src - 1, source_stride, wiener_stride,
                          height_horizontal, coefficients_horizontal,
                          &wiener_buffer_horizontal);
   } else {
-    assert(number_zero_coefficients_horizontal == 3);
+    assert(number_leading_zero_coefficients[WienerInfo::kHorizontal] == 3);
     WienerHorizontalTap1(src, source_stride, wiener_stride, height_horizontal,
                          &wiener_buffer_horizontal);
   }
@@ -558,7 +557,7 @@ void WienerFilter_SSE4_1(const void* const source, void* const dest,
   const int16_t* const filter_vertical =
       restoration_info.wiener_info.filter[WienerInfo::kVertical];
   auto* dst = static_cast<uint8_t*>(dest);
-  if (number_zero_coefficients_vertical == 0) {
+  if (number_leading_zero_coefficients[WienerInfo::kVertical] == 0) {
     // Because the top row of |source| is a duplicate of the second row, and the
     // bottom row of |source| is a duplicate of its above row, we can duplicate
     // the top and bottom row of |wiener_buffer| accordingly.
@@ -568,15 +567,15 @@ void WienerFilter_SSE4_1(const void* const source, void* const dest,
            sizeof(*buffer->wiener_buffer) * wiener_stride);
     WienerVerticalTap7(wiener_buffer_vertical, wiener_stride, height,
                        filter_vertical, dst, dest_stride);
-  } else if (number_zero_coefficients_vertical == 1) {
+  } else if (number_leading_zero_coefficients[WienerInfo::kVertical] == 1) {
     WienerVerticalTap5(wiener_buffer_vertical + wiener_stride, wiener_stride,
                        height, filter_vertical + 1, dst, dest_stride);
-  } else if (number_zero_coefficients_vertical == 2) {
+  } else if (number_leading_zero_coefficients[WienerInfo::kVertical] == 2) {
     WienerVerticalTap3(wiener_buffer_vertical + 2 * wiener_stride,
                        wiener_stride, height, filter_vertical + 2, dst,
                        dest_stride);
   } else {
-    assert(number_zero_coefficients_vertical == 3);
+    assert(number_leading_zero_coefficients[WienerInfo::kVertical] == 3);
     WienerVerticalTap1(wiener_buffer_vertical + 3 * wiener_stride,
                        wiener_stride, height, dst, dest_stride);
   }
