@@ -89,18 +89,15 @@ LIBGAV1_ALWAYS_INLINE void AddPartial_D0_D4(uint8x8_t* v_src,
                                             uint16x8_t* partial_hi) {
   const uint8x8_t v_zero = vdup_n_u8(0);
   // 00 01 02 03 04 05 06 07
-  *partial_lo = vmovl_u8(v_src[0]);
-  *partial_hi = vdupq_n_u16(0);
-
   // 00 10 11 12 13 14 15 16
-  *partial_lo = vaddw_u8(*partial_lo, vext_u8(v_zero, v_src[1], 7));
-  // 17 00 00 00 00 00 00 00
-  *partial_hi = vaddw_u8(*partial_hi, vext_u8(v_src[1], v_zero, 7));
+  *partial_lo = vaddl_u8(v_src[0], vext_u8(v_zero, v_src[1], 7));
 
   // 00 00 20 21 22 23 24 25
   *partial_lo = vaddw_u8(*partial_lo, vext_u8(v_zero, v_src[2], 6));
+  // 17 00 00 00 00 00 00 00
   // 26 27 00 00 00 00 00 00
-  *partial_hi = vaddw_u8(*partial_hi, vext_u8(v_src[2], v_zero, 6));
+  *partial_hi =
+      vaddl_u8(vext_u8(v_src[1], v_zero, 7), vext_u8(v_src[2], v_zero, 6));
 
   // 00 00 00 30 31 32 33 34
   *partial_lo = vaddw_u8(*partial_lo, vext_u8(v_zero, v_src[3], 5));
