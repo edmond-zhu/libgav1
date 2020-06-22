@@ -804,9 +804,7 @@ bool Tile::InterPrediction(const Block& block, const Plane plane, const int x,
                             dest, dest_stride);
   } else if (prediction_parameters.motion_mode == kMotionModeObmc) {
     // Obmc mode is allowed only for single reference (!is_compound).
-    if (!ObmcPrediction(block, plane, prediction_width, prediction_height)) {
-      return false;
-    }
+    return ObmcPrediction(block, plane, prediction_width, prediction_height);
   } else if (is_inter_intra) {
     // InterIntra and obmc must be mutually exclusive.
     InterIntraPrediction(
