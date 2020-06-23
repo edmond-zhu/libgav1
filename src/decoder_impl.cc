@@ -635,20 +635,6 @@ StatusCode DecoderImpl::DecodeTemporalUnit(const TemporalUnit& temporal_unit,
   return kStatusOk;
 }
 
-bool DecoderImpl::AllocateCurrentFrame(RefCountedBuffer* const current_frame,
-                                       const ColorConfig& color_config,
-                                       const ObuFrameHeader& frame_header,
-                                       int left_border, int right_border,
-                                       int top_border, int bottom_border) {
-  current_frame->set_chroma_sample_position(
-      color_config.chroma_sample_position);
-  return current_frame->Realloc(
-      color_config.bitdepth, color_config.is_monochrome,
-      frame_header.upscaled_width, frame_header.height,
-      color_config.subsampling_x, color_config.subsampling_y, left_border,
-      right_border, top_border, bottom_border);
-}
-
 StatusCode DecoderImpl::CopyFrameToOutputBuffer(
     const RefCountedBufferPtr& frame) {
   YuvBuffer* yuv_buffer = frame->buffer();
@@ -745,9 +731,16 @@ StatusCode DecoderImpl::DecodeTiles(
           frame_scratch_buffer->threading_strategy.post_filter_thread_pool() ==
               nullptr,
       sequence_header.color_config.subsampling_y);
-  if (!AllocateCurrentFrame(current_frame, sequence_header.color_config,
-                            frame_header, kBorderPixels, kBorderPixels,
-                            kBorderPixels, bottom_border)) {
+  current_frame->set_chroma_sample_position(
+      sequence_header.color_config.chroma_sample_position);
+  if (!current_frame->Realloc(sequence_header.color_config.bitdepth,
+                              sequence_header.color_config.is_monochrome,
+                              frame_header.upscaled_width, frame_header.height,
+                              sequence_header.color_config.subsampling_x,
+                              sequence_header.color_config.subsampling_y,
+                              /*left_border=*/kBorderPixels,
+                              /*right_border=*/kBorderPixels,
+                              /*top_border=*/kBorderPixels, bottom_border)) {
     LIBGAV1_DLOG(ERROR, "Failed to allocate memory for the decoder buffer.");
     return kStatusOutOfMemory;
   }

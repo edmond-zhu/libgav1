@@ -170,11 +170,6 @@ class DecoderImpl : public Allocable {
   // EnqueueFrame() and DequeueFrame()).
   StatusCode SignalFailure(StatusCode status);
 
-  bool AllocateCurrentFrame(RefCountedBuffer* current_frame,
-                            const ColorConfig& color_config,
-                            const ObuFrameHeader& frame_header, int left_border,
-                            int right_border, int top_border,
-                            int bottom_border);
   void ReleaseOutputFrame();
 
   // Decodes all the frames contained in the given temporal unit. Used only in
