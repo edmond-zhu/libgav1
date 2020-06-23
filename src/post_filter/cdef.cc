@@ -191,6 +191,7 @@ void PostFilter::ApplyCdefForOneUnit(uint16_t* cdef_block, const int index,
   int src_buffer_row_base_stride[kMaxPlanes];
   const uint8_t* src_buffer_row_base[kMaxPlanes];
   int column_step[kMaxPlanes];
+  assert(planes_ >= 1);
   for (int plane = kPlaneY; plane < planes_; ++plane) {
     const int start_y = MultiplyBy4(row4x4_start) >> subsampling_y_[plane];
     const int start_x = MultiplyBy4(column4x4_start) >> subsampling_x_[plane];
