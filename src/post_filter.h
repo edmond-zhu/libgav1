@@ -342,7 +342,7 @@ class PostFilter {
                                         BlockParameters* const* bp_ptr,
                                         uint8_t* level, int* step,
                                         int* filter_length) const;
-  void GetVerticalDeblockFilterEdgeInfoUV(int row4x4, int column4x4,
+  void GetVerticalDeblockFilterEdgeInfoUV(int column4x4,
                                           BlockParameters* const* bp_ptr,
                                           uint8_t* level_u, uint8_t* level_v,
                                           int* step, int* filter_length) const;

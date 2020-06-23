@@ -242,11 +242,9 @@ bool PostFilter::GetVerticalDeblockFilterEdgeInfo(
 }
 
 void PostFilter::GetVerticalDeblockFilterEdgeInfoUV(
-    int row4x4, int column4x4, BlockParameters* const* bp_ptr, uint8_t* level_u,
+    int column4x4, BlockParameters* const* bp_ptr, uint8_t* level_u,
     uint8_t* level_v, int* step, int* filter_length) const {
   const int subsampling_x = subsampling_x_[kPlaneU];
-  const int subsampling_y = subsampling_y_[kPlaneU];
-  row4x4 = GetDeblockPosition(row4x4, subsampling_y);
   column4x4 = GetDeblockPosition(column4x4, subsampling_x);
   const BlockParameters* bp = *bp_ptr;
   *level_u = 0;
@@ -436,9 +434,9 @@ void PostFilter::VerticalDeblockFilter(int row4x4_start, int column4x4_start) {
       for (int column4x4 = 0; column4x4 < kNum4x4InLoopFilterUnit &&
                               MultiplyBy4(column4x4_start + column4x4) < width_;
            column4x4 += column_step, bp += column_step) {
-        GetVerticalDeblockFilterEdgeInfoUV(
-            row4x4_start + row4x4, column4x4_start + column4x4, bp, &level_u,
-            &level_v, &column_step, &filter_length);
+        GetVerticalDeblockFilterEdgeInfoUV(column4x4_start + column4x4, bp,
+                                           &level_u, &level_v, &column_step,
+                                           &filter_length);
         if (level_u != 0) {
           const dsp::LoopFilterSize size = GetLoopFilterSizeUV(filter_length);
           dsp_.loop_filters[size][type](
