@@ -337,8 +337,8 @@ StatusCode DecoderImpl::DequeueFrame(const DecoderBuffer** out_ptr) {
     return kStatusOk;
   }
   assert(temporal_unit.output_layer_count > 0);
-  StatusCode status = CopyFrameToOutputBuffer(std::move(
-      temporal_unit.output_layers[temporal_unit.output_layer_count - 1].frame));
+  StatusCode status = CopyFrameToOutputBuffer(
+      temporal_unit.output_layers[temporal_unit.output_layer_count - 1].frame);
   temporal_unit.output_layers[temporal_unit.output_layer_count - 1].frame =
       nullptr;
   if (status != kStatusOk) {
@@ -625,7 +625,7 @@ StatusCode DecoderImpl::DecodeTemporalUnit(const TemporalUnit& temporal_unit,
     *out_ptr = nullptr;
     return kStatusOk;
   }
-  status = CopyFrameToOutputBuffer(std::move(output_frame_queue_.Front()));
+  status = CopyFrameToOutputBuffer(output_frame_queue_.Front());
   output_frame_queue_.Pop();
   if (status != kStatusOk) {
     return status;
