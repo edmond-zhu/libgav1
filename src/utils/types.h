@@ -28,8 +28,8 @@
 namespace libgav1 {
 
 struct MotionVector : public Allocable {
-  static const int kRow = 0;
-  static const int kColumn = 1;
+  static constexpr int kRow = 0;
+  static constexpr int kColumn = 1;
 
   MotionVector() = default;
   MotionVector(const MotionVector& mv) = default;
