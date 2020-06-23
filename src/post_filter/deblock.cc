@@ -521,7 +521,8 @@ void PostFilter::ApplyDeblockFilterThreaded() {
   //
   // The only synchronization involved is to know when the each directional
   // filter is complete for the entire frame.
-  for (auto& type : {kLoopFilterTypeVertical, kLoopFilterTypeHorizontal}) {
+  for (const auto& type :
+       {kLoopFilterTypeVertical, kLoopFilterTypeHorizontal}) {
     const DeblockFilter deblock_filter = deblock_filter_func_[type];
     std::atomic<int> job_counter(0);
     BlockingCounter pending_workers(num_workers);
