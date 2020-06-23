@@ -181,11 +181,13 @@ class PostFilter {
   // the bottom 2 rows are from cdef filtered frame. This function is called
   // only when cdef is applied for this frame.
   template <typename Pixel>
-  static void PrepareLoopRestorationBlock(
-      const Pixel* src_buffer, ptrdiff_t src_stride,
-      const Pixel* deblock_buffer, ptrdiff_t deblock_stride, Pixel* dst,
-      ptrdiff_t dst_stride, const int width, const int height,
-      const bool frame_top_border, const bool frame_bottom_border);
+  static void PrepareLoopRestorationBlock(const Pixel* src_buffer,
+                                          ptrdiff_t src_stride,
+                                          const Pixel* deblock_buffer,
+                                          ptrdiff_t deblock_stride, Pixel* dst,
+                                          ptrdiff_t dst_stride, int width,
+                                          int height, bool frame_top_border,
+                                          bool frame_bottom_border);
 
   uint8_t GetZeroDeltaDeblockFilterLevel(int segment_id, int level_index,
                                          ReferenceFrameType type,
