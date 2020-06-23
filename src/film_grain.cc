@@ -250,8 +250,7 @@ inline void CopyImagePlane(const uint8_t* source_plane, ptrdiff_t source_stride,
 
   int y = 0;
   do {
-    memcpy(dest_plane, source_plane,
-           width * sizeof(Pixel) * sizeof(dest_plane[0]));
+    memcpy(dest_plane, source_plane, width * sizeof(Pixel));
     source_plane += source_stride;
     dest_plane += dest_stride;
   } while (++y < height);
