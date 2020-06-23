@@ -246,7 +246,7 @@ void PostFilter::ExtendFrameBoundary(uint8_t* const frame_start,
                                      const int width, const int height,
                                      const ptrdiff_t stride, const int left,
                                      const int right, const int top,
-                                     const int bottom) {
+                                     const int bottom) const {
 #if LIBGAV1_MAX_BITDEPTH >= 10
   if (bitdepth_ >= 10) {
     ExtendFrame<uint16_t>(reinterpret_cast<uint16_t*>(frame_start), width,

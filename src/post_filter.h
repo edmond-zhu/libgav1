@@ -286,7 +286,7 @@ class PostFilter {
   // closest frame boundary.
   void ExtendFrameBoundary(uint8_t* frame_start, int width, int height,
                            ptrdiff_t stride, int left, int right, int top,
-                           int bottom);
+                           int bottom) const;
   // Extend frame boundary for referencing if the frame will be saved as a
   // reference frame.
   void ExtendBordersForReferenceFrame();
