@@ -417,7 +417,8 @@ void PostFilter::VerticalDeblockFilter(int row4x4_start, int column4x4_start) {
     const ptrdiff_t row_stride_v = MultiplyBy4(frame_buffer_.stride(kPlaneV));
     const LoopFilterType type = kLoopFilterTypeVertical;
     int column_step;
-    uint8_t level_u, level_v;
+    uint8_t level_u;
+    uint8_t level_v;
     int filter_length;
 
     BlockParameters* const* bp_row_base = block_parameters_.Address(
