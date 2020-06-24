@@ -332,7 +332,8 @@ bool FilmGrain<bitdepth>::Init() {
     } else if (params_.num_u_points > 0 || params_.num_v_points > 0) {
       const size_t buffer_size =
           (kScalingLookupTableSize + kScalingLookupTablePadding) *
-          ((params_.num_u_points > 0) + (params_.num_v_points > 0));
+          (static_cast<int>(params_.num_u_points > 0) +
+           static_cast<int>(params_.num_v_points > 0));
       scaling_lut_chroma_buffer_.reset(new (std::nothrow) uint8_t[buffer_size]);
       if (scaling_lut_chroma_buffer_ == nullptr) return false;
 
@@ -656,7 +657,8 @@ bool FilmGrain<bitdepth>::AddNoise(
   if (use_luma) {
     ConstructNoiseImage(
         &noise_stripes_[kPlaneY], width_, height_, /*subsampling_x=*/0,
-        /*subsampling_y=*/0, params_.overlap_flag << 1, &noise_image_[kPlaneY]);
+        /*subsampling_y=*/0, static_cast<int>(params_.overlap_flag) << 1,
+        &noise_image_[kPlaneY]);
     if (params_.overlap_flag) {
       dsp.film_grain.construct_noise_image_overlap(
           &noise_stripes_[kPlaneY], width_, height_, /*subsampling_x=*/0,
@@ -666,11 +668,13 @@ bool FilmGrain<bitdepth>::AddNoise(
   if (!is_monochrome_) {
     ConstructNoiseImage(&noise_stripes_[kPlaneU], width_, height_,
                         subsampling_x_, subsampling_y_,
-                        params_.overlap_flag << (1 - subsampling_y_),
+                        static_cast<int>(params_.overlap_flag)
+                            << (1 - subsampling_y_),
                         &noise_image_[kPlaneU]);
     ConstructNoiseImage(&noise_stripes_[kPlaneV], width_, height_,
                         subsampling_x_, subsampling_y_,
-                        params_.overlap_flag << (1 - subsampling_y_),
+                        static_cast<int>(params_.overlap_flag)
+                            << (1 - subsampling_y_),
                         &noise_image_[kPlaneV]);
     if (params_.overlap_flag) {
       dsp.film_grain.construct_noise_image_overlap(
