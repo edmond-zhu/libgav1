@@ -382,6 +382,38 @@ void GetClampParameters(const Tile::Block& block, int min[2], int max[2]) {
   max[1] = MultiplyBy32(macroblocks_to_right_edge + column_border);
 }
 
+// Section 8.3.2 in the spec, under coeff_base_eob.
+int GetCoeffBaseContextEob(TransformSize tx_size, int index) {
+  if (index == 0) return 0;
+  const TransformSize adjusted_tx_size = kAdjustedTransformSize[tx_size];
+  const int tx_width_log2 = kTransformWidthLog2[adjusted_tx_size];
+  const int tx_height = kTransformHeight[adjusted_tx_size];
+  if (index <= DivideBy8(tx_height << tx_width_log2)) return 1;
+  if (index <= DivideBy4(tx_height << tx_width_log2)) return 2;
+  return 3;
+}
+
+// Section 8.3.2 in the spec, under coeff_br. Optimized for end of block based
+// on the fact that {0, 1}, {1, 0}, {1, 1}, {0, 2} and {2, 0} will all be 0 in
+// the end of block case.
+int GetCoeffBaseRangeContextEob(int adjusted_tx_width_log2, int pos,
+                                TransformClass tx_class) {
+  if (pos == 0) return 0;
+  const int tx_width = 1 << adjusted_tx_width_log2;
+  const int row = pos >> adjusted_tx_width_log2;
+  const int column = pos & (tx_width - 1);
+  // This return statement is equivalent to:
+  // return ((tx_class == kTransformClass2D && (row | column) < 2) ||
+  //         (tx_class == kTransformClassHorizontal && column == 0) ||
+  //         (tx_class == kTransformClassVertical && row == 0))
+  //            ? 7
+  //            : 14;
+  return 14 >> ((static_cast<int>(tx_class == kTransformClass2D) &
+                 static_cast<int>((row | column) < 2)) |
+                (tx_class & static_cast<int>(column == 0)) |
+                ((tx_class >> 1) & static_cast<int>(row == 0)));
+}
+
 }  // namespace
 
 Tile::Tile(int tile_number, const uint8_t* const data, size_t size,
@@ -1046,38 +1078,6 @@ void Tile::ReadTransformType(const Block& block, int x4, int y4,
   }
   SetTransformType(block, x4, y4, kTransformWidth4x4[tx_size],
                    kTransformHeight4x4[tx_size], tx_type, transform_types_);
-}
-
-// Section 8.3.2 in the spec, under coeff_base_eob.
-int Tile::GetCoeffBaseContextEob(TransformSize tx_size, int index) {
-  if (index == 0) return 0;
-  const TransformSize adjusted_tx_size = kAdjustedTransformSize[tx_size];
-  const int tx_width_log2 = kTransformWidthLog2[adjusted_tx_size];
-  const int tx_height = kTransformHeight[adjusted_tx_size];
-  if (index <= DivideBy8(tx_height << tx_width_log2)) return 1;
-  if (index <= DivideBy4(tx_height << tx_width_log2)) return 2;
-  return 3;
-}
-
-// Section 8.3.2 in the spec, under coeff_br. Optimized for end of block based
-// on the fact that {0, 1}, {1, 0}, {1, 1}, {0, 2} and {2, 0} will all be 0 in
-// the end of block case.
-int Tile::GetCoeffBaseRangeContextEob(int adjusted_tx_width_log2, int pos,
-                                      TransformClass tx_class) {
-  if (pos == 0) return 0;
-  const int tx_width = 1 << adjusted_tx_width_log2;
-  const int row = pos >> adjusted_tx_width_log2;
-  const int column = pos & (tx_width - 1);
-  // This return statement is equivalent to:
-  // return ((tx_class == kTransformClass2D && (row | column) < 2) ||
-  //         (tx_class == kTransformClassHorizontal && column == 0) ||
-  //         (tx_class == kTransformClassVertical && row == 0))
-  //            ? 7
-  //            : 14;
-  return 14 >> ((static_cast<int>(tx_class == kTransformClass2D) &
-                 static_cast<int>((row | column) < 2)) |
-                (tx_class & static_cast<int>(column == 0)) |
-                ((tx_class >> 1) & static_cast<int>(row == 0)));
 }
 
 // Section 8.3.2 in the spec, under coeff_base and coeff_br.
