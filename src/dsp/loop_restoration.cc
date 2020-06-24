@@ -522,7 +522,8 @@ inline void LoopRestorationFuncs_C<bitdepth, Pixel>::BoxFilterProcess(
   const int16_t w0 = restoration_info.sgr_proj_info.multiplier[0];
   const int16_t w1 = restoration_info.sgr_proj_info.multiplier[1];
   const int16_t w2 = (1 << kSgrProjPrecisionBits) - w0 - w1;
-  SgrIntermediateBuffer *intermediate0[2], *intermediate1[4];
+  SgrIntermediateBuffer* intermediate0[2];
+  SgrIntermediateBuffer* intermediate1[4];
   assert(s0 != 0);
   assert(s1 != 0);
   intermediate0[0] = buffer->intermediate;

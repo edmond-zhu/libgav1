@@ -1908,7 +1908,8 @@ bool Tile::IsMvValid(const Block& block, bool is_compound) const {
 }
 
 bool Tile::AssignInterMv(const Block& block, bool is_compound) {
-  int min[2], max[2];
+  int min[2];
+  int max[2];
   GetClampParameters(block, min, max);
   BlockParameters& bp = *block.bp;
   const PredictionParameters& prediction_parameters = *bp.prediction_parameters;
@@ -1968,7 +1969,8 @@ bool Tile::AssignInterMv(const Block& block, bool is_compound) {
 
 bool Tile::AssignIntraMv(const Block& block) {
   // TODO(linfengz): Check if the clamping process is necessary.
-  int min[2], max[2];
+  int min[2];
+  int max[2];
   GetClampParameters(block, min, max);
   BlockParameters& bp = *block.bp;
   const PredictionParameters& prediction_parameters = *bp.prediction_parameters;
