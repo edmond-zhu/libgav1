@@ -3156,7 +3156,7 @@ void InverseTransformInit_NEON() { low_bitdepth::Init8bpp(); }
 
 }  // namespace dsp
 }  // namespace libgav1
-#else   // !LIBGAV1_ENABLE_NEON
+#else  // !LIBGAV1_ENABLE_NEON
 namespace libgav1 {
 namespace dsp {
 
