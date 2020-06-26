@@ -35,29 +35,8 @@ namespace dsp {
 //   a2 = 1;
 // else
 //   a2 = ((z << kSgrProjSgrBits) + (z >> 1)) / (z + 1);
-const int kXByXPlus1[256] = {
-    1,   128, 171, 192, 205, 213, 219, 224, 228, 230, 233, 235, 236, 238, 239,
-    240, 241, 242, 243, 243, 244, 244, 245, 245, 246, 246, 247, 247, 247, 247,
-    248, 248, 248, 248, 249, 249, 249, 249, 249, 250, 250, 250, 250, 250, 250,
-    250, 251, 251, 251, 251, 251, 251, 251, 251, 251, 251, 252, 252, 252, 252,
-    252, 252, 252, 252, 252, 252, 252, 252, 252, 252, 252, 252, 252, 253, 253,
-    253, 253, 253, 253, 253, 253, 253, 253, 253, 253, 253, 253, 253, 253, 253,
-    253, 253, 253, 253, 253, 253, 253, 253, 253, 253, 253, 253, 254, 254, 254,
-    254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254,
-    254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254,
-    254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254,
-    254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254,
-    254, 254, 254, 254, 254, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
-    255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
-    255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
-    255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
-    255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
-    255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
-    256};
-
-// a2 = ((z << kSgrProjSgrBits) + (z >> 1)) / (z + 1);
-// sgr_ma2 = 256 - a2
-const uint8_t kSgrMa2Lookup[256] = {
+// ma = 256 - a2;
+const uint8_t kSgrMaLookup[256] = {
     255, 128, 85, 64, 51, 43, 37, 32, 28, 26, 23, 21, 20, 18, 17, 16, 15, 14,
     13,  13,  12, 12, 11, 11, 10, 10, 9,  9,  9,  9,  8,  8,  8,  8,  7,  7,
     7,   7,   7,  6,  6,  6,  6,  6,  6,  6,  5,  5,  5,  5,  5,  5,  5,  5,
@@ -79,7 +58,7 @@ namespace {
 constexpr ptrdiff_t kIntermediateStride = kRestorationUnitWidth + 2;
 
 struct SgrIntermediateBuffer {
-  uint16_t a;  // [1, 256]
+  uint8_t ma;  // [0, 255]
   uint32_t b;  // < 2^20. 32-bit is required for bitdepth 10 and up.
 };
 
@@ -303,17 +282,17 @@ inline void CalculateIntermediate(const uint32_t s, uint32_t a,
   // 2^32 as long as scale >= 4. So p * s fits into a uint32_t, and z < 2^12
   // (this holds even after accounting for the rounding in s)
   const uint32_t z = RightShiftWithRounding(p * s, kSgrProjScaleBits);
-  // a2: range [1, 256].
-  uint32_t a2 = kXByXPlus1[std::min(z, 255u)];
+  // ma: range [0, 255].
+  const uint32_t ma = kSgrMaLookup[std::min(z, 255u)];
   const uint32_t one_over_n = kOneByX[n - 1];
-  // (kSgrProjSgrBits - a2) < 2^8, b < 2^(bitdepth) * n,
+  // ma < 2^8, b < 2^(bitdepth) * n,
   // one_over_n = round(2^12 / n)
   // => the product here is < 2^(20 + bitdepth) <= 2^32,
   // and b is set to a value < 2^(8 + bitdepth).
-  // This holds even with the rounding in one_over_n and in the overall
-  // result, as long as (kSgrProjSgrBits - a2) is strictly less than 2^8.
-  const uint32_t b2 = ((1 << kSgrProjSgrBits) - a2) * b * one_over_n;
-  intermediate->a = a2;
+  // This holds even with the rounding in one_over_n and in the overall result,
+  // as long as ma is strictly less than 2^8.
+  const uint32_t b2 = ma * b * one_over_n;
+  intermediate->ma = ma;
   intermediate->b = RightShiftWithRounding(b2, kSgrProjReciprocalBits);
 }
 
@@ -435,16 +414,15 @@ LIBGAV1_ALWAYS_INLINE void BoxFilterPreProcessBottom(
 }
 
 inline void Sum565(const SgrIntermediateBuffer* const intermediate,
-                   uint16_t* const a, uint32_t* const b) {
-  *a = 5 * (intermediate[0].a + intermediate[2].a) + 6 * intermediate[1].a;
+                   uint16_t* const ma, uint32_t* const b) {
+  *ma = 5 * (intermediate[0].ma + intermediate[2].ma) + 6 * intermediate[1].ma;
   *b = 5 * (intermediate[0].b + intermediate[2].b) + 6 * intermediate[1].b;
 }
 
 template <typename Pixel>
-inline int CalculateFilteredOutput(const Pixel src, const uint32_t a,
+inline int CalculateFilteredOutput(const Pixel src, const uint32_t ma,
                                    const uint32_t b, const int shift) {
-  // v < 2^32. All intermediate calculations are positive.
-  const uint32_t v = a * src + b;
+  const int32_t v = b - ma * src;
   return RightShiftWithRounding(v,
                                 kSgrProjSgrBits + shift - kSgrProjRestoreBits);
 }
@@ -453,62 +431,56 @@ template <typename Pixel>
 inline void BoxFilterPass1(const Pixel src0, const Pixel src1,
                            const SgrIntermediateBuffer* const intermediate[2],
                            const ptrdiff_t x, int p[2]) {
-  uint16_t a[2];
+  uint16_t ma[2];
   uint32_t b[2];
-  Sum565(intermediate[0] + x, &a[0], &b[0]);
-  Sum565(intermediate[1] + x, &a[1], &b[1]);
-  p[0] = CalculateFilteredOutput<Pixel>(src0, a[0] + a[1], b[0] + b[1], 5);
-  p[1] = CalculateFilteredOutput<Pixel>(src1, a[1], b[1], 4);
+  Sum565(intermediate[0] + x, &ma[0], &b[0]);
+  Sum565(intermediate[1] + x, &ma[1], &b[1]);
+  p[0] = CalculateFilteredOutput<Pixel>(src0, ma[0] + ma[1], b[0] + b[1], 5);
+  p[1] = CalculateFilteredOutput<Pixel>(src1, ma[1], b[1], 4);
 }
 
 template <typename Pixel>
 inline int BoxFilterPass2(const Pixel src,
                           const SgrIntermediateBuffer* const intermediate[3],
                           const ptrdiff_t x) {
-  const uint32_t a = 3 * (intermediate[0][x + 0].a + intermediate[0][x + 2].a +
-                          intermediate[2][x + 0].a + intermediate[2][x + 2].a) +
-                     4 * (intermediate[0][x + 1].a + intermediate[1][x + 0].a +
-                          intermediate[1][x + 1].a + intermediate[1][x + 2].a +
-                          intermediate[2][x + 1].a);
+  const uint32_t ma =
+      3 * (intermediate[0][x + 0].ma + intermediate[0][x + 2].ma +
+           intermediate[2][x + 0].ma + intermediate[2][x + 2].ma) +
+      4 * (intermediate[0][x + 1].ma + intermediate[1][x + 0].ma +
+           intermediate[1][x + 1].ma + intermediate[1][x + 2].ma +
+           intermediate[2][x + 1].ma);
   const uint32_t b = 3 * (intermediate[0][x + 0].b + intermediate[0][x + 2].b +
                           intermediate[2][x + 0].b + intermediate[2][x + 2].b) +
                      4 * (intermediate[0][x + 1].b + intermediate[1][x + 0].b +
                           intermediate[1][x + 1].b + intermediate[1][x + 2].b +
                           intermediate[2][x + 1].b);
-  return CalculateFilteredOutput<Pixel>(src, a, b, 5);
+  return CalculateFilteredOutput<Pixel>(src, ma, b, 5);
 }
 
 template <int bitdepth, typename Pixel>
-inline Pixel SelfGuidedDoubleMultiplier(const int src,
-                                        const int box_filter_process_output0,
-                                        const int box_filter_process_output1,
-                                        const int16_t w0, const int16_t w1,
+inline Pixel SelfGuidedFinal(const int src, const int v) {
+  // if radius_pass_0 == 0 and radius_pass_1 == 0, the range of v is:
+  // bits(u) + bits(w0/w1/w2) + 2 = bitdepth + 13.
+  // Then, range of s is bitdepth + 2. This is a rough estimation, taking the
+  // maximum value of each element.
+  const int s = src + RightShiftWithRounding(
+                          v, kSgrProjRestoreBits + kSgrProjPrecisionBits);
+  return static_cast<Pixel>(Clip3(s, 0, (1 << bitdepth) - 1));
+}
+
+template <int bitdepth, typename Pixel>
+inline Pixel SelfGuidedDoubleMultiplier(const int src, const int filter0,
+                                        const int filter1, const int16_t w0,
                                         const int16_t w2) {
-  const int v = w1 * (src << kSgrProjRestoreBits) +
-                w0 * box_filter_process_output0 +
-                w2 * box_filter_process_output1;
-  // if radius_pass_0 == 0 and radius_pass_1 == 0, the range of v is:
-  // bits(u) + bits(w0/w1/w2) + 2 = bitdepth + 13.
-  // Then, range of s is bitdepth + 2. This is a rough estimation, taking
-  // the maximum value of each element.
-  const int s =
-      RightShiftWithRounding(v, kSgrProjRestoreBits + kSgrProjPrecisionBits);
-  return static_cast<Pixel>(Clip3(s, 0, (1 << bitdepth) - 1));
+  const int v = w0 * filter0 + w2 * filter1;
+  return SelfGuidedFinal<bitdepth, Pixel>(src, v);
 }
 
 template <int bitdepth, typename Pixel>
-inline Pixel SelfGuidedSingleMultiplier(const int src,
-                                        const int box_filter_process_output,
-                                        const int16_t w0, const int16_t w1) {
-  const int v =
-      w1 * (src << kSgrProjRestoreBits) + w0 * box_filter_process_output;
-  // if radius_pass_0 == 0 and radius_pass_1 == 0, the range of v is:
-  // bits(u) + bits(w0/w1/w2) + 2 = bitdepth + 13.
-  // Then, range of s is bitdepth + 2. This is a rough estimation, taking
-  // the maximum value of each element.
-  const int s =
-      RightShiftWithRounding(v, kSgrProjRestoreBits + kSgrProjPrecisionBits);
-  return static_cast<Pixel>(Clip3(s, 0, (1 << bitdepth) - 1));
+inline Pixel SelfGuidedSingleMultiplier(const int src, const int filter,
+                                        const int16_t w0) {
+  const int v = w0 * filter;
+  return SelfGuidedFinal<bitdepth, Pixel>(src, v);
 }
 
 template <int bitdepth, typename Pixel>
@@ -554,9 +526,9 @@ inline void LoopRestorationFuncs_C<bitdepth, Pixel>::BoxFilterProcess(
       p[1][1] =
           BoxFilterPass2<Pixel>(src[src_stride + x], intermediate1 + 1, x);
       dst[x] = SelfGuidedDoubleMultiplier<bitdepth, Pixel>(src[x], p[0][0],
-                                                           p[1][0], w0, w1, w2);
+                                                           p[1][0], w0, w2);
       dst[dst_stride + x] = SelfGuidedDoubleMultiplier<bitdepth, Pixel>(
-          src[src_stride + x], p[0][1], p[1][1], w0, w1, w2);
+          src[src_stride + x], p[0][1], p[1][1], w0, w2);
     } while (++x < width);
     src += 2 * src_stride;
     dst += 2 * dst_stride;
@@ -576,7 +548,7 @@ inline void LoopRestorationFuncs_C<bitdepth, Pixel>::BoxFilterProcess(
                             p[0]);
       p[1][0] = BoxFilterPass2<Pixel>(src[x], intermediate1, x);
       dst[x] = SelfGuidedDoubleMultiplier<bitdepth, Pixel>(src[x], p[0][0],
-                                                           p[1][0], w0, w1, w2);
+                                                           p[1][0], w0, w2);
     } while (++x < width);
   }
 }
@@ -589,7 +561,6 @@ inline void LoopRestorationFuncs_C<bitdepth, Pixel>::BoxFilterProcessPass1(
   const int sgr_proj_index = restoration_info.sgr_proj_info.index;
   const uint32_t s = kSgrScaleParameter[sgr_proj_index][0];  // s < 2^12.
   const int16_t w0 = restoration_info.sgr_proj_info.multiplier[0];
-  const int16_t w1 = (1 << kSgrProjPrecisionBits) - w0;
   SgrIntermediateBuffer* intermediate[2];
   assert(s != 0);
   intermediate[0] = buffer->intermediate;
@@ -603,10 +574,9 @@ inline void LoopRestorationFuncs_C<bitdepth, Pixel>::BoxFilterProcessPass1(
     do {
       int p[2];
       BoxFilterPass1<Pixel>(src[x], src[src_stride + x], intermediate, x, p);
-      dst[x] =
-          SelfGuidedSingleMultiplier<bitdepth, Pixel>(src[x], p[0], w0, w1);
+      dst[x] = SelfGuidedSingleMultiplier<bitdepth, Pixel>(src[x], p[0], w0);
       dst[dst_stride + x] = SelfGuidedSingleMultiplier<bitdepth, Pixel>(
-          src[src_stride + x], p[1], w0, w1);
+          src[src_stride + x], p[1], w0);
     } while (++x < width);
     src += 2 * src_stride;
     dst += 2 * dst_stride;
@@ -619,10 +589,9 @@ inline void LoopRestorationFuncs_C<bitdepth, Pixel>::BoxFilterProcessPass1(
     do {
       int p[2];
       BoxFilterPass1<Pixel>(src[x], src[src_stride + x], intermediate, x, p);
-      dst[x] =
-          SelfGuidedSingleMultiplier<bitdepth, Pixel>(src[x], p[0], w0, w1);
+      dst[x] = SelfGuidedSingleMultiplier<bitdepth, Pixel>(src[x], p[0], w0);
       dst[dst_stride + x] = SelfGuidedSingleMultiplier<bitdepth, Pixel>(
-          src[src_stride + x], p[1], w0, w1);
+          src[src_stride + x], p[1], w0);
     } while (++x < width);
   }
 }
@@ -653,7 +622,7 @@ inline void LoopRestorationFuncs_C<bitdepth, Pixel>::BoxFilterProcessPass2(
     int x = 0;
     do {
       const int p = BoxFilterPass2<Pixel>(src[x], intermediate, x);
-      dst[x] = SelfGuidedSingleMultiplier<bitdepth, Pixel>(src[x], p, w0, w1);
+      dst[x] = SelfGuidedSingleMultiplier<bitdepth, Pixel>(src[x], p, w0);
     } while (++x < width);
     src += src_stride;
     dst += dst_stride;
