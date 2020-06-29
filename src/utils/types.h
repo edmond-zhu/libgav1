@@ -268,6 +268,10 @@ struct LoopFilter {
   // Whether the filter level depends on the mode and reference frame used to
   // predict a block.
   bool delta_enabled;
+  // Whether additional syntax elements were read that specify which mode and
+  // reference frame deltas are to be updated. loop_filter_delta_update field in
+  // Section 5.9.11 of the spec.
+  bool delta_update;
   // Contains the adjustment needed for the filter level based on the chosen
   // reference frame, in the range of [-64, 63].
   std::array<int8_t, kNumReferenceFrameTypes> ref_deltas;

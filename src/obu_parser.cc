@@ -867,8 +867,8 @@ bool ObuParser::ParseLoopFilterParameters() {
   loop_filter->delta_enabled = static_cast<bool>(scratch);
   if (loop_filter->delta_enabled) {
     OBU_READ_BIT_OR_FAIL;
-    const auto loop_filter_delta_update = static_cast<bool>(scratch);
-    if (loop_filter_delta_update) {
+    loop_filter->delta_update = static_cast<bool>(scratch);
+    if (loop_filter->delta_update) {
       for (auto& ref_delta : loop_filter->ref_deltas) {
         OBU_READ_BIT_OR_FAIL;
         const auto update_ref_delta = static_cast<bool>(scratch);
@@ -894,6 +894,8 @@ bool ObuParser::ParseLoopFilterParameters() {
         }
       }
     }
+  } else {
+    loop_filter->delta_update = false;
   }
   return true;
 }
