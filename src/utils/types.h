@@ -507,6 +507,7 @@ struct ObuFrameHeader {
   uint8_t reference_order_hint[kNumReferenceFrameTypes];
   LoopFilter loop_filter;
   Cdef cdef;
+  bool use_superres;
   FilmGrainParams film_grain_params;
 };
 

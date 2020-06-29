@@ -550,12 +550,12 @@ bool ObuParser::ParseSuperResParametersAndComputeImageSize() {
   int64_t scratch;
   // SuperRes.
   frame_header_.upscaled_width = frame_header_.width;
-  bool use_superres = false;
+  frame_header_.use_superres = false;
   if (sequence_header_.enable_superres) {
     OBU_READ_BIT_OR_FAIL;
-    use_superres = static_cast<bool>(scratch);
+    frame_header_.use_superres = static_cast<bool>(scratch);
   }
-  if (use_superres) {
+  if (frame_header_.use_superres) {
     OBU_READ_LITERAL_OR_FAIL(3);
     // 9 is the smallest value for the denominator.
     frame_header_.superres_scale_denominator = scratch + 9;
