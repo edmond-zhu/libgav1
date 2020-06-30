@@ -1677,14 +1677,15 @@ bool ObuParser::ParseTileInfoSyntax() {
       tile_info->tile_column_start[i] = sb_start << sb_shift;
       const int max_width =
           std::min(sb_columns - sb_start, static_cast<int>(sb_max_tile_width));
-      int sb_size;
-      if (!bit_reader_->DecodeUniform(max_width, &sb_size)) {
+      if (!bit_reader_->DecodeUniform(
+              max_width, &tile_info->tile_column_width_in_superblocks[i])) {
         LIBGAV1_DLOG(ERROR, "Not enough bits.");
         return false;
       }
-      ++sb_size;
-      widest_tile_sb = std::max(sb_size, widest_tile_sb);
-      sb_start += sb_size;
+      ++tile_info->tile_column_width_in_superblocks[i];
+      widest_tile_sb = std::max(tile_info->tile_column_width_in_superblocks[i],
+                                widest_tile_sb);
+      sb_start += tile_info->tile_column_width_in_superblocks[i];
     }
     tile_info->tile_column_start[i] = frame_header_.columns4x4;
     tile_info->tile_columns = i;
@@ -1703,13 +1704,13 @@ bool ObuParser::ParseTileInfoSyntax() {
       }
       tile_info->tile_row_start[i] = sb_start << sb_shift;
       const int max_height = std::min(sb_rows - sb_start, max_tile_height_sb);
-      int sb_size;
-      if (!bit_reader_->DecodeUniform(max_height, &sb_size)) {
+      if (!bit_reader_->DecodeUniform(
+              max_height, &tile_info->tile_row_height_in_superblocks[i])) {
         LIBGAV1_DLOG(ERROR, "Not enough bits.");
         return false;
       }
-      ++sb_size;
-      sb_start += sb_size;
+      ++tile_info->tile_row_height_in_superblocks[i];
+      sb_start += tile_info->tile_row_height_in_superblocks[i];
     }
     tile_info->tile_row_start[i] = frame_header_.rows4x4;
     tile_info->tile_rows = i;

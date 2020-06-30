@@ -305,9 +305,15 @@ struct TileInfo {
   int tile_columns_log2;
   int tile_columns;
   int tile_column_start[kMaxTileColumns + 1];
+  // This field is not used by libgav1, but is populated for use by some
+  // hardware decoders. So it must not be removed.
+  int tile_column_width_in_superblocks[kMaxTileColumns + 1];
   int tile_rows_log2;
   int tile_rows;
   int tile_row_start[kMaxTileRows + 1];
+  // This field is not used by libgav1, but is populated for use by some
+  // hardware decoders. So it must not be removed.
+  int tile_row_height_in_superblocks[kMaxTileRows + 1];
   int16_t context_update_id;
   uint8_t tile_size_bytes;
 };
