@@ -476,6 +476,7 @@ struct ObuFrameHeader {
   uint8_t order_hint;
   int8_t primary_reference_frame;
   bool render_and_frame_size_different;
+  bool use_superres;
   uint8_t superres_scale_denominator;
   bool allow_screen_content_tools;
   bool allow_intrabc;
@@ -517,7 +518,6 @@ struct ObuFrameHeader {
   uint8_t reference_order_hint[kNumReferenceFrameTypes];
   LoopFilter loop_filter;
   Cdef cdef;
-  bool use_superres;
   FilmGrainParams film_grain_params;
 };
 
