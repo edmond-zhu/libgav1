@@ -939,7 +939,6 @@ StatusCode DecoderImpl::ParseAndSchedule(const uint8_t* data, size_t size,
 StatusCode DecoderImpl::DecodeFrame(EncodedFrame* const encoded_frame) {
   const ObuSequenceHeader& sequence_header = encoded_frame->sequence_header;
   const ObuFrameHeader& frame_header = encoded_frame->frame_header;
-  const Vector<ObuTileGroup>& tile_groups = encoded_frame->tile_groups;
   RefCountedBufferPtr current_frame = std::move(encoded_frame->frame);
 
   std::unique_ptr<FrameScratchBuffer> frame_scratch_buffer =
@@ -955,16 +954,16 @@ StatusCode DecoderImpl::DecodeFrame(EncodedFrame* const encoded_frame) {
 
   StatusCode status;
   if (!frame_header.show_existing_frame) {
-    if (tile_groups.empty()) {
+    if (encoded_frame->tile_buffers.empty()) {
       // This means that the last call to ParseOneFrame() did not actually
       // have any tile groups. This could happen in rare cases (for example,
       // if there is a Metadata OBU after the TileGroup OBU). We currently do
       // not have a reason to handle those cases, so we simply continue.
       return kStatusOk;
     }
-    status = DecodeTiles(sequence_header, frame_header, tile_groups,
-                         encoded_frame->state, frame_scratch_buffer.get(),
-                         current_frame.get());
+    status = DecodeTiles(sequence_header, frame_header,
+                         encoded_frame->tile_buffers, encoded_frame->state,
+                         frame_scratch_buffer.get(), current_frame.get());
     if (status != kStatusOk) {
       return status;
     }
@@ -1062,7 +1061,7 @@ StatusCode DecoderImpl::DecodeTemporalUnit(const TemporalUnit& temporal_unit,
       }
     }
     if (!obu->frame_header().show_existing_frame) {
-      if (obu->tile_groups().empty()) {
+      if (obu->tile_buffers().empty()) {
         // This means that the last call to ParseOneFrame() did not actually
         // have any tile groups. This could happen in rare cases (for example,
         // if there is a Metadata OBU after the TileGroup OBU). We currently do
@@ -1070,7 +1069,7 @@ StatusCode DecoderImpl::DecodeTemporalUnit(const TemporalUnit& temporal_unit,
         continue;
       }
       status = DecodeTiles(obu->sequence_header(), obu->frame_header(),
-                           obu->tile_groups(), state_,
+                           obu->tile_buffers(), state_,
                            frame_scratch_buffer.get(), current_frame.get());
       if (status != kStatusOk) {
         return status;
@@ -1175,7 +1174,7 @@ void DecoderImpl::ReleaseOutputFrame() {
 
 StatusCode DecoderImpl::DecodeTiles(
     const ObuSequenceHeader& sequence_header,
-    const ObuFrameHeader& frame_header, const Vector<ObuTileGroup>& tile_groups,
+    const ObuFrameHeader& frame_header, const Vector<TileBuffer>& tile_buffers,
     const DecoderState& state, FrameScratchBuffer* const frame_scratch_buffer,
     RefCountedBuffer* const current_frame) {
   frame_scratch_buffer->tile_scratch_buffer_pool.Reset(
@@ -1282,8 +1281,7 @@ StatusCode DecoderImpl::DecodeTiles(
     return kStatusInternalError;
   }
 
-  const uint8_t tile_size_bytes = frame_header.tile_info.tile_size_bytes;
-  const int tile_count = tile_groups.back().end + 1;
+  const int tile_count = frame_header.tile_info.tile_count;
   assert(tile_count >= 1);
   Vector<std::unique_ptr<Tile>> tiles;
   if (!tiles.reserve(tile_count)) {
@@ -1457,50 +1455,20 @@ StatusCode DecoderImpl::DecodeTiles(
   }
 
   SymbolDecoderContext saved_symbol_decoder_context;
-  int tile_index = 0;
   BlockingCounterWithStatus pending_tiles(tile_count);
-  for (const auto& tile_group : tile_groups) {
-    size_t bytes_left = tile_group.data_size;
-    size_t byte_offset = 0;
-    // The for loop in 5.11.1.
-    for (int tile_number = tile_group.start; tile_number <= tile_group.end;
-         ++tile_number) {
-      size_t tile_size = 0;
-      if (tile_number != tile_group.end) {
-        RawBitReader bit_reader(tile_group.data + byte_offset, bytes_left);
-        if (!bit_reader.ReadLittleEndian(tile_size_bytes, &tile_size)) {
-          LIBGAV1_DLOG(ERROR, "Could not read tile size for tile #%d",
-                       tile_number);
-          return kStatusBitstreamError;
-        }
-        ++tile_size;
-        byte_offset += tile_size_bytes;
-        bytes_left -= tile_size_bytes;
-        if (tile_size > bytes_left) {
-          LIBGAV1_DLOG(ERROR, "Invalid tile size %zu for tile #%d", tile_size,
-                       tile_number);
-          return kStatusBitstreamError;
-        }
-      } else {
-        tile_size = bytes_left;
-      }
-
-      std::unique_ptr<Tile> tile = Tile::Create(
-          tile_number, tile_group.data + byte_offset, tile_size,
-          sequence_header, frame_header, current_frame, state,
-          frame_scratch_buffer, wedge_masks_, &saved_symbol_decoder_context,
-          prev_segment_ids, &post_filter, dsp,
-          threading_strategy.row_thread_pool(tile_index++), &pending_tiles,
-          is_frame_parallel_, use_intra_prediction_buffer);
-      if (tile == nullptr) {
-        LIBGAV1_DLOG(ERROR, "Failed to create tile.");
-        return kStatusOutOfMemory;
-      }
-      tiles.push_back_unchecked(std::move(tile));
-
-      byte_offset += tile_size;
-      bytes_left -= tile_size;
+  for (int tile_number = 0; tile_number < tile_count; ++tile_number) {
+    std::unique_ptr<Tile> tile = Tile::Create(
+        tile_number, tile_buffers[tile_number].data,
+        tile_buffers[tile_number].size, sequence_header, frame_header,
+        current_frame, state, frame_scratch_buffer, wedge_masks_,
+        &saved_symbol_decoder_context, prev_segment_ids, &post_filter, dsp,
+        threading_strategy.row_thread_pool(tile_number), &pending_tiles,
+        is_frame_parallel_, use_intra_prediction_buffer);
+    if (tile == nullptr) {
+      LIBGAV1_DLOG(ERROR, "Failed to create tile.");
+      return kStatusOutOfMemory;
     }
+    tiles.push_back_unchecked(std::move(tile));
   }
   assert(tiles.size() == static_cast<size_t>(tile_count));
   if (is_frame_parallel_) {

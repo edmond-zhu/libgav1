@@ -57,13 +57,13 @@ struct EncodedFrame {
         temporal_unit(nullptr),
         frame(frame),
         position_in_temporal_unit(position_in_temporal_unit) {
-    obu->MoveTileGroups(&tile_groups);
+    obu->MoveTileBuffer(&tile_buffers);
     frame->MarkFrameAsStarted();
   }
 
   const ObuSequenceHeader sequence_header;
   const ObuFrameHeader frame_header;
-  Vector<ObuTileGroup> tile_groups;
+  Vector<TileBuffer> tile_buffers;
   DecoderState state;
   TemporalUnit* temporal_unit;
   RefCountedBufferPtr frame;
@@ -191,7 +191,7 @@ class DecoderImpl : public Allocable {
   StatusCode CopyFrameToOutputBuffer(const RefCountedBufferPtr& frame);
   StatusCode DecodeTiles(const ObuSequenceHeader& sequence_header,
                          const ObuFrameHeader& frame_header,
-                         const Vector<ObuTileGroup>& tile_groups,
+                         const Vector<TileBuffer>& tile_buffers,
                          const DecoderState& state,
                          FrameScratchBuffer* frame_scratch_buffer,
                          RefCountedBuffer* current_frame);

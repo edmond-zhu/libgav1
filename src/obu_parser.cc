@@ -1717,6 +1717,10 @@ bool ObuParser::ParseTileInfoSyntax() {
     tile_info->tile_rows_log2 = CeilLog2(tile_info->tile_rows);
   }
   tile_info->tile_count = tile_info->tile_rows * tile_info->tile_columns;
+  if (!tile_buffers_.reserve(tile_info->tile_count)) {
+    LIBGAV1_DLOG(ERROR, "Unable to allocate memory for tile_buffers_.");
+    return false;
+  }
   tile_info->context_update_id = 0;
   const int tile_bits =
       tile_info->tile_columns_log2 + tile_info->tile_rows_log2;
@@ -2490,33 +2494,56 @@ bool ObuParser::ParseMetadata(const uint8_t* data, size_t size) {
   return true;
 }
 
-bool ObuParser::ValidateTileGroup() {
-  const auto& tile_group = tile_groups_.back();
-  if (tile_group.start != next_tile_group_start_ ||
-      tile_group.start > tile_group.end ||
-      tile_group.end >= frame_header_.tile_info.tile_count) {
+bool ObuParser::AddTileBuffers(int start, int end, size_t total_size,
+                               size_t tg_header_size,
+                               size_t bytes_consumed_so_far) {
+  // Validate that the tile group start and end are within the allowed range.
+  if (start != next_tile_group_start_ || start > end ||
+      end >= frame_header_.tile_info.tile_count) {
     LIBGAV1_DLOG(ERROR,
                  "Invalid tile group start %d or end %d: expected tile group "
                  "start %d, tile_count %d.",
-                 tile_group.start, tile_group.end, next_tile_group_start_,
+                 start, end, next_tile_group_start_,
                  frame_header_.tile_info.tile_count);
     return false;
   }
-  next_tile_group_start_ = tile_group.end + 1;
-  return true;
-}
+  next_tile_group_start_ = end + 1;
 
-bool ObuParser::SetTileDataOffset(size_t total_size, size_t tg_header_size,
-                                  size_t bytes_consumed_so_far) {
   if (total_size < tg_header_size) {
     LIBGAV1_DLOG(ERROR, "total_size (%zu) is less than tg_header_size (%zu).)",
                  total_size, tg_header_size);
     return false;
   }
-  auto& tile_group = tile_groups_.back();
-  tile_group.data_size = total_size - tg_header_size;
-  tile_group.data_offset = bytes_consumed_so_far + tg_header_size;
-  tile_group.data = data_ + tile_group.data_offset;
+  size_t bytes_left = total_size - tg_header_size;
+  const uint8_t* data = data_ + bytes_consumed_so_far + tg_header_size;
+  for (int tile_number = start; tile_number <= end; ++tile_number) {
+    size_t tile_size = 0;
+    if (tile_number != end) {
+      RawBitReader bit_reader(data, bytes_left);
+      if (!bit_reader.ReadLittleEndian(frame_header_.tile_info.tile_size_bytes,
+                                       &tile_size)) {
+        LIBGAV1_DLOG(ERROR, "Could not read tile size for tile #%d",
+                     tile_number);
+        return false;
+      }
+      ++tile_size;
+      data += frame_header_.tile_info.tile_size_bytes;
+      bytes_left -= frame_header_.tile_info.tile_size_bytes;
+      if (tile_size > bytes_left) {
+        LIBGAV1_DLOG(ERROR, "Invalid tile size %zu for tile #%d", tile_size,
+                     tile_number);
+        return false;
+      }
+    } else {
+      tile_size = bytes_left;
+    }
+    // The memory for this has been allocated in ParseTileInfoSyntax(). So it is
+    // safe to use push_back_unchecked here.
+    tile_buffers_.push_back_unchecked({data, tile_size});
+    data += tile_size;
+    bytes_left -= tile_size;
+  }
+  bit_reader_->SkipBytes(total_size - tg_header_size);
   return true;
 }
 
@@ -2525,29 +2552,19 @@ bool ObuParser::ParseTileGroup(size_t size, size_t bytes_consumed_so_far) {
   const size_t start_offset = bit_reader_->byte_offset();
   const int tile_bits =
       tile_info->tile_columns_log2 + tile_info->tile_rows_log2;
-  if (!tile_groups_.emplace_back()) {
-    LIBGAV1_DLOG(ERROR, "Could not add an element to tile_groups_.");
-    return false;
-  }
-  auto& tile_group = tile_groups_.back();
   if (tile_bits == 0) {
-    tile_group.start = 0;
-    tile_group.end = 0;
-    if (!ValidateTileGroup()) return false;
-    return SetTileDataOffset(size, 0, bytes_consumed_so_far);
+    return AddTileBuffers(0, 0, size, 0, bytes_consumed_so_far);
   }
   int64_t scratch;
   OBU_READ_BIT_OR_FAIL;
   const auto tile_start_and_end_present_flag = static_cast<bool>(scratch);
   if (!tile_start_and_end_present_flag) {
-    tile_group.start = 0;
-    tile_group.end = tile_info->tile_count - 1;
-    if (!ValidateTileGroup()) return false;
     if (!bit_reader_->AlignToNextByte()) {
       LIBGAV1_DLOG(ERROR, "Byte alignment has non zero bits.");
       return false;
     }
-    return SetTileDataOffset(size, 1, bytes_consumed_so_far);
+    return AddTileBuffers(0, tile_info->tile_count - 1, size, 1,
+                          bytes_consumed_so_far);
   }
   if (obu_headers_.back().type == kObuFrame) {
     // 6.10.1: If obu_type is equal to OBU_FRAME, it is a requirement of
@@ -2558,16 +2575,16 @@ bool ObuParser::ParseTileGroup(size_t size, size_t bytes_consumed_so_far) {
     return false;
   }
   OBU_READ_LITERAL_OR_FAIL(tile_bits);
-  tile_group.start = static_cast<int>(scratch);
+  const int start = static_cast<int>(scratch);
   OBU_READ_LITERAL_OR_FAIL(tile_bits);
-  tile_group.end = static_cast<int>(scratch);
-  if (!ValidateTileGroup()) return false;
+  const int end = static_cast<int>(scratch);
   if (!bit_reader_->AlignToNextByte()) {
     LIBGAV1_DLOG(ERROR, "Byte alignment has non zero bits.");
     return false;
   }
   const size_t tg_header_size = bit_reader_->byte_offset() - start_offset;
-  return SetTileDataOffset(size, tg_header_size, bytes_consumed_so_far);
+  return AddTileBuffers(start, end, size, tg_header_size,
+                        bytes_consumed_so_far);
 }
 
 bool ObuParser::ParseHeader() {
@@ -2636,7 +2653,7 @@ StatusCode ObuParser::ParseOneFrame(RefCountedBufferPtr* const current_frame) {
   obu_headers_.clear();
   frame_header_ = {};
   metadata_ = {};
-  tile_groups_.clear();
+  tile_buffers_.clear();
   next_tile_group_start_ = 0;
 
   bool parsed_one_full_frame = false;
@@ -2778,7 +2795,6 @@ StatusCode ObuParser::ParseOneFrame(RefCountedBufferPtr* const current_frame) {
           LIBGAV1_DLOG(ERROR, "Failed to parse TileGroup in Frame OBU.");
           return kStatusBitstreamError;
         }
-        bit_reader_->SkipBytes(tile_groups_.back().data_size);
         parsed_one_full_frame = true;
         break;
       }
@@ -2788,9 +2804,8 @@ StatusCode ObuParser::ParseOneFrame(RefCountedBufferPtr* const current_frame) {
           LIBGAV1_DLOG(ERROR, "Failed to parse TileGroup OBU.");
           return kStatusBitstreamError;
         }
-        bit_reader_->SkipBytes(tile_groups_.back().data_size);
         parsed_one_full_frame =
-            (tile_groups_.back().end == frame_header_.tile_info.tile_count - 1);
+            (next_tile_group_start_ == frame_header_.tile_info.tile_count);
         break;
       case kObuTileList:
         LIBGAV1_DLOG(ERROR, "Decoding of tile list OBUs is not supported.");
