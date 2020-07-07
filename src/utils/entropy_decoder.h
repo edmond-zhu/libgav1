@@ -69,7 +69,7 @@ class DaalaBitReader : public BitReader {
   inline int ReadSymbolImpl(const uint16_t* cdf, int symbol_count);
   // Similar to ReadSymbolImpl but it uses binary search to perform step 2 in
   // the comment above. As of now, this function is called when |symbol_count|
-  // is greater than or equal to 8.
+  // is greater than or equal to 14.
   inline int ReadSymbolImplBinarySearch(const uint16_t* cdf, int symbol_count);
   // Specialized implementation of ReadSymbolImpl based on the fact that
   // symbol_count == 2.

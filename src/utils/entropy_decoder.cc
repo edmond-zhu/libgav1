@@ -591,7 +591,7 @@ bool DaalaBitReader::ReadSymbol(uint16_t* cdf) {
     // 32). So using that information:
     //  count >> 4 is 0 for count from 0 to 15.
     //  count >> 4 is 1 for count from 16 to 31.
-    //  count >> 4 is 2 for count == 31.
+    //  count >> 4 is 2 for count == 32.
     // Now, the equation becomes:
     //  4 + (count >> 4).
     // Since (count >> 4) can only be 0 or 1 or 2, the addition can be replaced
