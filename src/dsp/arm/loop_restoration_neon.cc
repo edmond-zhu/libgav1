@@ -1762,16 +1762,16 @@ void SelfGuidedFilter_NEON(const void* const source, void* const dest,
     // following assertion.
     assert(radius_pass_0 != 0);
     BoxFilterProcessPass1(src, source_stride, restoration_info, width, height,
-                          kSgrScaleParameter[index][0], buffer->sgf_buffer, dst,
-                          dest_stride);
+                          kSgrScaleParameter[index][0],
+                          buffer->sgr_buffer.temp_buffer, dst, dest_stride);
   } else if (radius_pass_0 == 0) {
     BoxFilterProcessPass2(src, source_stride, restoration_info, width, height,
-                          kSgrScaleParameter[index][1], buffer->sgf_buffer, dst,
-                          dest_stride);
+                          kSgrScaleParameter[index][1],
+                          buffer->sgr_buffer.temp_buffer, dst, dest_stride);
   } else {
     BoxFilterProcess(src, source_stride, restoration_info, width, height,
-                     kSgrScaleParameter[index], buffer->sgf_buffer, dst,
-                     dest_stride);
+                     kSgrScaleParameter[index], buffer->sgr_buffer.temp_buffer,
+                     dst, dest_stride);
   }
 }
 
