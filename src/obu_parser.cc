@@ -2529,14 +2529,18 @@ bool ObuParser::AddTileBuffers(int start, int end, size_t total_size,
       ++tile_size;
       data += frame_header_.tile_info.tile_size_bytes;
       bytes_left -= frame_header_.tile_info.tile_size_bytes;
-      if (tile_size >= bytes_left) {
+      if (tile_size > bytes_left) {
         LIBGAV1_DLOG(ERROR, "Invalid tile size %zu for tile #%d", tile_size,
                      tile_number);
         return false;
       }
     } else {
-      assert(bytes_left != 0);
       tile_size = bytes_left;
+      if (tile_size == 0) {
+        LIBGAV1_DLOG(ERROR, "Invalid tile size %zu for tile #%d", tile_size,
+                     tile_number);
+        return false;
+      }
     }
     // The memory for this has been allocated in ParseTileInfoSyntax(). So it is
     // safe to use push_back_unchecked here.
