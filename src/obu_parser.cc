@@ -2000,14 +2000,24 @@ bool ObuParser::ParseFrameParameters() {
         OBU_READ_LITERAL_OR_FAIL(3);
         frame_header_.reference_frame_index[i] = scratch;
       }
+      const int reference_frame_index = frame_header_.reference_frame_index[i];
+      assert(reference_frame_index >= 0);
+      // Section 6.8.2: It is a requirement of bitstream conformance that
+      // RefValid[ ref_frame_idx[ i ] ] is equal to 1 ...
+      // The remainder of the statement is handled by ParseSequenceHeader().
+      // Note if support for Annex C: Error resilience behavior is added this
+      // check should be omitted per C.5 Decoder consequences of processable
+      // frames.
+      if (!decoder_state_.reference_valid[reference_frame_index]) {
+        LIBGAV1_DLOG(ERROR, "ref_frame_idx[%d] (%d) is not valid.", i,
+                     reference_frame_index);
+        return false;
+      }
       // Check if the inter frame requests a nonexistent reference, whether or
       // not frame_refs_short_signaling is used.
-      assert(frame_header_.reference_frame_index[i] >= 0);
-      if (decoder_state_
-              .reference_frame[frame_header_.reference_frame_index[i]] ==
-          nullptr) {
+      if (decoder_state_.reference_frame[reference_frame_index] == nullptr) {
         LIBGAV1_DLOG(ERROR, "ref_frame_idx[%d] (%d) is not a decoded frame.", i,
-                     frame_header_.reference_frame_index[i]);
+                     reference_frame_index);
         return false;
       }
       if (sequence_header_.frame_id_numbers_present) {
@@ -2026,13 +2036,11 @@ bool ObuParser::ParseFrameParameters() {
         // Section 6.8.2: It is a requirement of bitstream conformance that
         // RefValid[ ref_frame_idx[ i ] ] is equal to 1, ...
         if (frame_header_.expected_frame_id[i] !=
-                decoder_state_.reference_frame_id
-                    [frame_header_.reference_frame_index[i]] ||
-            !decoder_state_
-                 .reference_valid[frame_header_.reference_frame_index[i]]) {
+                decoder_state_.reference_frame_id[reference_frame_index] ||
+            !decoder_state_.reference_valid[reference_frame_index]) {
           LIBGAV1_DLOG(ERROR,
                        "Reference buffer %d has a frame id number mismatch.",
-                       frame_header_.reference_frame_index[i]);
+                       reference_frame_index);
           return false;
         }
       }

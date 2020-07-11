@@ -1407,6 +1407,7 @@ StatusCode DecoderImpl::DecodeTiles(
     const int index =
         frame_header
             .reference_frame_index[frame_header.primary_reference_frame];
+    assert(index != -1);
     const RefCountedBuffer* prev_frame = state.reference_frame[index].get();
     frame_scratch_buffer->symbol_decoder_context = prev_frame->FrameContext();
     if (frame_header.segmentation.enabled &&
