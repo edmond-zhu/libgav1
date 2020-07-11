@@ -514,7 +514,7 @@ void UpdateCdf16(uint16_t* const cdf, const int symbol) {
 }  // namespace
 
 #if !LIBGAV1_CXX17
-constexpr uint32_t DaalaBitReader::kWindowSize;  // static.
+constexpr int DaalaBitReader::kWindowSize;  // static.
 #endif
 
 DaalaBitReader::DaalaBitReader(const uint8_t* data, size_t size,

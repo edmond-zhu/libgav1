@@ -54,8 +54,7 @@ class DaalaBitReader : public BitReader {
   // largest type with fast arithmetic. size_t should meet these requirements.
   static_assert(sizeof(size_t) == sizeof(void*), "");
   using WindowSize = size_t;
-  static constexpr uint32_t kWindowSize =
-      static_cast<uint32_t>(sizeof(WindowSize)) * 8;
+  static constexpr int kWindowSize = static_cast<int>(sizeof(WindowSize)) * 8;
   static_assert(kWindowSize >= 32, "");
 
   // Reads a symbol using the |cdf| table which contains the probabilities of
