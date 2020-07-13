@@ -368,7 +368,7 @@ void UpdateCdf7To9(uint16_t* const cdf, const int symbol) {
       _mm_set1_epi16(kCdfMaxProbability + 1 - (1 << rate));
   const __m128i index =
       _mm_set_epi32(0x00070006, 0x00050004, 0x00030002, 0x00010000);
-  const __m128i symbol_vec = _mm_set1_epi16(symbol);
+  const __m128i symbol_vec = _mm_set1_epi16(static_cast<int16_t>(symbol));
   const __m128i mask = _mm_cmplt_epi16(index, symbol_vec);
   const __m128i a = _mm_blendv_epi8(zero, cdf_max_probability, mask);
   const __m128i diff = _mm_sub_epi16(cdf_vec, a);
@@ -395,11 +395,11 @@ void UpdateCdf11(uint16_t* const cdf, const int symbol) {
     cdf[0] += (kCdfMaxProbability - cdf[0]) >> rate;
     cdf[1] += (kCdfMaxProbability - cdf[1]) >> rate;
     const __m128i zero = _mm_setzero_si128();
-    const __m128i cdf_max_probability =
-        _mm_set1_epi16(kCdfMaxProbability + 1 - (1 << rate));
+    const __m128i cdf_max_probability = _mm_set1_epi16(
+        static_cast<int16_t>(kCdfMaxProbability + 1 - (1 << rate)));
     const __m128i index =
         _mm_set_epi32(0x00090008, 0x00070006, 0x00050004, 0x00030002);
-    const __m128i symbol_vec = _mm_set1_epi16(symbol);
+    const __m128i symbol_vec = _mm_set1_epi16(static_cast<int16_t>(symbol));
     const __m128i mask = _mm_cmplt_epi16(index, symbol_vec);
     const __m128i a = _mm_blendv_epi8(zero, cdf_max_probability, mask);
     const __m128i diff = _mm_sub_epi16(cdf_vec, a);
@@ -426,9 +426,9 @@ void UpdateCdf13(uint16_t* const cdf, const int symbol) {
   const uint16_t count = cdf[13];
   const int rate = (4 | (count >> 4)) + 1;
   const __m128i zero = _mm_setzero_si128();
-  const __m128i cdf_max_probability =
-      _mm_set1_epi16(kCdfMaxProbability + 1 - (1 << rate));
-  const __m128i symbol_vec = _mm_set1_epi16(symbol);
+  const __m128i cdf_max_probability = _mm_set1_epi16(
+      static_cast<int16_t>(kCdfMaxProbability + 1 - (1 << rate)));
+  const __m128i symbol_vec = _mm_set1_epi16(static_cast<int16_t>(symbol));
 
   const __m128i index =
       _mm_set_epi32(0x00070006, 0x00050004, 0x00030002, 0x00010000);
@@ -456,9 +456,9 @@ void UpdateCdf16(uint16_t* const cdf, const int symbol) {
   const uint16_t count = cdf[16];
   const int rate = (4 | (count >> 4)) + 1;
   const __m128i zero = _mm_setzero_si128();
-  const __m128i cdf_max_probability =
-      _mm_set1_epi16(kCdfMaxProbability + 1 - (1 << rate));
-  const __m128i symbol_vec = _mm_set1_epi16(symbol);
+  const __m128i cdf_max_probability = _mm_set1_epi16(
+      static_cast<int16_t>(kCdfMaxProbability + 1 - (1 << rate)));
+  const __m128i symbol_vec = _mm_set1_epi16(static_cast<int16_t>(symbol));
 
   const __m128i index =
       _mm_set_epi32(0x00070006, 0x00050004, 0x00030002, 0x00010000);
