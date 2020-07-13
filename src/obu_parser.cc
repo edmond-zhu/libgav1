@@ -1890,27 +1890,28 @@ bool ObuParser::ParseFrameParameters() {
     frame_header_.current_frame_id = static_cast<uint16_t>(scratch);
     const int previous_frame_id = decoder_state_.current_frame_id;
     decoder_state_.current_frame_id = frame_header_.current_frame_id;
-    if ((frame_header_.frame_type != kFrameKey || !frame_header_.show_frame) &&
-        previous_frame_id >= 0) {
-      // Section 6.8.2: ..., it is a requirement of bitstream conformance
-      // that all of the following conditions are true:
-      //   * current_frame_id is not equal to PrevFrameID,
-      //   * DiffFrameID is less than 1 << ( idLen - 1 )
-      int diff_frame_id = decoder_state_.current_frame_id - previous_frame_id;
-      const int id_length_max_value = 1
-                                      << sequence_header_.frame_id_length_bits;
-      if (diff_frame_id <= 0) {
-        diff_frame_id += id_length_max_value;
+    if (frame_header_.frame_type != kFrameKey || !frame_header_.show_frame) {
+      if (previous_frame_id >= 0) {
+        // Section 6.8.2: ..., it is a requirement of bitstream conformance
+        // that all of the following conditions are true:
+        //   * current_frame_id is not equal to PrevFrameID,
+        //   * DiffFrameID is less than 1 << ( idLen - 1 )
+        int diff_frame_id = decoder_state_.current_frame_id - previous_frame_id;
+        const int id_length_max_value =
+            1 << sequence_header_.frame_id_length_bits;
+        if (diff_frame_id <= 0) {
+          diff_frame_id += id_length_max_value;
+        }
+        if (diff_frame_id >= DivideBy2(id_length_max_value)) {
+          LIBGAV1_DLOG(ERROR,
+                       "current_frame_id (%d) equals or differs too much from "
+                       "previous_frame_id (%d).",
+                       decoder_state_.current_frame_id, previous_frame_id);
+          return false;
+        }
       }
-      if (diff_frame_id >= DivideBy2(id_length_max_value)) {
-        LIBGAV1_DLOG(ERROR,
-                     "current_frame_id (%d) equals or differs too much from "
-                     "previous_frame_id (%d).",
-                     decoder_state_.current_frame_id, previous_frame_id);
-        return false;
-      }
+      MarkInvalidReferenceFrames();
     }
-    MarkInvalidReferenceFrames();
   } else {
     frame_header_.current_frame_id = 0;
     decoder_state_.current_frame_id = frame_header_.current_frame_id;
