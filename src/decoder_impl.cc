@@ -1384,14 +1384,11 @@ StatusCode DecoderImpl::DecodeTiles(
                          current_frame->buffer(), dsp,
                          settings_.post_filter_mask);
 
-  if (is_frame_parallel_) {
+  if (is_frame_parallel_ && !IsIntraFrame(frame_header.frame_type)) {
     // We can parse the current frame if all the reference frames have been
     // parsed.
-    for (int i = 0; i < kNumReferenceFrameTypes; ++i) {
-      if (!state.reference_valid[i] || state.reference_frame[i] == nullptr) {
-        continue;
-      }
-      if (!state.reference_frame[i]->WaitUntilParsed()) {
+    for (const int index : frame_header.reference_frame_index) {
+      if (!state.reference_frame[index]->WaitUntilParsed()) {
         return kStatusUnknownError;
       }
     }
