@@ -46,10 +46,6 @@ namespace libgav1 {
 namespace {
 
 constexpr uint32_t kReadBitMask = ~255;
-// This constant is used to set the value of |bits_| so that bits can be read
-// after end of stream without trying to refill the buffer for a reasonably long
-// time.
-constexpr int kLargeBitCount = 0x4000;
 constexpr int kCdfPrecision = 6;
 constexpr int kMinimumProbabilityPerSymbol = 4;
 
@@ -523,7 +519,7 @@ DaalaBitReader::DaalaBitReader(const uint8_t* data, size_t size,
       size_(size),
       data_index_(0),
       allow_update_cdf_(allow_update_cdf) {
-  window_diff_ = (WindowSize{1} << (kWindowSize - 1)) - 1;
+  window_diff_ = 0;
   values_in_range_ = kCdfMaxProbability;
   bits_ = -15;
   PopulateBits();
@@ -537,12 +533,11 @@ DaalaBitReader::DaalaBitReader(const uint8_t* data, size_t size,
 int DaalaBitReader::ReadBit() {
   const uint32_t curr =
       ((values_in_range_ & kReadBitMask) >> 1) + kMinimumProbabilityPerSymbol;
-  const WindowSize zero_threshold = static_cast<WindowSize>(curr)
-                                    << (kWindowSize - 16);
+  const auto symbol_value = static_cast<uint16_t>(window_diff_ >> bits_);
   int bit = 1;
-  if (window_diff_ >= zero_threshold) {
+  if (symbol_value >= curr) {
     values_in_range_ -= curr;
-    window_diff_ -= zero_threshold;
+    window_diff_ -= static_cast<WindowSize>(curr) << bits_;
     bit = 0;
   } else {
     values_in_range_ = curr;
@@ -653,8 +648,7 @@ int DaalaBitReader::ReadSymbolImpl(const uint16_t* const cdf,
   uint32_t curr = values_in_range_;
   int symbol = -1;
   uint32_t prev;
-  const auto symbol_value =
-      static_cast<uint32_t>(window_diff_ >> (kWindowSize - 16));
+  const auto symbol_value = static_cast<uint16_t>(window_diff_ >> bits_);
   uint32_t delta = kMinimumProbabilityPerSymbol * symbol_count;
   // Search through the |cdf| array to determine where the scaled cdf value and
   // |symbol_value| cross over.
@@ -665,7 +659,7 @@ int DaalaBitReader::ReadSymbolImpl(const uint16_t* const cdf,
     delta -= kMinimumProbabilityPerSymbol;
   } while (symbol_value < curr);
   values_in_range_ = prev - curr;
-  window_diff_ -= static_cast<WindowSize>(curr) << (kWindowSize - 16);
+  window_diff_ -= static_cast<WindowSize>(curr) << bits_;
   NormalizeRange();
   return symbol;
 }
@@ -675,8 +669,7 @@ int DaalaBitReader::ReadSymbolImplBinarySearch(const uint16_t* const cdf,
   assert(cdf[symbol_count - 1] == 0);
   assert(symbol_count > 1 && symbol_count <= 16);
   --symbol_count;
-  const auto symbol_value =
-      static_cast<uint32_t>(window_diff_ >> (kWindowSize - 16));
+  const auto symbol_value = static_cast<uint16_t>(window_diff_ >> bits_);
   // Search through the |cdf| array to determine where the scaled cdf value and
   // |symbol_value| cross over. Since the CDFs are sorted, we can use binary
   // search to do this. Let |symbol| be the index of the first |cdf| array
@@ -709,22 +702,21 @@ int DaalaBitReader::ReadSymbolImplBinarySearch(const uint16_t* const cdf,
   assert(low == high + 1);
   // At this point, |low| is the symbol that has been decoded.
   values_in_range_ = prev - curr;
-  window_diff_ -= static_cast<WindowSize>(curr) << (kWindowSize - 16);
+  window_diff_ -= static_cast<WindowSize>(curr) << bits_;
   NormalizeRange();
   return low;
 }
 
 int DaalaBitReader::ReadSymbolImpl(const uint16_t* const cdf) {
   assert(cdf[1] == 0);
-  const auto symbol_value =
-      static_cast<uint32_t>(window_diff_ >> (kWindowSize - 16));
+  const auto symbol_value = static_cast<uint16_t>(window_diff_ >> bits_);
   const uint32_t curr = ScaleCdf(values_in_range_ >> 8, cdf, 0, 1);
   const int symbol = static_cast<int>(symbol_value < curr);
   if (symbol == 1) {
     values_in_range_ = curr;
   } else {
     values_in_range_ -= curr;
-    window_diff_ -= static_cast<WindowSize>(curr) << (kWindowSize - 16);
+    window_diff_ -= static_cast<WindowSize>(curr) << bits_;
   }
   NormalizeRange();
   return symbol;
@@ -736,8 +728,7 @@ int DaalaBitReader::ReadSymbol4(uint16_t* const cdf) {
   assert(cdf[3] == 0);
   uint32_t curr = values_in_range_;
   uint32_t prev;
-  const auto symbol_value =
-      static_cast<uint32_t>(window_diff_ >> (kWindowSize - 16));
+  const auto symbol_value = static_cast<uint16_t>(window_diff_ >> bits_);
   uint32_t delta = kMinimumProbabilityPerSymbol * 3;
   const uint32_t values_in_range_shifted = values_in_range_ >> 8;
 
@@ -880,7 +871,7 @@ found:
   // End of unrolled do-while loop.
 
   values_in_range_ = prev - curr;
-  window_diff_ -= static_cast<WindowSize>(curr) << (kWindowSize - 16);
+  window_diff_ -= static_cast<WindowSize>(curr) << bits_;
   NormalizeRange();
   return symbol;
 }
@@ -889,8 +880,7 @@ int DaalaBitReader::ReadSymbolImpl8(const uint16_t* const cdf) {
   assert(cdf[7] == 0);
   uint32_t curr = values_in_range_;
   uint32_t prev;
-  const auto symbol_value =
-      static_cast<uint32_t>(window_diff_ >> (kWindowSize - 16));
+  const auto symbol_value = static_cast<uint16_t>(window_diff_ >> bits_);
   uint32_t delta = kMinimumProbabilityPerSymbol * 7;
   // Search through the |cdf| array to determine where the scaled cdf value and
   // |symbol_value| cross over.
@@ -944,12 +934,13 @@ found:
   // End of unrolled do-while loop.
 
   values_in_range_ = prev - curr;
-  window_diff_ -= static_cast<WindowSize>(curr) << (kWindowSize - 16);
+  window_diff_ -= static_cast<WindowSize>(curr) << bits_;
   NormalizeRange();
   return symbol;
 }
 
 void DaalaBitReader::PopulateBits() {
+  constexpr int kMaxCachedBits = kWindowSize - 16;
 #if defined(__aarch64__)
   // Fast path: read eight bytes and add the first six bytes to window_diff_.
   // This fast path makes the following assumptions.
@@ -970,10 +961,12 @@ void DaalaBitReader::PopulateBits() {
 #if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
     value = __builtin_bswap64(value);
 #endif
-    value &= 0xffffffffffff0000;
-    window_diff_ ^= static_cast<WindowSize>(value) >> (bits_ + 16);
-    data_index_ += 6;
-    bits_ += 6 * 8;
+
+    value ^= -1;
+    value >>= kWindowSize - kMaxCachedBits;
+    window_diff_ = value | (window_diff_ << kMaxCachedBits);
+    data_index_ += kMaxCachedBits >> 3;
+    bits_ += kMaxCachedBits;
     return;
   }
 #endif
@@ -982,7 +975,7 @@ void DaalaBitReader::PopulateBits() {
   int bits = bits_;
   WindowSize window_diff = window_diff_;
 
-  int shift = kWindowSize - 9 - (bits + 15);
+  int count = kWindowSize - 9 - (bits + 15);
   // The fast path above, if compiled, would cause clang 8.0.7 to vectorize
   // this loop. Since -15 <= bits_ <= -1, this loop has at most 6 or 7
   // iterations when WindowSize is 64 bits. So it is not profitable to
@@ -992,12 +985,16 @@ void DaalaBitReader::PopulateBits() {
 #ifdef __clang__
 #pragma clang loop vectorize(disable) interleave(disable)
 #endif
-  for (; shift >= 0 && data_index < size_; shift -= 8) {
-    window_diff ^= static_cast<WindowSize>(data_[data_index++]) << shift;
+  for (; count >= 0 && data_index < size_; count -= 8) {
+    const uint8_t value = data_[data_index++] ^ -1;
+    window_diff = static_cast<WindowSize>(value) | (window_diff << 8);
     bits += 8;
   }
-  if (data_index >= size_) {
-    bits = kLargeBitCount;
+  assert(bits <= kMaxCachedBits);
+  if (data_index == size_) {
+    // Shift in some 1s. This is equivalent to providing fake 0 data bits.
+    window_diff = ((window_diff + 1) << (kMaxCachedBits - bits)) - 1;
+    bits = kMaxCachedBits;
   }
 
   data_index_ = data_index;
@@ -1008,7 +1005,6 @@ void DaalaBitReader::PopulateBits() {
 void DaalaBitReader::NormalizeRange() {
   const int bits_used = 15 - FloorLog2(values_in_range_);
   bits_ -= bits_used;
-  window_diff_ = ((window_diff_ + 1) << bits_used) - 1;
   values_in_range_ <<= bits_used;
   if (bits_ < 0) PopulateBits();
 }

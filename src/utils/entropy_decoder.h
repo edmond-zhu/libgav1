@@ -87,14 +87,17 @@ class DaalaBitReader : public BitReader {
   const size_t size_;
   size_t data_index_;
   const bool allow_update_cdf_;
-  // Number of bits of data in the current value.
+  // Number of cached bits of data in the current value.
   int bits_;
   // Number of values in the current range. Declared as uint32_t for better
   // performance but only the lower 16 bits are used.
   uint32_t values_in_range_;
   // The difference between the high end of the current range and the coded
-  // value minus 1. The 16 most significant bits of this variable is used to
+  // value minus 1. The 16 bits above |bits_| of this variable are used to
   // decode the next symbol. It is filled in whenever |bits_| is less than 0.
+  // Note this implementation differs from the spec as it trades the need to
+  // shift in 1s in NormalizeRange() with an extra shift in PopulateBits(),
+  // which occurs less frequently.
   WindowSize window_diff_;
 };
 
