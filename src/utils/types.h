@@ -512,8 +512,7 @@ struct ObuFrameHeader {
   Delta delta_lf;
   // A valid value of reference_frame_index[i] is in the range [0, 7]. -1
   // indicates an invalid value.
-  int8_t reference_frame_index[kNumInterReferenceFrameTypes] = {-1, -1, -1, -1,
-                                                                -1, -1, -1};
+  int8_t reference_frame_index[kNumInterReferenceFrameTypes];
   // The ref_order_hint[ i ] syntax element in the uncompressed header.
   // Specifies the expected output order hint for each reference frame.
   uint8_t reference_order_hint[kNumReferenceFrameTypes];
