@@ -121,14 +121,12 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
 
     const libgav1::DecoderBuffer* buffer;
     libgav1::StatusCode status = decoder.DequeueFrame(&buffer);
-    if (status != libgav1::kStatusOk &&
-        status != libgav1::kStatusNothingToDequeue) {
-      break;
-    }
-    if (buffer == nullptr) {
-      dequeue_finished = status == libgav1::kStatusNothingToDequeue;
-    } else {
+    if (status == libgav1::kStatusNothingToDequeue) {
+      dequeue_finished = true;
+    } else if (status == libgav1::kStatusOk) {
       dequeue_finished = false;
+    } else {
+      break;
     }
   } while (input_buffer != nullptr || !file_reader->IsEndOfFile() ||
            !dequeue_finished);
