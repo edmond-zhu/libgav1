@@ -1576,31 +1576,6 @@ inline void BoxFilterLastRow(
   } while (x < width);
 }
 
-template <typename T>
-void Circulate3PointersBy1(T* p[3]) {
-  T* const p0 = p[0];
-  p[0] = p[1];
-  p[1] = p[2];
-  p[2] = p0;
-}
-
-template <typename T>
-void Circulate4PointersBy2(T* p[4]) {
-  std::swap(p[0], p[2]);
-  std::swap(p[1], p[3]);
-}
-
-template <typename T>
-void Circulate5PointersBy2(T* p[5]) {
-  T* const p0 = p[0];
-  T* const p1 = p[1];
-  p[0] = p[2];
-  p[1] = p[3];
-  p[2] = p[4];
-  p[3] = p0;
-  p[4] = p1;
-}
-
 inline void BoxFilterProcess(const RestorationUnitInfo& restoration_info,
                              const uint8_t* src, const ptrdiff_t src_stride,
                              const int width, const int height,
