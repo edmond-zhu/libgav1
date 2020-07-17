@@ -579,23 +579,6 @@ void WienerFilter_NEON(const void* const source, const void* const top_border,
 //------------------------------------------------------------------------------
 // SGR
 
-template <int n>
-inline uint16x4_t CalculateMa(const uint16x4_t sum, const uint32x4_t sum_sq,
-                              const uint32_t scale) {
-  // a = |sum_sq|
-  // d = |sum|
-  // p = (a * n < d * d) ? 0 : a * n - d * d;
-  const uint32x4_t dxd = vmull_u16(sum, sum);
-  const uint32x4_t axn = vmulq_n_u32(sum_sq, n);
-  // Ensure |p| does not underflow by using saturating subtraction.
-  const uint32x4_t p = vqsubq_u32(axn, dxd);
-  const uint32x4_t pxs = vmulq_n_u32(p, scale);
-  // vrshrn_n_u32() (narrowing shift) can only shift by 16 and kSgrProjScaleBits
-  // is 20.
-  const uint32x4_t shifted = vrshrq_n_u32(pxs, kSgrProjScaleBits);
-  return vmovn_u32(shifted);
-}
-
 inline void Prepare3_8(const uint8x8x2_t src, uint8x8_t dst[3]) {
   dst[0] = VshrU128<0>(src);
   dst[1] = VshrU128<1>(src);
@@ -804,135 +787,6 @@ inline uint32x4x2_t Sum565W(const uint16x8x2_t src) {
   return d;
 }
 
-inline void Store343_444(const uint8x8x2_t ma3, const uint16x8x2_t b3,
-                         const ptrdiff_t x, uint16x8_t* const sum_ma343,
-                         uint16x8_t* const sum_ma444,
-                         uint32x4x2_t* const sum_b343,
-                         uint32x4x2_t* const sum_b444, uint16_t* const ma343,
-                         uint16_t* const ma444, uint32_t* const b343,
-                         uint32_t* const b444) {
-  uint8x8_t s[3];
-  Prepare3_8(ma3, s);
-  const uint16x8_t sum_ma111 = Sum3W_16(s);
-  *sum_ma444 = vshlq_n_u16(sum_ma111, 2);
-  const uint16x8_t sum333 = vsubq_u16(*sum_ma444, sum_ma111);
-  *sum_ma343 = vaddw_u8(sum333, s[1]);
-  uint16x4_t low[3], high[3];
-  uint32x4x2_t sum_b111;
-  Prepare3_16(b3, low, high);
-  sum_b111.val[0] = Sum3W_32(low);
-  sum_b111.val[1] = Sum3W_32(high);
-  sum_b444->val[0] = vshlq_n_u32(sum_b111.val[0], 2);
-  sum_b444->val[1] = vshlq_n_u32(sum_b111.val[1], 2);
-  sum_b343->val[0] = vsubq_u32(sum_b444->val[0], sum_b111.val[0]);
-  sum_b343->val[1] = vsubq_u32(sum_b444->val[1], sum_b111.val[1]);
-  sum_b343->val[0] = vaddw_u16(sum_b343->val[0], low[1]);
-  sum_b343->val[1] = vaddw_u16(sum_b343->val[1], high[1]);
-  vst1q_u16(ma343 + x, *sum_ma343);
-  vst1q_u16(ma444 + x, *sum_ma444);
-  vst1q_u32(b343 + x + 0, sum_b343->val[0]);
-  vst1q_u32(b343 + x + 4, sum_b343->val[1]);
-  vst1q_u32(b444 + x + 0, sum_b444->val[0]);
-  vst1q_u32(b444 + x + 4, sum_b444->val[1]);
-}
-
-inline void Store343_444(const uint8x8x2_t ma3, const uint16x8x2_t b3,
-                         const ptrdiff_t x, uint16x8_t* const sum_ma343,
-                         uint32x4x2_t* const sum_b343, uint16_t* const ma343,
-                         uint16_t* const ma444, uint32_t* const b343,
-                         uint32_t* const b444) {
-  uint16x8_t sum_ma444;
-  uint32x4x2_t sum_b444;
-  Store343_444(ma3, b3, x, sum_ma343, &sum_ma444, sum_b343, &sum_b444, ma343,
-               ma444, b343, b444);
-}
-
-inline void Store343_444(const uint8x8x2_t ma3, const uint16x8x2_t b3,
-                         const ptrdiff_t x, uint16_t* const ma343,
-                         uint16_t* const ma444, uint32_t* const b343,
-                         uint32_t* const b444) {
-  uint16x8_t sum_ma343;
-  uint32x4x2_t sum_b343;
-  Store343_444(ma3, b3, x, &sum_ma343, &sum_b343, ma343, ma444, b343, b444);
-}
-
-template <int shift>
-inline int16x4_t FilterOutput(const uint16x4_t src, const uint16x4_t ma,
-                              const uint32x4_t b) {
-  // ma: 255 * 32 = 8160 (13 bits)
-  // b: 65088 * 32 = 2082816 (21 bits)
-  // v: b - ma * 255 (22 bits)
-  const int32x4_t v = vreinterpretq_s32_u32(vmlsl_u16(b, ma, src));
-  // kSgrProjSgrBits = 8
-  // kSgrProjRestoreBits = 4
-  // shift = 4 or 5
-  // v >> 8 or 9 (13 bits)
-  return vrshrn_n_s32(v, kSgrProjSgrBits + shift - kSgrProjRestoreBits);
-}
-
-template <int shift>
-inline int16x8_t CalculateFilteredOutput(const uint8x8_t src,
-                                         const uint16x8_t ma,
-                                         const uint32x4x2_t b) {
-  const uint16x8_t src_u16 = vmovl_u8(src);
-  const int16x4_t dst_lo =
-      FilterOutput<shift>(vget_low_u16(src_u16), vget_low_u16(ma), b.val[0]);
-  const int16x4_t dst_hi =
-      FilterOutput<shift>(vget_high_u16(src_u16), vget_high_u16(ma), b.val[1]);
-  return vcombine_s16(dst_lo, dst_hi);  // 13 bits
-}
-
-inline int16x8_t CalculateFilteredOutputPass1(const uint8x8_t s,
-                                              uint16x8_t ma[2],
-                                              uint32x4x2_t b[2]) {
-  const uint16x8_t ma_sum = vaddq_u16(ma[0], ma[1]);
-  uint32x4x2_t b_sum;
-  b_sum.val[0] = vaddq_u32(b[0].val[0], b[1].val[0]);
-  b_sum.val[1] = vaddq_u32(b[0].val[1], b[1].val[1]);
-  return CalculateFilteredOutput<5>(s, ma_sum, b_sum);
-}
-
-inline int16x8_t CalculateFilteredOutputPass2(const uint8x8_t s,
-                                              uint16x8_t ma[3],
-                                              uint32x4x2_t b[3]) {
-  const uint16x8_t ma_sum = Sum3_16(ma);
-  const uint32x4x2_t b_sum = Sum3_32(b);
-  return CalculateFilteredOutput<5>(s, ma_sum, b_sum);
-}
-
-inline void SelfGuidedFinal(const uint8x8_t src, const int32x4_t v[2],
-                            uint8_t* const dst) {
-  const int16x4_t v_lo =
-      vrshrn_n_s32(v[0], kSgrProjRestoreBits + kSgrProjPrecisionBits);
-  const int16x4_t v_hi =
-      vrshrn_n_s32(v[1], kSgrProjRestoreBits + kSgrProjPrecisionBits);
-  const int16x8_t vv = vcombine_s16(v_lo, v_hi);
-  const int16x8_t s = ZeroExtend(src);
-  const int16x8_t d = vaddq_s16(s, vv);
-  vst1_u8(dst, vqmovun_s16(d));
-}
-
-inline void SelfGuidedDoubleMultiplier(const uint8x8_t src,
-                                       const int16x8_t filter[2], const int w0,
-                                       const int w2, uint8_t* const dst) {
-  int32x4_t v[2];
-  v[0] = vmull_n_s16(vget_low_s16(filter[0]), w0);
-  v[1] = vmull_n_s16(vget_high_s16(filter[0]), w0);
-  v[0] = vmlal_n_s16(v[0], vget_low_s16(filter[1]), w2);
-  v[1] = vmlal_n_s16(v[1], vget_high_s16(filter[1]), w2);
-  SelfGuidedFinal(src, v, dst);
-}
-
-inline void SelfGuidedSingleMultiplier(const uint8x8_t src,
-                                       const int16x8_t filter, const int w0,
-                                       uint8_t* const dst) {
-  // weight: -96 to 96 (Sgrproj_Xqd_Min/Max)
-  int32x4_t v[2];
-  v[0] = vmull_n_s16(vget_low_s16(filter), w0);
-  v[1] = vmull_n_s16(vget_high_s16(filter), w0);
-  SelfGuidedFinal(src, v, dst);
-}
-
 inline void BoxSum(const uint8_t* src, const ptrdiff_t src_stride,
                    const int height, const ptrdiff_t sum_stride, uint16_t* sum3,
                    uint16_t* sum5, uint32_t* square_sum3,
@@ -1006,6 +860,23 @@ inline void BoxSum(const uint8_t* src, const ptrdiff_t src_stride,
 }
 
 template <int n>
+inline uint16x4_t CalculateMa(const uint16x4_t sum, const uint32x4_t sum_sq,
+                              const uint32_t scale) {
+  // a = |sum_sq|
+  // d = |sum|
+  // p = (a * n < d * d) ? 0 : a * n - d * d;
+  const uint32x4_t dxd = vmull_u16(sum, sum);
+  const uint32x4_t axn = vmulq_n_u32(sum_sq, n);
+  // Ensure |p| does not underflow by using saturating subtraction.
+  const uint32x4_t p = vqsubq_u32(axn, dxd);
+  const uint32x4_t pxs = vmulq_n_u32(p, scale);
+  // vrshrn_n_u32() (narrowing shift) can only shift by 16 and kSgrProjScaleBits
+  // is 20.
+  const uint32x4_t shifted = vrshrq_n_u32(pxs, kSgrProjScaleBits);
+  return vmovn_u32(shifted);
+}
+
+template <int n>
 inline void CalculateIntermediate(const uint16x8_t sum,
                                   const uint32x4x2_t sum_sq,
                                   const uint32_t scale, uint8x8_t* const ma,
@@ -1066,6 +937,58 @@ inline void CalculateIntermediate3(const uint16x8_t s3[3],
   const uint16x8_t sum = Sum3_16(s3);
   const uint32x4x2_t sum_sq = Sum3_32(sq3);
   CalculateIntermediate<9>(sum, sum_sq, scale, ma, b);
+}
+
+inline void Store343_444(const uint8x8x2_t ma3, const uint16x8x2_t b3,
+                         const ptrdiff_t x, uint16x8_t* const sum_ma343,
+                         uint16x8_t* const sum_ma444,
+                         uint32x4x2_t* const sum_b343,
+                         uint32x4x2_t* const sum_b444, uint16_t* const ma343,
+                         uint16_t* const ma444, uint32_t* const b343,
+                         uint32_t* const b444) {
+  uint8x8_t s[3];
+  Prepare3_8(ma3, s);
+  const uint16x8_t sum_ma111 = Sum3W_16(s);
+  *sum_ma444 = vshlq_n_u16(sum_ma111, 2);
+  const uint16x8_t sum333 = vsubq_u16(*sum_ma444, sum_ma111);
+  *sum_ma343 = vaddw_u8(sum333, s[1]);
+  uint16x4_t low[3], high[3];
+  uint32x4x2_t sum_b111;
+  Prepare3_16(b3, low, high);
+  sum_b111.val[0] = Sum3W_32(low);
+  sum_b111.val[1] = Sum3W_32(high);
+  sum_b444->val[0] = vshlq_n_u32(sum_b111.val[0], 2);
+  sum_b444->val[1] = vshlq_n_u32(sum_b111.val[1], 2);
+  sum_b343->val[0] = vsubq_u32(sum_b444->val[0], sum_b111.val[0]);
+  sum_b343->val[1] = vsubq_u32(sum_b444->val[1], sum_b111.val[1]);
+  sum_b343->val[0] = vaddw_u16(sum_b343->val[0], low[1]);
+  sum_b343->val[1] = vaddw_u16(sum_b343->val[1], high[1]);
+  vst1q_u16(ma343 + x, *sum_ma343);
+  vst1q_u16(ma444 + x, *sum_ma444);
+  vst1q_u32(b343 + x + 0, sum_b343->val[0]);
+  vst1q_u32(b343 + x + 4, sum_b343->val[1]);
+  vst1q_u32(b444 + x + 0, sum_b444->val[0]);
+  vst1q_u32(b444 + x + 4, sum_b444->val[1]);
+}
+
+inline void Store343_444(const uint8x8x2_t ma3, const uint16x8x2_t b3,
+                         const ptrdiff_t x, uint16x8_t* const sum_ma343,
+                         uint32x4x2_t* const sum_b343, uint16_t* const ma343,
+                         uint16_t* const ma444, uint32_t* const b343,
+                         uint32_t* const b444) {
+  uint16x8_t sum_ma444;
+  uint32x4x2_t sum_b444;
+  Store343_444(ma3, b3, x, sum_ma343, &sum_ma444, sum_b343, &sum_b444, ma343,
+               ma444, b343, b444);
+}
+
+inline void Store343_444(const uint8x8x2_t ma3, const uint16x8x2_t b3,
+                         const ptrdiff_t x, uint16_t* const ma343,
+                         uint16_t* const ma444, uint32_t* const b343,
+                         uint32_t* const b444) {
+  uint16x8_t sum_ma343;
+  uint32x4x2_t sum_b343;
+  Store343_444(ma3, b3, x, &sum_ma343, &sum_b343, ma343, ma444, b343, b444);
 }
 
 LIBGAV1_ALWAYS_INLINE void BoxFilterPreProcess5(
@@ -1346,6 +1269,83 @@ inline void BoxSumFilterPreProcess(
     b565 += 8;
     x += 8;
   } while (x < width);
+}
+
+template <int shift>
+inline int16x4_t FilterOutput(const uint16x4_t src, const uint16x4_t ma,
+                              const uint32x4_t b) {
+  // ma: 255 * 32 = 8160 (13 bits)
+  // b: 65088 * 32 = 2082816 (21 bits)
+  // v: b - ma * 255 (22 bits)
+  const int32x4_t v = vreinterpretq_s32_u32(vmlsl_u16(b, ma, src));
+  // kSgrProjSgrBits = 8
+  // kSgrProjRestoreBits = 4
+  // shift = 4 or 5
+  // v >> 8 or 9 (13 bits)
+  return vrshrn_n_s32(v, kSgrProjSgrBits + shift - kSgrProjRestoreBits);
+}
+
+template <int shift>
+inline int16x8_t CalculateFilteredOutput(const uint8x8_t src,
+                                         const uint16x8_t ma,
+                                         const uint32x4x2_t b) {
+  const uint16x8_t src_u16 = vmovl_u8(src);
+  const int16x4_t dst_lo =
+      FilterOutput<shift>(vget_low_u16(src_u16), vget_low_u16(ma), b.val[0]);
+  const int16x4_t dst_hi =
+      FilterOutput<shift>(vget_high_u16(src_u16), vget_high_u16(ma), b.val[1]);
+  return vcombine_s16(dst_lo, dst_hi);  // 13 bits
+}
+
+inline int16x8_t CalculateFilteredOutputPass1(const uint8x8_t s,
+                                              uint16x8_t ma[2],
+                                              uint32x4x2_t b[2]) {
+  const uint16x8_t ma_sum = vaddq_u16(ma[0], ma[1]);
+  uint32x4x2_t b_sum;
+  b_sum.val[0] = vaddq_u32(b[0].val[0], b[1].val[0]);
+  b_sum.val[1] = vaddq_u32(b[0].val[1], b[1].val[1]);
+  return CalculateFilteredOutput<5>(s, ma_sum, b_sum);
+}
+
+inline int16x8_t CalculateFilteredOutputPass2(const uint8x8_t s,
+                                              uint16x8_t ma[3],
+                                              uint32x4x2_t b[3]) {
+  const uint16x8_t ma_sum = Sum3_16(ma);
+  const uint32x4x2_t b_sum = Sum3_32(b);
+  return CalculateFilteredOutput<5>(s, ma_sum, b_sum);
+}
+
+inline void SelfGuidedFinal(const uint8x8_t src, const int32x4_t v[2],
+                            uint8_t* const dst) {
+  const int16x4_t v_lo =
+      vrshrn_n_s32(v[0], kSgrProjRestoreBits + kSgrProjPrecisionBits);
+  const int16x4_t v_hi =
+      vrshrn_n_s32(v[1], kSgrProjRestoreBits + kSgrProjPrecisionBits);
+  const int16x8_t vv = vcombine_s16(v_lo, v_hi);
+  const int16x8_t s = ZeroExtend(src);
+  const int16x8_t d = vaddq_s16(s, vv);
+  vst1_u8(dst, vqmovun_s16(d));
+}
+
+inline void SelfGuidedDoubleMultiplier(const uint8x8_t src,
+                                       const int16x8_t filter[2], const int w0,
+                                       const int w2, uint8_t* const dst) {
+  int32x4_t v[2];
+  v[0] = vmull_n_s16(vget_low_s16(filter[0]), w0);
+  v[1] = vmull_n_s16(vget_high_s16(filter[0]), w0);
+  v[0] = vmlal_n_s16(v[0], vget_low_s16(filter[1]), w2);
+  v[1] = vmlal_n_s16(v[1], vget_high_s16(filter[1]), w2);
+  SelfGuidedFinal(src, v, dst);
+}
+
+inline void SelfGuidedSingleMultiplier(const uint8x8_t src,
+                                       const int16x8_t filter, const int w0,
+                                       uint8_t* const dst) {
+  // weight: -96 to 96 (Sgrproj_Xqd_Min/Max)
+  int32x4_t v[2];
+  v[0] = vmull_n_s16(vget_low_s16(filter), w0);
+  v[1] = vmull_n_s16(vget_high_s16(filter), w0);
+  SelfGuidedFinal(src, v, dst);
 }
 
 LIBGAV1_ALWAYS_INLINE void BoxFilterPass1(
