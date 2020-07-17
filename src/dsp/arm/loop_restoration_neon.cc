@@ -18,6 +18,7 @@
 #if LIBGAV1_ENABLE_NEON
 #include <arm_neon.h>
 
+#include <algorithm>
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
@@ -588,7 +589,6 @@ inline uint16x4_t CalculateMa(const uint16x4_t sum, const uint32x4_t sum_sq,
   const uint32x4_t axn = vmulq_n_u32(sum_sq, n);
   // Ensure |p| does not underflow by using saturating subtraction.
   const uint32x4_t p = vqsubq_u32(axn, dxd);
-  // z = RightShiftWithRounding(p * scale, kSgrProjScaleBits);
   const uint32x4_t pxs = vmulq_n_u32(p, scale);
   // vrshrn_n_u32() (narrowing shift) can only shift by 16 and kSgrProjScaleBits
   // is 20.
@@ -830,10 +830,10 @@ inline void Store343_444(const uint8x8x2_t ma3, const uint16x8x2_t b3,
   sum_b343->val[1] = vaddw_u16(sum_b343->val[1], high[1]);
   vst1q_u16(ma343 + x, *sum_ma343);
   vst1q_u16(ma444 + x, *sum_ma444);
-  vst1q_u32(b343 + x + 0, (*sum_b343).val[0]);
-  vst1q_u32(b343 + x + 4, (*sum_b343).val[1]);
-  vst1q_u32(b444 + x + 0, (*sum_b444).val[0]);
-  vst1q_u32(b444 + x + 4, (*sum_b444).val[1]);
+  vst1q_u32(b343 + x + 0, sum_b343->val[0]);
+  vst1q_u32(b343 + x + 4, sum_b343->val[1]);
+  vst1q_u32(b444 + x + 0, sum_b444->val[0]);
+  vst1q_u32(b444 + x + 4, sum_b444->val[1]);
 }
 
 inline void Store343_444(const uint8x8x2_t ma3, const uint16x8x2_t b3,
@@ -934,7 +934,7 @@ inline void SelfGuidedSingleMultiplier(const uint8x8_t src,
 }
 
 inline void BoxSum(const uint8_t* src, const ptrdiff_t src_stride,
-                   const int height, const ptrdiff_t width, uint16_t* sum3,
+                   const int height, const ptrdiff_t sum_stride, uint16_t* sum3,
                    uint16_t* sum5, uint32_t* square_sum3,
                    uint32_t* square_sum5) {
   int y = height;
@@ -963,14 +963,14 @@ inline void BoxSum(const uint8_t* src, const ptrdiff_t src_stride,
       square_sum3 += 8;
       square_sum5 += 8;
       x += 8;
-    } while (x < width);
+    } while (x < sum_stride);
     src += src_stride;
   } while (--y != 0);
 }
 
 template <int size>
 inline void BoxSum(const uint8_t* src, const ptrdiff_t src_stride,
-                   const int height, const ptrdiff_t width, uint16_t* sums,
+                   const int height, const ptrdiff_t sum_stride, uint16_t* sums,
                    uint32_t* square_sums) {
   static_assert(size == 3 || size == 5, "");
   int y = height;
@@ -1000,7 +1000,7 @@ inline void BoxSum(const uint8_t* src, const ptrdiff_t src_stride,
       sums += 8;
       square_sums += 8;
       x += 8;
-    } while (x < width);
+    } while (x < sum_stride);
     src += src_stride;
   } while (--y != 0);
 }
@@ -1069,14 +1069,14 @@ inline void CalculateIntermediate3(const uint16x8_t s3[3],
 }
 
 LIBGAV1_ALWAYS_INLINE void BoxFilterPreProcess5(
-    const uint8_t* const src, const ptrdiff_t src_stride, const ptrdiff_t x,
-    const uint32_t scale, uint8x8x2_t s[2], uint16x8x2_t sq[2],
-    uint16_t* const sum5[5], uint32_t* const square_sum5[5],
+    const uint8_t* const src0, const uint8_t* const src1, const ptrdiff_t x,
+    const uint32_t scale, uint16_t* const sum5[5],
+    uint32_t* const square_sum5[5], uint8x8x2_t s[2], uint16x8x2_t sq[2],
     uint8x8_t* const ma, uint16x8_t* const b) {
   uint16x8_t s5[5];
   uint32x4x2_t sq5[5];
-  s[0].val[1] = vld1_u8(src + x + 8);
-  s[1].val[1] = vld1_u8(src + src_stride + x + 8);
+  s[0].val[1] = vld1_u8(src0 + x + 8);
+  s[1].val[1] = vld1_u8(src1 + x + 8);
   sq[0].val[1] = vmull_u8(s[0].val[1], s[0].val[1]);
   sq[1].val[1] = vmull_u8(s[1].val[1], s[1].val[1]);
   s5[3] = Sum5Horizontal(s[0]);
@@ -1103,8 +1103,9 @@ LIBGAV1_ALWAYS_INLINE void BoxFilterPreProcess5(
 
 LIBGAV1_ALWAYS_INLINE void BoxFilterPreProcess5LastRow(
     const uint8_t* const src, const ptrdiff_t x, const uint32_t scale,
-    uint8x8x2_t* const s, uint16x8x2_t* const sq, uint16_t* const sum5[5],
-    uint32_t* const square_sum5[5], uint8x8_t* const ma, uint16x8_t* const b) {
+    const uint16_t* const sum5[5], const uint32_t* const square_sum5[5],
+    uint8x8x2_t* const s, uint16x8x2_t* const sq, uint8x8_t* const ma,
+    uint16x8_t* const b) {
   uint16x8_t s5[5];
   uint32x4x2_t sq5[5];
   s->val[1] = vld1_u8(src + x + 8);
@@ -1125,8 +1126,9 @@ LIBGAV1_ALWAYS_INLINE void BoxFilterPreProcess5LastRow(
 
 LIBGAV1_ALWAYS_INLINE void BoxFilterPreProcess3(
     const uint8_t* const src, const ptrdiff_t x, const uint32_t scale,
-    uint8x8x2_t* const s, uint16x8x2_t* const sq, uint16_t* const sum3[3],
-    uint32_t* const square_sum3[3], uint8x8_t* const ma, uint16x8_t* const b) {
+    uint16_t* const sum3[3], uint32_t* const square_sum3[3],
+    uint8x8x2_t* const s, uint16x8x2_t* const sq, uint8x8_t* const ma,
+    uint16x8_t* const b) {
   uint16x8_t s3[3];
   uint32x4x2_t sq3[3];
   s->val[1] = vld1_u8(src + x + 8);
@@ -1146,16 +1148,16 @@ LIBGAV1_ALWAYS_INLINE void BoxFilterPreProcess3(
 }
 
 LIBGAV1_ALWAYS_INLINE void BoxFilterPreProcess(
-    const uint8_t* const src, const ptrdiff_t src_stride, const ptrdiff_t x,
-    const uint16_t scales[2], uint8x8x2_t s[2], uint16x8x2_t sq[2],
-    uint16_t* const sum3[4], uint16_t* const sum5[5],
+    const uint8_t* const src0, const uint8_t* const src1, const ptrdiff_t x,
+    const uint16_t scales[2], uint16_t* const sum3[4], uint16_t* const sum5[5],
     uint32_t* const square_sum3[4], uint32_t* const square_sum5[5],
-    uint8x8_t* const ma3_0, uint8x8_t* const ma3_1, uint16x8_t* const b3_0,
-    uint16x8_t* const b3_1, uint8x8_t* const ma5, uint16x8_t* const b5) {
+    uint8x8x2_t s[2], uint16x8x2_t sq[2], uint8x8_t* const ma3_0,
+    uint8x8_t* const ma3_1, uint16x8_t* const b3_0, uint16x8_t* const b3_1,
+    uint8x8_t* const ma5, uint16x8_t* const b5) {
   uint16x8_t s3[4], s5[5];
   uint32x4x2_t sq3[4], sq5[5];
-  s[0].val[1] = vld1_u8(src + x + 8);
-  s[1].val[1] = vld1_u8(src + src_stride + x + 8);
+  s[0].val[1] = vld1_u8(src0 + x + 8);
+  s[1].val[1] = vld1_u8(src1 + x + 8);
   sq[0].val[1] = vmull_u8(s[0].val[1], s[0].val[1]);
   sq[1].val[1] = vmull_u8(s[1].val[1], s[1].val[1]);
   SumHorizontal(s[0], sq[0], &s3[2], &s5[3], &sq3[2], &sq5[3]);
@@ -1224,19 +1226,19 @@ LIBGAV1_ALWAYS_INLINE void BoxFilterPreProcessLastRow(
   CalculateIntermediate3(s3, sq3, scales[1], ma3, b3);
 }
 
-inline void BoxSumFilterPreProcess5(const uint8_t* const src,
-                                    const ptrdiff_t src_stride, const int width,
+inline void BoxSumFilterPreProcess5(const uint8_t* const src0,
+                                    const uint8_t* const src1, const int width,
                                     const uint32_t scale,
                                     uint16_t* const sum5[5],
                                     uint32_t* const square_sum5[5],
                                     uint16_t* ma565, uint32_t* b565) {
   uint8x8x2_t s[2], mas;
   uint16x8x2_t sq[2], bs;
-  s[0].val[0] = vld1_u8(src);
+  s[0].val[0] = vld1_u8(src0);
+  s[1].val[0] = vld1_u8(src1);
   sq[0].val[0] = vmull_u8(s[0].val[0], s[0].val[0]);
-  s[1].val[0] = vld1_u8(src + src_stride);
   sq[1].val[0] = vmull_u8(s[1].val[0], s[1].val[0]);
-  BoxFilterPreProcess5(src, src_stride, 0, scale, s, sq, sum5, square_sum5,
+  BoxFilterPreProcess5(src0, src1, 0, scale, sum5, square_sum5, s, sq,
                        &mas.val[0], &bs.val[0]);
 
   int x = 0;
@@ -1245,8 +1247,8 @@ inline void BoxSumFilterPreProcess5(const uint8_t* const src,
     s[1].val[0] = s[1].val[1];
     sq[0].val[0] = sq[0].val[1];
     sq[1].val[0] = sq[1].val[1];
-    BoxFilterPreProcess5(src, src_stride, x + 8, scale, s, sq, sum5,
-                         square_sum5, &mas.val[1], &bs.val[1]);
+    BoxFilterPreProcess5(src0, src1, x + 8, scale, sum5, square_sum5, s, sq,
+                         &mas.val[1], &bs.val[1]);
     const uint16x8_t ma = Sum565(mas);
     const uint32x4x2_t b = Sum565W(bs);
     vst1q_u16(ma565, ma);
@@ -1269,14 +1271,14 @@ LIBGAV1_ALWAYS_INLINE void BoxSumFilterPreProcess3(
   uint16x8x2_t sq, bs;
   s.val[0] = vld1_u8(src);
   sq.val[0] = vmull_u8(s.val[0], s.val[0]);
-  BoxFilterPreProcess3(src, 0, scale, &s, &sq, sum3, square_sum3, &mas.val[0],
+  BoxFilterPreProcess3(src, 0, scale, sum3, square_sum3, &s, &sq, &mas.val[0],
                        &bs.val[0]);
 
   int x = 0;
   do {
     s.val[0] = s.val[1];
     sq.val[0] = sq.val[1];
-    BoxFilterPreProcess3(src, x + 8, scale, &s, &sq, sum3, square_sum3,
+    BoxFilterPreProcess3(src, x + 8, scale, sum3, square_sum3, &s, &sq,
                          &mas.val[1], &bs.val[1]);
     if (calculate444) {
       Store343_444(mas, bs, 0, ma343, ma444, b343, b444);
@@ -1298,7 +1300,7 @@ LIBGAV1_ALWAYS_INLINE void BoxSumFilterPreProcess3(
 }
 
 inline void BoxSumFilterPreProcess(
-    const uint8_t* const src, const ptrdiff_t src_stride, const int width,
+    const uint8_t* const src0, const uint8_t* const src1, const int width,
     const uint16_t scales[2], uint16_t* const sum3[4], uint16_t* const sum5[5],
     uint32_t* const square_sum3[4], uint32_t* const square_sum5[5],
     uint16_t* const ma343[4], uint16_t* const ma444[2], uint16_t* ma565,
@@ -1306,12 +1308,12 @@ inline void BoxSumFilterPreProcess(
   uint8x8x2_t s[2];
   uint8x8x2_t ma3[2], ma5;
   uint16x8x2_t sq[2], b3[2], b5;
-  s[0].val[0] = vld1_u8(src + 0);
-  s[1].val[0] = vld1_u8(src + src_stride + 0);
+  s[0].val[0] = vld1_u8(src0);
+  s[1].val[0] = vld1_u8(src1);
   sq[0].val[0] = vmull_u8(s[0].val[0], s[0].val[0]);
   sq[1].val[0] = vmull_u8(s[1].val[0], s[1].val[0]);
-  BoxFilterPreProcess(src, src_stride, 0, scales, s, sq, sum3, sum5,
-                      square_sum3, square_sum5, &ma3[0].val[0], &ma3[1].val[0],
+  BoxFilterPreProcess(src0, src1, 0, scales, sum3, sum5, square_sum3,
+                      square_sum5, s, sq, &ma3[0].val[0], &ma3[1].val[0],
                       &b3[0].val[0], &b3[1].val[0], &ma5.val[0], &b5.val[0]);
 
   int x = 0;
@@ -1320,10 +1322,9 @@ inline void BoxSumFilterPreProcess(
     s[1].val[0] = s[1].val[1];
     sq[0].val[0] = sq[0].val[1];
     sq[1].val[0] = sq[1].val[1];
-    BoxFilterPreProcess(src, src_stride, x + 8, scales, s, sq, sum3, sum5,
-                        square_sum3, square_sum5, &ma3[0].val[1],
-                        &ma3[1].val[1], &b3[0].val[1], &b3[1].val[1],
-                        &ma5.val[1], &b5.val[1]);
+    BoxFilterPreProcess(src0, src1, x + 8, scales, sum3, sum5, square_sum3,
+                        square_sum5, s, sq, &ma3[0].val[1], &ma3[1].val[1],
+                        &b3[0].val[1], &b3[1].val[1], &ma5.val[1], &b5.val[1]);
     uint16x8_t ma = Sum343(ma3[0]);
     uint32x4x2_t b = Sum343W(b3[0]);
     vst1q_u16(ma343[0] + x, ma);
@@ -1347,19 +1348,19 @@ inline void BoxSumFilterPreProcess(
   } while (x < width);
 }
 
-inline void BoxFilterPass1(const uint8_t* const src0, const uint8_t* const src,
-                           const ptrdiff_t src_stride, uint16_t* const sum5[5],
-                           uint32_t* const square_sum5[5], const int width,
-                           const uint32_t scale, const int16_t w0,
-                           uint16_t* const ma565[2], uint32_t* const b565[2],
-                           uint8_t* const dst, const ptrdiff_t dst_stride) {
+LIBGAV1_ALWAYS_INLINE void BoxFilterPass1(
+    const uint8_t* const src, const uint8_t* const src0,
+    const uint8_t* const src1, const ptrdiff_t src_stride,
+    uint16_t* const sum5[5], uint32_t* const square_sum5[5], const int width,
+    const uint32_t scale, const int16_t w0, uint16_t* const ma565[2],
+    uint32_t* const b565[2], uint8_t* const dst, const ptrdiff_t dst_stride) {
   uint8x8x2_t s[2], mas;
   uint16x8x2_t sq[2], bs;
-  s[0].val[0] = vld1_u8(src);
-  s[1].val[0] = vld1_u8(src + src_stride);
+  s[0].val[0] = vld1_u8(src0);
+  s[1].val[0] = vld1_u8(src1);
   sq[0].val[0] = vmull_u8(s[0].val[0], s[0].val[0]);
   sq[1].val[0] = vmull_u8(s[1].val[0], s[1].val[0]);
-  BoxFilterPreProcess5(src, src_stride, 0, scale, s, sq, sum5, square_sum5,
+  BoxFilterPreProcess5(src0, src1, 0, scale, sum5, square_sum5, s, sq,
                        &mas.val[0], &bs.val[0]);
 
   int x = 0;
@@ -1368,8 +1369,8 @@ inline void BoxFilterPass1(const uint8_t* const src0, const uint8_t* const src,
     s[1].val[0] = s[1].val[1];
     sq[0].val[0] = sq[0].val[1];
     sq[1].val[0] = sq[1].val[1];
-    BoxFilterPreProcess5(src, src_stride, x + 8, scale, s, sq, sum5,
-                         square_sum5, &mas.val[1], &bs.val[1]);
+    BoxFilterPreProcess5(src0, src1, x + 8, scale, sum5, square_sum5, s, sq,
+                         &mas.val[1], &bs.val[1]);
     uint16x8_t ma[2];
     uint32x4x2_t b[2];
     ma[1] = Sum565(mas);
@@ -1377,24 +1378,24 @@ inline void BoxFilterPass1(const uint8_t* const src0, const uint8_t* const src,
     vst1q_u16(ma565[1] + x, ma[1]);
     vst1q_u32(b565[1] + x + 0, b[1].val[0]);
     vst1q_u32(b565[1] + x + 4, b[1].val[1]);
-    const uint8x8_t s0 = vld1_u8(src0 + x);
-    const uint8x8_t s1 = vld1_u8(src0 + src_stride + x);
+    const uint8x8_t sr0 = vld1_u8(src + x);
+    const uint8x8_t sr1 = vld1_u8(src + src_stride + x);
     int16x8_t p0, p1;
     ma[0] = vld1q_u16(ma565[0] + x);
     b[0].val[0] = vld1q_u32(b565[0] + x + 0);
     b[0].val[1] = vld1q_u32(b565[0] + x + 4);
-    p0 = CalculateFilteredOutputPass1(s0, ma, b);
-    p1 = CalculateFilteredOutput<4>(s1, ma[1], b[1]);
-    SelfGuidedSingleMultiplier(s0, p0, w0, dst + x);
-    SelfGuidedSingleMultiplier(s1, p1, w0, dst + dst_stride + x);
+    p0 = CalculateFilteredOutputPass1(sr0, ma, b);
+    p1 = CalculateFilteredOutput<4>(sr1, ma[1], b[1]);
+    SelfGuidedSingleMultiplier(sr0, p0, w0, dst + x);
+    SelfGuidedSingleMultiplier(sr1, p1, w0, dst + dst_stride + x);
     mas.val[0] = mas.val[1];
     bs.val[0] = bs.val[1];
     x += 8;
   } while (x < width);
 }
 
-inline void BoxFilterPass1LastRow(const uint8_t* const src0,
-                                  const uint8_t* const src, const int width,
+inline void BoxFilterPass1LastRow(const uint8_t* const src,
+                                  const uint8_t* const src0, const int width,
                                   const uint32_t scale, const int16_t w0,
                                   uint16_t* const sum5[5],
                                   uint32_t* const square_sum5[5],
@@ -1402,16 +1403,16 @@ inline void BoxFilterPass1LastRow(const uint8_t* const src0,
                                   uint8_t* const dst) {
   uint8x8x2_t s, mas;
   uint16x8x2_t sq, bs;
-  s.val[0] = vld1_u8(src);
+  s.val[0] = vld1_u8(src0);
   sq.val[0] = vmull_u8(s.val[0], s.val[0]);
-  BoxFilterPreProcess5LastRow(src, 0, scale, &s, &sq, sum5, square_sum5,
+  BoxFilterPreProcess5LastRow(src0, 0, scale, sum5, square_sum5, &s, &sq,
                               &mas.val[0], &bs.val[0]);
 
   int x = 0;
   do {
     s.val[0] = s.val[1];
     sq.val[0] = sq.val[1];
-    BoxFilterPreProcess5LastRow(src, x + 8, scale, &s, &sq, sum5, square_sum5,
+    BoxFilterPreProcess5LastRow(src0, x + 8, scale, sum5, square_sum5, &s, &sq,
                                 &mas.val[1], &bs.val[1]);
     uint16x8_t ma[2];
     uint32x4x2_t b[2];
@@ -1422,72 +1423,70 @@ inline void BoxFilterPass1LastRow(const uint8_t* const src0,
     ma[0] = vld1q_u16(ma565);
     b[0].val[0] = vld1q_u32(b565 + 0);
     b[0].val[1] = vld1q_u32(b565 + 4);
-    const uint8x8_t s = vld1_u8(src0 + x);
-    const int16x8_t p = CalculateFilteredOutputPass1(s, ma, b);
-    SelfGuidedSingleMultiplier(s, p, w0, dst + x);
+    const uint8x8_t sr = vld1_u8(src + x);
+    const int16x8_t p = CalculateFilteredOutputPass1(sr, ma, b);
+    SelfGuidedSingleMultiplier(sr, p, w0, dst + x);
     ma565 += 8;
     b565 += 8;
     x += 8;
   } while (x < width);
 }
 
-inline void BoxFilterPass2(const uint8_t* const src0, const uint8_t* const src,
-                           const int width, const uint32_t scale,
-                           const int16_t w0, uint16_t* const sum3[3],
-                           uint32_t* const square_sum3[3],
-                           uint16_t* const ma343[3], uint16_t* const ma444[2],
-                           uint32_t* const b343[3], uint32_t* const b444[2],
-                           uint8_t* const dst) {
+LIBGAV1_ALWAYS_INLINE void BoxFilterPass2(
+    const uint8_t* const src, const uint8_t* const src0, const int width,
+    const uint32_t scale, const int16_t w0, uint16_t* const sum3[3],
+    uint32_t* const square_sum3[3], uint16_t* const ma343[3],
+    uint16_t* const ma444[2], uint32_t* const b343[3], uint32_t* const b444[2],
+    uint8_t* const dst) {
   uint8x8x2_t s, mas;
   uint16x8x2_t sq, bs;
-  s.val[0] = vld1_u8(src);
+  s.val[0] = vld1_u8(src0);
   sq.val[0] = vmull_u8(s.val[0], s.val[0]);
-  BoxFilterPreProcess3(src, 0, scale, &s, &sq, sum3, square_sum3, &mas.val[0],
+  BoxFilterPreProcess3(src0, 0, scale, sum3, square_sum3, &s, &sq, &mas.val[0],
                        &bs.val[0]);
 
   int x = 0;
   do {
     s.val[0] = s.val[1];
     sq.val[0] = sq.val[1];
-    BoxFilterPreProcess3(src, x + 8, scale, &s, &sq, sum3, square_sum3,
+    BoxFilterPreProcess3(src0, x + 8, scale, sum3, square_sum3, &s, &sq,
                          &mas.val[1], &bs.val[1]);
     uint16x8_t ma[3];
     uint32x4x2_t b[3];
     Store343_444(mas, bs, x, &ma[2], &b[2], ma343[2], ma444[1], b343[2],
                  b444[1]);
-    const uint8x8_t s0 = vld1_u8(src0 + x);
+    const uint8x8_t sr = vld1_u8(src + x);
     ma[0] = vld1q_u16(ma343[0] + x);
     ma[1] = vld1q_u16(ma444[0] + x);
     b[0].val[0] = vld1q_u32(b343[0] + x + 0);
     b[0].val[1] = vld1q_u32(b343[0] + x + 4);
     b[1].val[0] = vld1q_u32(b444[0] + x + 0);
     b[1].val[1] = vld1q_u32(b444[0] + x + 4);
-    const int16x8_t p = CalculateFilteredOutputPass2(s0, ma, b);
-    SelfGuidedSingleMultiplier(s0, p, w0, dst + x);
+    const int16x8_t p = CalculateFilteredOutputPass2(sr, ma, b);
+    SelfGuidedSingleMultiplier(sr, p, w0, dst + x);
     mas.val[0] = mas.val[1];
     bs.val[0] = bs.val[1];
     x += 8;
   } while (x < width);
 }
 
-inline void BoxFilter(const uint8_t* const src0, const uint8_t* const src,
-                      const ptrdiff_t src_stride, const int width,
-                      const uint16_t scales[2], const int16_t w0,
-                      const int16_t w2, uint16_t* const sum3[4],
-                      uint16_t* const sum5[5], uint32_t* const square_sum3[4],
-                      uint32_t* const square_sum5[5], uint16_t* const ma343[4],
-                      uint16_t* const ma444[3], uint16_t* const ma565[2],
-                      uint32_t* const b343[4], uint32_t* const b444[3],
-                      uint32_t* const b565[2], uint8_t* const dst,
-                      const ptrdiff_t dst_stride) {
+LIBGAV1_ALWAYS_INLINE void BoxFilter(
+    const uint8_t* const src, const uint8_t* const src0,
+    const uint8_t* const src1, const ptrdiff_t src_stride, const int width,
+    const uint16_t scales[2], const int16_t w0, const int16_t w2,
+    uint16_t* const sum3[4], uint16_t* const sum5[5],
+    uint32_t* const square_sum3[4], uint32_t* const square_sum5[5],
+    uint16_t* const ma343[4], uint16_t* const ma444[3],
+    uint16_t* const ma565[2], uint32_t* const b343[4], uint32_t* const b444[3],
+    uint32_t* const b565[2], uint8_t* const dst, const ptrdiff_t dst_stride) {
   uint8x8x2_t s[2], ma3[2], ma5;
   uint16x8x2_t sq[2], b3[2], b5;
-  s[0].val[0] = vld1_u8(src);
-  s[1].val[0] = vld1_u8(src + src_stride);
+  s[0].val[0] = vld1_u8(src0);
+  s[1].val[0] = vld1_u8(src1);
   sq[0].val[0] = vmull_u8(s[0].val[0], s[0].val[0]);
   sq[1].val[0] = vmull_u8(s[1].val[0], s[1].val[0]);
-  BoxFilterPreProcess(src, src_stride, 0, scales, s, sq, sum3, sum5,
-                      square_sum3, square_sum5, &ma3[0].val[0], &ma3[1].val[0],
+  BoxFilterPreProcess(src0, src1, 0, scales, sum3, sum5, square_sum3,
+                      square_sum5, s, sq, &ma3[0].val[0], &ma3[1].val[0],
                       &b3[0].val[0], &b3[1].val[0], &ma5.val[0], &b5.val[0]);
 
   int x = 0;
@@ -1496,10 +1495,9 @@ inline void BoxFilter(const uint8_t* const src0, const uint8_t* const src,
     s[1].val[0] = s[1].val[1];
     sq[0].val[0] = sq[0].val[1];
     sq[1].val[0] = sq[1].val[1];
-    BoxFilterPreProcess(src, src_stride, x + 8, scales, s, sq, sum3, sum5,
-                        square_sum3, square_sum5, &ma3[0].val[1],
-                        &ma3[1].val[1], &b3[0].val[1], &b3[1].val[1],
-                        &ma5.val[1], &b5.val[1]);
+    BoxFilterPreProcess(src0, src1, x + 8, scales, sum3, sum5, square_sum3,
+                        square_sum5, s, sq, &ma3[0].val[1], &ma3[1].val[1],
+                        &b3[0].val[1], &b3[1].val[1], &ma5.val[1], &b5.val[1]);
     uint16x8_t ma[3][3];
     uint32x4x2_t b[3][3];
     Store343_444(ma3[0], b3[0], x, &ma[1][2], &ma[2][1], &b[1][2], &b[2][1],
@@ -1511,10 +1509,6 @@ inline void BoxFilter(const uint8_t* const src0, const uint8_t* const src,
     vst1q_u16(ma565[1] + x, ma[0][1]);
     vst1q_u32(b565[1] + x, b[0][1].val[0]);
     vst1q_u32(b565[1] + x + 4, b[0][1].val[1]);
-    s[0].val[0] = s[0].val[1];
-    s[1].val[0] = s[1].val[1];
-    sq[0].val[0] = sq[0].val[1];
-    sq[1].val[0] = sq[1].val[1];
     ma3[0].val[0] = ma3[0].val[1];
     ma3[1].val[0] = ma3[1].val[1];
     b3[0].val[0] = b3[0].val[1];
@@ -1522,32 +1516,32 @@ inline void BoxFilter(const uint8_t* const src0, const uint8_t* const src,
     ma5.val[0] = ma5.val[1];
     b5.val[0] = b5.val[1];
     int16x8_t p[2][2];
-    const uint8x8_t s0 = vld1_u8(src0 + x);
-    const uint8x8_t s1 = vld1_u8(src0 + src_stride + x);
+    const uint8x8_t sr0 = vld1_u8(src + x);
+    const uint8x8_t sr1 = vld1_u8(src + src_stride + x);
     ma[0][0] = vld1q_u16(ma565[0] + x);
     b[0][0].val[0] = vld1q_u32(b565[0] + x);
     b[0][0].val[1] = vld1q_u32(b565[0] + x + 4);
-    p[0][0] = CalculateFilteredOutputPass1(s0, ma[0], b[0]);
-    p[1][0] = CalculateFilteredOutput<4>(s1, ma[0][1], b[0][1]);
+    p[0][0] = CalculateFilteredOutputPass1(sr0, ma[0], b[0]);
+    p[1][0] = CalculateFilteredOutput<4>(sr1, ma[0][1], b[0][1]);
     ma[1][0] = vld1q_u16(ma343[0] + x);
     ma[1][1] = vld1q_u16(ma444[0] + x);
     b[1][0].val[0] = vld1q_u32(b343[0] + x);
     b[1][0].val[1] = vld1q_u32(b343[0] + x + 4);
     b[1][1].val[0] = vld1q_u32(b444[0] + x);
     b[1][1].val[1] = vld1q_u32(b444[0] + x + 4);
-    p[0][1] = CalculateFilteredOutputPass2(s0, ma[1], b[1]);
+    p[0][1] = CalculateFilteredOutputPass2(sr0, ma[1], b[1]);
     ma[2][0] = vld1q_u16(ma343[1] + x);
     b[2][0].val[0] = vld1q_u32(b343[1] + x);
     b[2][0].val[1] = vld1q_u32(b343[1] + x + 4);
-    p[1][1] = CalculateFilteredOutputPass2(s1, ma[2], b[2]);
-    SelfGuidedDoubleMultiplier(s0, p[0], w0, w2, dst + x);
-    SelfGuidedDoubleMultiplier(s1, p[1], w0, w2, dst + dst_stride + x);
+    p[1][1] = CalculateFilteredOutputPass2(sr1, ma[2], b[2]);
+    SelfGuidedDoubleMultiplier(sr0, p[0], w0, w2, dst + x);
+    SelfGuidedDoubleMultiplier(sr1, p[1], w0, w2, dst + dst_stride + x);
     x += 8;
   } while (x < width);
 }
 
 inline void BoxFilterLastRow(
-    const uint8_t* const src0, const uint8_t* const src, const int width,
+    const uint8_t* const src, const uint8_t* const src0, const int width,
     const uint16_t scales[2], const int16_t w0, const int16_t w2,
     uint16_t* const sum3[4], uint16_t* const sum5[5],
     uint32_t* const square_sum3[4], uint32_t* const square_sum5[5],
@@ -1558,9 +1552,9 @@ inline void BoxFilterLastRow(
   uint16x8x2_t sq, b3, b5;
   uint16x8_t ma[3];
   uint32x4x2_t b[3];
-  s.val[0] = vld1_u8(src);
+  s.val[0] = vld1_u8(src0);
   sq.val[0] = vmull_u8(s.val[0], s.val[0]);
-  BoxFilterPreProcessLastRow(src, 0, scales, sum3, sum5, square_sum3,
+  BoxFilterPreProcessLastRow(src0, 0, scales, sum3, sum5, square_sum3,
                              square_sum5, &s, &sq, &ma3.val[0], &ma5.val[0],
                              &b3.val[0], &b5.val[0]);
 
@@ -1568,7 +1562,7 @@ inline void BoxFilterLastRow(
   do {
     s.val[0] = s.val[1];
     sq.val[0] = sq.val[1];
-    BoxFilterPreProcessLastRow(src, x + 8, scales, sum3, sum5, square_sum3,
+    BoxFilterPreProcessLastRow(src0, x + 8, scales, sum3, sum5, square_sum3,
                                square_sum5, &s, &sq, &ma3.val[1], &ma5.val[1],
                                &b3.val[1], &b5.val[1]);
     ma[1] = Sum565(ma5);
@@ -1579,29 +1573,30 @@ inline void BoxFilterLastRow(
     b[2] = Sum343W(b3);
     ma3.val[0] = ma3.val[1];
     b3.val[0] = b3.val[1];
-    const uint8x8_t s0 = vld1_u8(src0 + x);
+    const uint8x8_t sr = vld1_u8(src + x);
     int16x8_t p[2];
     ma[0] = vld1q_u16(ma565[0] + x);
     b[0].val[0] = vld1q_u32(b565[0] + x + 0);
     b[0].val[1] = vld1q_u32(b565[0] + x + 4);
-    p[0] = CalculateFilteredOutputPass1(s0, ma, b);
+    p[0] = CalculateFilteredOutputPass1(sr, ma, b);
     ma[0] = vld1q_u16(ma343[0] + x);
     ma[1] = vld1q_u16(ma444[0] + x);
     b[0].val[0] = vld1q_u32(b343[0] + x + 0);
     b[0].val[1] = vld1q_u32(b343[0] + x + 4);
     b[1].val[0] = vld1q_u32(b444[0] + x + 0);
     b[1].val[1] = vld1q_u32(b444[0] + x + 4);
-    p[1] = CalculateFilteredOutputPass2(s0, ma, b);
-    SelfGuidedDoubleMultiplier(s0, p, w0, w2, dst + x);
+    p[1] = CalculateFilteredOutputPass2(sr, ma, b);
+    SelfGuidedDoubleMultiplier(sr, p, w0, w2, dst + x);
     x += 8;
   } while (x < width);
 }
 
-inline void BoxFilterProcess(const RestorationUnitInfo& restoration_info,
-                             const uint8_t* src, const ptrdiff_t src_stride,
-                             const int width, const int height,
-                             SgrBuffer* const sgr_buffer, uint8_t* dst,
-                             const ptrdiff_t dst_stride) {
+LIBGAV1_ALWAYS_INLINE void BoxFilterProcess(
+    const RestorationUnitInfo& restoration_info, const uint8_t* src,
+    const uint8_t* const top_border, const uint8_t* bottom_border,
+    const ptrdiff_t src_stride, const ptrdiff_t border_stride, const int width,
+    const int height, SgrBuffer* const sgr_buffer, uint8_t* dst,
+    const ptrdiff_t dst_stride) {
   const auto temp_stride = Align<ptrdiff_t>(width, 8);
   const ptrdiff_t sum_stride = temp_stride + 8;
   const int sgr_proj_index = restoration_info.sgr_proj_info.index;
@@ -1639,23 +1634,26 @@ inline void BoxFilterProcess(const RestorationUnitInfo& restoration_info,
   b565[1] = b565[0] + temp_stride;
   assert(scales[0] != 0);
   assert(scales[1] != 0);
-  BoxSum(src - 2 * src_stride - 3, src_stride, 2, sum_stride, sum3[0], sum5[1],
+  BoxSum(top_border, border_stride, 2, sum_stride, sum3[0], sum5[1],
          square_sum3[0], square_sum5[1]);
   sum5[0] = sum5[1];
   square_sum5[0] = square_sum5[1];
-  BoxSumFilterPreProcess(src - 3, src_stride, width, scales, sum3, sum5,
-                         square_sum3, square_sum5, ma343, ma444, ma565[0], b343,
-                         b444, b565[0]);
+  const uint8_t* const s = (height > 1) ? src + src_stride - 3 : bottom_border;
+  BoxSumFilterPreProcess(src - 3, s, width, scales, sum3, sum5, square_sum3,
+                         square_sum5, ma343, ma444, ma565[0], b343, b444,
+                         b565[0]);
   sum5[0] = sgr_buffer->sum5;
   square_sum5[0] = sgr_buffer->square_sum5;
-  for (int y = height >> 1; y != 0; --y) {
+
+  for (int y = (height >> 1) - 1; y > 0; --y) {
     Circulate4PointersBy2<uint16_t>(sum3);
     Circulate4PointersBy2<uint32_t>(square_sum3);
     Circulate5PointersBy2<uint16_t>(sum5);
     Circulate5PointersBy2<uint32_t>(square_sum5);
-    BoxFilter(src, src + 2 * src_stride - 3, src_stride, width, scales, w0, w2,
-              sum3, sum5, square_sum3, square_sum5, ma343, ma444, ma565, b343,
-              b444, b565, dst, dst_stride);
+    BoxFilter(src, src + 2 * src_stride - 3, src + 3 * src_stride - 3,
+              src_stride, width, scales, w0, w2, sum3, sum5, square_sum3,
+              square_sum5, ma343, ma444, ma565, b343, b444, b565, dst,
+              dst_stride);
     src += 2 * src_stride;
     dst += 2 * dst_stride;
     Circulate4PointersBy2<uint16_t>(ma343);
@@ -1665,22 +1663,51 @@ inline void BoxFilterProcess(const RestorationUnitInfo& restoration_info,
     std::swap(ma565[0], ma565[1]);
     std::swap(b565[0], b565[1]);
   }
+
+  Circulate4PointersBy2<uint16_t>(sum3);
+  Circulate4PointersBy2<uint32_t>(square_sum3);
+  Circulate5PointersBy2<uint16_t>(sum5);
+  Circulate5PointersBy2<uint32_t>(square_sum5);
+  if ((height & 1) == 0 || height > 1) {
+    const uint8_t* sr[2];
+    if ((height & 1) == 0) {
+      sr[0] = bottom_border;
+      sr[1] = bottom_border + border_stride;
+    } else {
+      sr[0] = src + 2 * src_stride - 3;
+      sr[1] = bottom_border;
+    }
+    BoxFilter(src, sr[0], sr[1], src_stride, width, scales, w0, w2, sum3, sum5,
+              square_sum3, square_sum5, ma343, ma444, ma565, b343, b444, b565,
+              dst, dst_stride);
+  }
   if ((height & 1) != 0) {
-    Circulate4PointersBy2<uint16_t>(sum3);
-    Circulate4PointersBy2<uint32_t>(square_sum3);
-    Circulate5PointersBy2<uint16_t>(sum5);
-    Circulate5PointersBy2<uint32_t>(square_sum5);
-    BoxFilterLastRow(src, src + 2 * src_stride - 3, width, scales, w0, w2, sum3,
-                     sum5, square_sum3, square_sum5, ma343, ma444, ma565, b343,
-                     b444, b565, dst);
+    if (height > 1) {
+      src += 2 * src_stride;
+      dst += 2 * dst_stride;
+      Circulate4PointersBy2<uint16_t>(sum3);
+      Circulate4PointersBy2<uint32_t>(square_sum3);
+      Circulate5PointersBy2<uint16_t>(sum5);
+      Circulate5PointersBy2<uint32_t>(square_sum5);
+      Circulate4PointersBy2<uint16_t>(ma343);
+      Circulate4PointersBy2<uint32_t>(b343);
+      std::swap(ma444[0], ma444[2]);
+      std::swap(b444[0], b444[2]);
+      std::swap(ma565[0], ma565[1]);
+      std::swap(b565[0], b565[1]);
+    }
+    BoxFilterLastRow(src, bottom_border + border_stride, width, scales, w0, w2,
+                     sum3, sum5, square_sum3, square_sum5, ma343, ma444, ma565,
+                     b343, b444, b565, dst);
   }
 }
 
-inline void BoxFilterProcessPass1(const RestorationUnitInfo& restoration_info,
-                                  const uint8_t* src,
-                                  const ptrdiff_t src_stride, const int width,
-                                  const int height, SgrBuffer* const sgr_buffer,
-                                  uint8_t* dst, const ptrdiff_t dst_stride) {
+inline void BoxFilterProcessPass1(
+    const RestorationUnitInfo& restoration_info, const uint8_t* src,
+    const uint8_t* const top_border, const uint8_t* bottom_border,
+    const ptrdiff_t src_stride, const ptrdiff_t border_stride, const int width,
+    const int height, SgrBuffer* const sgr_buffer, uint8_t* dst,
+    const ptrdiff_t dst_stride) {
   const auto temp_stride = Align<ptrdiff_t>(width, 8);
   const ptrdiff_t sum_stride = temp_stride + 8;
   const int sgr_proj_index = restoration_info.sgr_proj_info.index;
@@ -1699,37 +1726,61 @@ inline void BoxFilterProcessPass1(const RestorationUnitInfo& restoration_info,
   b565[0] = sgr_buffer->b565;
   b565[1] = b565[0] + temp_stride;
   assert(scale != 0);
-  BoxSum<5>(src - 2 * src_stride - 3, src_stride, 2, sum_stride, sum5[1],
-            square_sum5[1]);
+  BoxSum<5>(top_border, border_stride, 2, sum_stride, sum5[1], square_sum5[1]);
   sum5[0] = sum5[1];
   square_sum5[0] = square_sum5[1];
-  BoxSumFilterPreProcess5(src - 3, src_stride, width, scale, sum5, square_sum5,
-                          ma565[0], b565[0]);
+  const uint8_t* const s = (height > 1) ? src + src_stride - 3 : bottom_border;
+  BoxSumFilterPreProcess5(src - 3, s, width, scale, sum5, square_sum5, ma565[0],
+                          b565[0]);
   sum5[0] = sgr_buffer->sum5;
   square_sum5[0] = sgr_buffer->square_sum5;
-  for (int y = height >> 1; y != 0; --y) {
+
+  for (int y = (height >> 1) - 1; y > 0; --y) {
     Circulate5PointersBy2<uint16_t>(sum5);
     Circulate5PointersBy2<uint32_t>(square_sum5);
-    BoxFilterPass1(src, src + 2 * src_stride - 3, src_stride, sum5, square_sum5,
-                   width, scale, w0, ma565, b565, dst, dst_stride);
+    BoxFilterPass1(src, src + 2 * src_stride - 3, src + 3 * src_stride - 3,
+                   src_stride, sum5, square_sum5, width, scale, w0, ma565, b565,
+                   dst, dst_stride);
     src += 2 * src_stride;
     dst += 2 * dst_stride;
     std::swap(ma565[0], ma565[1]);
     std::swap(b565[0], b565[1]);
   }
+
+  Circulate5PointersBy2<uint16_t>(sum5);
+  Circulate5PointersBy2<uint32_t>(square_sum5);
+  if ((height & 1) == 0 || height > 1) {
+    const uint8_t* sr[2];
+    if ((height & 1) == 0) {
+      sr[0] = bottom_border;
+      sr[1] = bottom_border + border_stride;
+    } else {
+      sr[0] = src + 2 * src_stride - 3;
+      sr[1] = bottom_border;
+    }
+    BoxFilterPass1(src, sr[0], sr[1], src_stride, sum5, square_sum5, width,
+                   scale, w0, ma565, b565, dst, dst_stride);
+  }
   if ((height & 1) != 0) {
-    Circulate5PointersBy2<uint16_t>(sum5);
-    Circulate5PointersBy2<uint32_t>(square_sum5);
-    BoxFilterPass1LastRow(src, src + 2 * src_stride - 3, width, scale, w0, sum5,
-                          square_sum5, ma565[0], b565[0], dst);
+    if (height > 1) {
+      src += 2 * src_stride;
+      dst += 2 * dst_stride;
+      std::swap(ma565[0], ma565[1]);
+      std::swap(b565[0], b565[1]);
+      Circulate5PointersBy2<uint16_t>(sum5);
+      Circulate5PointersBy2<uint32_t>(square_sum5);
+    }
+    BoxFilterPass1LastRow(src, bottom_border + border_stride, width, scale, w0,
+                          sum5, square_sum5, ma565[0], b565[0], dst);
   }
 }
 
-inline void BoxFilterProcessPass2(const RestorationUnitInfo& restoration_info,
-                                  const uint8_t* src,
-                                  const ptrdiff_t src_stride, const int width,
-                                  const int height, SgrBuffer* const sgr_buffer,
-                                  uint8_t* dst, const ptrdiff_t dst_stride) {
+inline void BoxFilterProcessPass2(
+    const RestorationUnitInfo& restoration_info, const uint8_t* src,
+    const uint8_t* const top_border, const uint8_t* bottom_border,
+    const ptrdiff_t src_stride, const ptrdiff_t border_stride, const int width,
+    const int height, SgrBuffer* const sgr_buffer, uint8_t* dst,
+    const ptrdiff_t dst_stride) {
   assert(restoration_info.sgr_proj_info.multiplier[0] == 0);
   const auto temp_stride = Align<ptrdiff_t>(width, 8);
   const ptrdiff_t sum_stride = temp_stride + 8;
@@ -1754,24 +1805,43 @@ inline void BoxFilterProcessPass2(const RestorationUnitInfo& restoration_info,
   b444[0] = sgr_buffer->b444;
   b444[1] = b444[0] + temp_stride;
   assert(scale != 0);
-  BoxSum<3>(src - 2 * src_stride - 2, src_stride, 2, sum_stride, sum3[0],
-            square_sum3[0]);
+  BoxSum<3>(top_border, border_stride, 2, sum_stride, sum3[0], square_sum3[0]);
   BoxSumFilterPreProcess3<false>(src - 2, width, scale, sum3, square_sum3,
                                  ma343[0], nullptr, b343[0], nullptr);
   Circulate3PointersBy1<uint16_t>(sum3);
   Circulate3PointersBy1<uint32_t>(square_sum3);
-  BoxSumFilterPreProcess3<true>(src + src_stride - 2, width, scale, sum3,
-                                square_sum3, ma343[1], ma444[0], b343[1],
-                                b444[0]);
+  const uint8_t* s;
+  if (height > 1) {
+    s = src + src_stride - 2;
+  } else {
+    s = bottom_border;
+    bottom_border += border_stride;
+  }
+  BoxSumFilterPreProcess3<true>(s, width, scale, sum3, square_sum3, ma343[1],
+                                ma444[0], b343[1], b444[0]);
 
-  int y = height;
-  do {
+  for (int y = height - 2; y > 0; --y) {
     Circulate3PointersBy1<uint16_t>(sum3);
     Circulate3PointersBy1<uint32_t>(square_sum3);
     BoxFilterPass2(src, src + 2 * src_stride - 2, width, scale, w0, sum3,
                    square_sum3, ma343, ma444, b343, b444, dst);
     src += src_stride;
     dst += dst_stride;
+    Circulate3PointersBy1<uint16_t>(ma343);
+    Circulate3PointersBy1<uint32_t>(b343);
+    std::swap(ma444[0], ma444[1]);
+    std::swap(b444[0], b444[1]);
+  }
+
+  int y = std::min(height, 2);
+  do {
+    Circulate3PointersBy1<uint16_t>(sum3);
+    Circulate3PointersBy1<uint32_t>(square_sum3);
+    BoxFilterPass2(src, bottom_border, width, scale, w0, sum3, square_sum3,
+                   ma343, ma444, b343, b444, dst);
+    src += src_stride;
+    dst += dst_stride;
+    bottom_border += border_stride;
     Circulate3PointersBy1<uint16_t>(ma343);
     Circulate3PointersBy1<uint32_t>(b343);
     std::swap(ma444[0], ma444[1]);
@@ -1783,30 +1853,34 @@ inline void BoxFilterProcessPass2(const RestorationUnitInfo& restoration_info,
 // the end of each row. It is safe to overwrite the output as it will not be
 // part of the visible frame.
 void SelfGuidedFilter_NEON(
-    const void* const source, const void* const /*top_border*/,
-    const void* const /*bottom_border*/, void* const dest,
+    const void* const source, const void* const top_border,
+    const void* const bottom_border, void* const dest,
     const RestorationUnitInfo& restoration_info, const ptrdiff_t source_stride,
-    const ptrdiff_t /*border_stride*/, const ptrdiff_t dest_stride,
-    const int width, const int height,
-    RestorationBuffer* const restoration_buffer) {
+    const ptrdiff_t border_stride, const ptrdiff_t dest_stride, const int width,
+    const int height, RestorationBuffer* const restoration_buffer) {
   const int index = restoration_info.sgr_proj_info.index;
   const int radius_pass_0 = kSgrProjParams[index][0];  // 2 or 0
   const int radius_pass_1 = kSgrProjParams[index][2];  // 1 or 0
   const auto* const src = static_cast<const uint8_t*>(source);
+  const auto* top = static_cast<const uint8_t*>(top_border);
+  const auto* bottom = static_cast<const uint8_t*>(bottom_border);
   auto* const dst = static_cast<uint8_t*>(dest);
   SgrBuffer* const sgr_buffer = &restoration_buffer->sgr_buffer;
   if (radius_pass_1 == 0) {
     // |radius_pass_0| and |radius_pass_1| cannot both be 0, so we have the
     // following assertion.
     assert(radius_pass_0 != 0);
-    BoxFilterProcessPass1(restoration_info, src, source_stride, width, height,
-                          sgr_buffer, dst, dest_stride);
+    BoxFilterProcessPass1(restoration_info, src, top, bottom, source_stride,
+                          border_stride, width, height, sgr_buffer, dst,
+                          dest_stride);
   } else if (radius_pass_0 == 0) {
-    BoxFilterProcessPass2(restoration_info, src, source_stride, width, height,
+    BoxFilterProcessPass2(restoration_info, src, top + 1, bottom + 1,
+                          source_stride, border_stride, width, height,
                           sgr_buffer, dst, dest_stride);
   } else {
-    BoxFilterProcess(restoration_info, src, source_stride, width, height,
-                     sgr_buffer, dst, dest_stride);
+    BoxFilterProcess(restoration_info, src, top, bottom, source_stride,
+                     border_stride, width, height, sgr_buffer, dst,
+                     dest_stride);
   }
 }
 
