@@ -516,8 +516,10 @@ constexpr int DaalaBitReader::kWindowSize;  // static.
 DaalaBitReader::DaalaBitReader(const uint8_t* data, size_t size,
                                bool allow_update_cdf)
     : data_(data),
-      size_(size),
-      data_index_(0),
+      data_end_(data + size),
+      data_memcpy_end_((size >= sizeof(uint64_t))
+                           ? data + size - sizeof(uint64_t) + 1
+                           : data),
       allow_update_cdf_(allow_update_cdf) {
   window_diff_ = 0;
   values_in_range_ = kCdfMaxProbability;
@@ -953,11 +955,12 @@ void DaalaBitReader::PopulateBits() {
   // performance (measured on Lenovo ThinkStation P920 running Linux). (The
   // reason is still unknown.) Therefore this fast path is only used on arm64.
   static_assert(kWindowSize == 64, "");
-  if (size_ - data_index_ >= 8) {
+  if (data_ < data_memcpy_end_) {
     uint64_t value;
     // arm64 supports unaligned loads, so this memcpy call is compiled to a
     // single ldr instruction.
-    memcpy(&value, &data_[data_index_], 8);
+    memcpy(&value, data_, sizeof(value));
+    data_ += kMaxCachedBits >> 3;
 #if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
     value = __builtin_bswap64(value);
 #endif
@@ -965,13 +968,12 @@ void DaalaBitReader::PopulateBits() {
     value ^= -1;
     value >>= kWindowSize - kMaxCachedBits;
     window_diff_ = value | (window_diff_ << kMaxCachedBits);
-    data_index_ += kMaxCachedBits >> 3;
     bits_ += kMaxCachedBits;
     return;
   }
 #endif
 
-  size_t data_index = data_index_;
+  const uint8_t* data = data_;
   int bits = bits_;
   WindowSize window_diff = window_diff_;
 
@@ -985,19 +987,19 @@ void DaalaBitReader::PopulateBits() {
 #ifdef __clang__
 #pragma clang loop vectorize(disable) interleave(disable)
 #endif
-  for (; count >= 0 && data_index < size_; count -= 8) {
-    const uint8_t value = data_[data_index++] ^ -1;
+  for (; count >= 0 && data < data_end_; count -= 8) {
+    const uint8_t value = *data++ ^ -1;
     window_diff = static_cast<WindowSize>(value) | (window_diff << 8);
     bits += 8;
   }
   assert(bits <= kMaxCachedBits);
-  if (data_index == size_) {
+  if (data == data_end_) {
     // Shift in some 1s. This is equivalent to providing fake 0 data bits.
     window_diff = ((window_diff + 1) << (kMaxCachedBits - bits)) - 1;
     bits = kMaxCachedBits;
   }
 
-  data_index_ = data_index;
+  data_ = data;
   bits_ = bits;
   window_diff_ = window_diff;
 }

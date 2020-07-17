@@ -83,9 +83,10 @@ class DaalaBitReader : public BitReader {
   // calls PopulateBits() if necessary.
   inline void NormalizeRange();
 
-  const uint8_t* const data_;
-  const size_t size_;
-  size_t data_index_;
+  const uint8_t* data_;
+  const uint8_t* const data_end_;
+  // If |data_| < |data_memcpy_end_|, then we can read eight bytes from |data_|.
+  const uint8_t* const data_memcpy_end_;
   const bool allow_update_cdf_;
   // Number of cached bits of data in the current value.
   int bits_;
