@@ -116,8 +116,7 @@ inline void WienerHorizontalTap7(const uint8_t* src, const ptrdiff_t src_stride,
                                  const ptrdiff_t width, const int height,
                                  const int16_t filter[4],
                                  int16_t** const wiener_buffer) {
-  int y = height;
-  while (y-- != 0) {
+  for (int y = height; y != 0; --y) {
     const uint8_t* src_ptr = src;
     uint8x16_t s[8];
     s[0] = vld1q_u8(src_ptr);
@@ -148,8 +147,7 @@ inline void WienerHorizontalTap5(const uint8_t* src, const ptrdiff_t src_stride,
                                  const ptrdiff_t width, const int height,
                                  const int16_t filter[4],
                                  int16_t** const wiener_buffer) {
-  int y = height;
-  while (y-- != 0) {
+  for (int y = height; y != 0; --y) {
     const uint8_t* src_ptr = src;
     uint8x16_t s[6];
     s[0] = vld1q_u8(src_ptr);
@@ -177,8 +175,7 @@ inline void WienerHorizontalTap3(const uint8_t* src, const ptrdiff_t src_stride,
                                  const ptrdiff_t width, const int height,
                                  const int16_t filter[4],
                                  int16_t** const wiener_buffer) {
-  int y = height;
-  while (y-- != 0) {
+  for (int y = height; y != 0; --y) {
     const uint8_t* src_ptr = src;
     uint8x16_t s[4];
     s[0] = vld1q_u8(src_ptr);
@@ -202,8 +199,7 @@ inline void WienerHorizontalTap3(const uint8_t* src, const ptrdiff_t src_stride,
 inline void WienerHorizontalTap1(const uint8_t* src, const ptrdiff_t src_stride,
                                  const ptrdiff_t width, const int height,
                                  int16_t** const wiener_buffer) {
-  int y = height;
-  while (y-- != 0) {
+  for (int y = height; y != 0; --y) {
     const uint8_t* src_ptr = src;
     ptrdiff_t x = width;
     do {

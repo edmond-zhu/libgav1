@@ -69,8 +69,7 @@ inline void WienerHorizontal(const Pixel* source, const ptrdiff_t source_stride,
   constexpr int offset =
       1 << (bitdepth + kWienerFilterBits - kRoundBitsHorizontal - 1);
   constexpr int limit = (offset << 2) - 1;
-  int y = height;
-  while (y-- != 0) {
+  for (int y = 0; y < height; ++y) {
     int x = 0;
     do {
       // sum fits into 16 bits only when bitdepth = 8.
