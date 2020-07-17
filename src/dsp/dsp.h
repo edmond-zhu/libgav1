@@ -367,9 +367,10 @@ using SuperResRowFunc = void (*)(const void* source, const int upscaled_width,
 // |buffer| contains buffers required for self guided filter and wiener filter.
 // They must be initialized before calling.
 using LoopRestorationFunc = void (*)(
-    const void* source, void* dest, const RestorationUnitInfo& restoration_info,
-    ptrdiff_t source_stride, ptrdiff_t dest_stride, int width, int height,
-    RestorationBuffer* buffer);
+    const void* source, const void* top_border, const void* bottom_border,
+    void* dest, const RestorationUnitInfo& restoration_info,
+    ptrdiff_t source_stride, ptrdiff_t border_stride, ptrdiff_t dest_stride,
+    int width, int height, RestorationBuffer* buffer);
 
 // Index 0 is Wiener Filter.
 // Index 1 is Self Guided Restoration Filter.

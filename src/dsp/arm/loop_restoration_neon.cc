@@ -116,7 +116,7 @@ inline void WienerHorizontalTap7(const uint8_t* src, const ptrdiff_t src_stride,
                                  const int16_t filter[4],
                                  int16_t** const wiener_buffer) {
   int y = height;
-  do {
+  while (y-- != 0) {
     const uint8_t* src_ptr = src;
     uint8x16_t s[8];
     s[0] = vld1q_u8(src_ptr);
@@ -140,7 +140,7 @@ inline void WienerHorizontalTap7(const uint8_t* src, const ptrdiff_t src_stride,
       x -= 16;
     } while (x != 0);
     src += src_stride;
-  } while (--y != 0);
+  }
 }
 
 inline void WienerHorizontalTap5(const uint8_t* src, const ptrdiff_t src_stride,
@@ -148,7 +148,7 @@ inline void WienerHorizontalTap5(const uint8_t* src, const ptrdiff_t src_stride,
                                  const int16_t filter[4],
                                  int16_t** const wiener_buffer) {
   int y = height;
-  do {
+  while (y-- != 0) {
     const uint8_t* src_ptr = src;
     uint8x16_t s[6];
     s[0] = vld1q_u8(src_ptr);
@@ -169,7 +169,7 @@ inline void WienerHorizontalTap5(const uint8_t* src, const ptrdiff_t src_stride,
       x -= 16;
     } while (x != 0);
     src += src_stride;
-  } while (--y != 0);
+  }
 }
 
 inline void WienerHorizontalTap3(const uint8_t* src, const ptrdiff_t src_stride,
@@ -177,7 +177,7 @@ inline void WienerHorizontalTap3(const uint8_t* src, const ptrdiff_t src_stride,
                                  const int16_t filter[4],
                                  int16_t** const wiener_buffer) {
   int y = height;
-  do {
+  while (y-- != 0) {
     const uint8_t* src_ptr = src;
     uint8x16_t s[4];
     s[0] = vld1q_u8(src_ptr);
@@ -195,14 +195,14 @@ inline void WienerHorizontalTap3(const uint8_t* src, const ptrdiff_t src_stride,
       x -= 16;
     } while (x != 0);
     src += src_stride;
-  } while (--y != 0);
+  }
 }
 
 inline void WienerHorizontalTap1(const uint8_t* src, const ptrdiff_t src_stride,
                                  const ptrdiff_t width, const int height,
                                  int16_t** const wiener_buffer) {
   int y = height;
-  do {
+  while (y-- != 0) {
     const uint8_t* src_ptr = src;
     ptrdiff_t x = width;
     do {
@@ -218,7 +218,7 @@ inline void WienerHorizontalTap1(const uint8_t* src, const ptrdiff_t src_stride,
       x -= 16;
     } while (x != 0);
     src += src_stride;
-  } while (--y != 0);
+  }
 }
 
 inline int32x4x2_t WienerVertical2(const int16x8_t a0, const int16x8_t a1,
@@ -479,12 +479,13 @@ inline void WienerVerticalTap1(const int16_t* wiener_buffer,
 // For width 16 and up, store the horizontal results, and then do the vertical
 // filter row by row. This is faster than doing it column by column when
 // considering cache issues.
-void WienerFilter_NEON(const void* const source, void* const dest,
+void WienerFilter_NEON(const void* const source, const void* const top_border,
+                       const void* const bottom_border, void* const dest,
                        const RestorationUnitInfo& restoration_info,
                        const ptrdiff_t source_stride,
+                       const ptrdiff_t border_stride,
                        const ptrdiff_t dest_stride, const int width,
                        const int height, RestorationBuffer* const buffer) {
-  constexpr int kCenterTap = kWienerFilterTaps / 2;
   const int16_t* const number_leading_zero_coefficients =
       restoration_info.wiener_info.number_leading_zero_coefficients;
   const int number_rows_to_skip = std::max(
@@ -506,24 +507,44 @@ void WienerFilter_NEON(const void* const source, void* const dest,
   // Over-reads up to 15 - |kRestorationHorizontalBorder| values.
   const int height_horizontal =
       height + kWienerFilterTaps - 1 - 2 * number_rows_to_skip;
-  const auto* const src = static_cast<const uint8_t*>(source) -
-                          (kCenterTap - number_rows_to_skip) * source_stride;
+  const int height_extra = (height_horizontal - height) >> 1;
+  assert(height_extra <= 2);
+  const auto* const src = static_cast<const uint8_t*>(source);
+  const auto* const top = static_cast<const uint8_t*>(top_border);
+  const auto* const bottom = static_cast<const uint8_t*>(bottom_border);
   if (number_leading_zero_coefficients[WienerInfo::kHorizontal] == 0) {
-    WienerHorizontalTap7(src - 3, source_stride, wiener_stride,
-                         height_horizontal, filter_horizontal,
-                         &wiener_buffer_horizontal);
+    WienerHorizontalTap7(top + (2 - height_extra) * border_stride,
+                         border_stride, wiener_stride, height_extra,
+                         filter_horizontal, &wiener_buffer_horizontal);
+    WienerHorizontalTap7(src - 3, source_stride, wiener_stride, height,
+                         filter_horizontal, &wiener_buffer_horizontal);
+    WienerHorizontalTap7(bottom, border_stride, wiener_stride, height_extra,
+                         filter_horizontal, &wiener_buffer_horizontal);
   } else if (number_leading_zero_coefficients[WienerInfo::kHorizontal] == 1) {
-    WienerHorizontalTap5(src - 2, source_stride, wiener_stride,
-                         height_horizontal, filter_horizontal,
-                         &wiener_buffer_horizontal);
+    WienerHorizontalTap5(top + (2 - height_extra) * border_stride + 1,
+                         source_stride, wiener_stride, height_extra,
+                         filter_horizontal, &wiener_buffer_horizontal);
+    WienerHorizontalTap5(src - 2, source_stride, wiener_stride, height,
+                         filter_horizontal, &wiener_buffer_horizontal);
+    WienerHorizontalTap5(bottom + 1, border_stride, wiener_stride, height_extra,
+                         filter_horizontal, &wiener_buffer_horizontal);
   } else if (number_leading_zero_coefficients[WienerInfo::kHorizontal] == 2) {
     // The maximum over-reads happen here.
-    WienerHorizontalTap3(src - 1, source_stride, wiener_stride,
-                         height_horizontal, filter_horizontal,
-                         &wiener_buffer_horizontal);
+    WienerHorizontalTap3(top + (2 - height_extra) * border_stride + 2,
+                         source_stride, wiener_stride, height_extra,
+                         filter_horizontal, &wiener_buffer_horizontal);
+    WienerHorizontalTap3(src - 1, source_stride, wiener_stride, height,
+                         filter_horizontal, &wiener_buffer_horizontal);
+    WienerHorizontalTap3(bottom + 2, border_stride, wiener_stride, height_extra,
+                         filter_horizontal, &wiener_buffer_horizontal);
   } else {
     assert(number_leading_zero_coefficients[WienerInfo::kHorizontal] == 3);
-    WienerHorizontalTap1(src, source_stride, wiener_stride, height_horizontal,
+    WienerHorizontalTap1(top + (2 - height_extra) * border_stride + 3,
+                         source_stride, wiener_stride, height_extra,
+                         &wiener_buffer_horizontal);
+    WienerHorizontalTap1(src, source_stride, wiener_stride, height,
+                         &wiener_buffer_horizontal);
+    WienerHorizontalTap1(bottom + 3, border_stride, wiener_stride, height_extra,
                          &wiener_buffer_horizontal);
   }
 
@@ -1761,12 +1782,13 @@ inline void BoxFilterProcessPass2(const RestorationUnitInfo& restoration_info,
 // If |width| is non-multiple of 8, up to 7 more pixels are written to |dest| in
 // the end of each row. It is safe to overwrite the output as it will not be
 // part of the visible frame.
-void SelfGuidedFilter_NEON(const void* const source, void* const dest,
-                           const RestorationUnitInfo& restoration_info,
-                           const ptrdiff_t source_stride,
-                           const ptrdiff_t dest_stride, const int width,
-                           const int height,
-                           RestorationBuffer* const restoration_buffer) {
+void SelfGuidedFilter_NEON(
+    const void* const source, const void* const /*top_border*/,
+    const void* const /*bottom_border*/, void* const dest,
+    const RestorationUnitInfo& restoration_info, const ptrdiff_t source_stride,
+    const ptrdiff_t /*border_stride*/, const ptrdiff_t dest_stride,
+    const int width, const int height,
+    RestorationBuffer* const restoration_buffer) {
   const int index = restoration_info.sgr_proj_info.index;
   const int radius_pass_0 = kSgrProjParams[index][0];  // 2 or 0
   const int radius_pass_1 = kSgrProjParams[index][2];  // 1 or 0

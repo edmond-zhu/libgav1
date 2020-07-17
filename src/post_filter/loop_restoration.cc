@@ -36,17 +36,16 @@ void PostFilter::PrepareLoopRestorationBlock(
     const Pixel* deblock_buffer, const ptrdiff_t deblock_stride, Pixel* dst,
     const ptrdiff_t dst_stride, const int width, const int height,
     const bool frame_top_border, const bool frame_bottom_border) {
-  src_buffer -=
-      kRestorationVerticalBorder * src_stride + kRestorationHorizontalBorder;
+  src_buffer -= kRestorationHorizontalBorder;
   deblock_buffer -= kRestorationHorizontalBorder;
   int h = height;
   // Top 2 rows.
   if (frame_top_border) {
     h += kRestorationVerticalBorder;
+    src_buffer -= kRestorationVerticalBorder * src_stride;
   } else {
     CopyTwoRows<Pixel>(deblock_buffer, deblock_stride, &dst, dst_stride,
                        width + 2 * kRestorationHorizontalBorder);
-    src_buffer += kRestorationVerticalBorder * src_stride;
     // If |frame_top_border| is true, then we are in the first superblock row,
     // so in that case, do not increment |deblock_buffer| since we don't store
     // anything from the first superblock row into |deblock_buffer|.
@@ -161,11 +160,13 @@ void PostFilter::ApplyLoopRestorationForOneRowInWindow(
              type == kLoopRestorationTypeWiener);
       const dsp::LoopRestorationFunc restoration_func =
           dsp_.loop_restorations[type - 2];
-      restoration_func(source, &(*loop_restored_window)[row][column],
-                       restoration_info[unit_column], source_stride,
-                       loop_restored_window->columns(),
-                       current_process_unit_width, current_process_unit_height,
-                       &restoration_buffer);
+      restoration_func(
+          source, source - kRestorationVerticalBorder * source_stride - 3,
+          source + current_process_unit_height * source_stride - 3,
+          &(*loop_restored_window)[row][column], restoration_info[unit_column],
+          source_stride, source_stride, loop_restored_window->columns(),
+          current_process_unit_width, current_process_unit_height,
+          &restoration_buffer);
     }
     ++unit_column;
     column += plane_unit_size;
