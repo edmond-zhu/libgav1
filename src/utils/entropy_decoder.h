@@ -27,6 +27,10 @@ namespace libgav1 {
 
 class DaalaBitReader : public BitReader {
  public:
+  // WindowSize must be an unsigned integer type with at least 32 bits. Use the
+  // largest type with fast arithmetic. size_t should meet these requirements.
+  using WindowSize = size_t;
+
   DaalaBitReader(const uint8_t* data, size_t size, bool allow_update_cdf);
   ~DaalaBitReader() override = default;
 
@@ -50,10 +54,6 @@ class DaalaBitReader : public BitReader {
   int ReadSymbol(uint16_t* cdf);
 
  private:
-  // WindowSize must be an unsigned integer type with at least 32 bits. Use the
-  // largest type with fast arithmetic. size_t should meet these requirements.
-  static_assert(sizeof(size_t) == sizeof(void*), "");
-  using WindowSize = size_t;
   static constexpr int kWindowSize = static_cast<int>(sizeof(WindowSize)) * 8;
   static_assert(kWindowSize >= 32, "");
 
@@ -85,7 +85,9 @@ class DaalaBitReader : public BitReader {
 
   const uint8_t* data_;
   const uint8_t* const data_end_;
-  // If |data_| < |data_memcpy_end_|, then we can read eight bytes from |data_|.
+  // If |data_| < |data_memcpy_end_|, then we can read WindowSize bytes from
+  // |data_|. Note with WindowSize == 4 this is only used in the constructor,
+  // not PopulateBits().
   const uint8_t* const data_memcpy_end_;
   const bool allow_update_cdf_;
   // Number of cached bits of data in the current value.

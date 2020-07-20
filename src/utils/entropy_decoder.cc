@@ -507,6 +507,25 @@ void UpdateCdf16(uint16_t* const cdf, const int symbol) {
 #endif  // LIBGAV1_ENTROPY_DECODER_ENABLE_SSE4
 #endif  // LIBGAV1_ENTROPY_DECODER_ENABLE_NEON
 
+inline DaalaBitReader::WindowSize HostToBigEndian(
+    const DaalaBitReader::WindowSize x) {
+  static_assert(sizeof(x) == 4 || sizeof(x) == 8, "");
+#if defined(__GNUC__)
+#if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+  return (sizeof(x) == 8) ? __builtin_bswap64(x) : __builtin_bswap32(x);
+#else
+  return x;
+#endif
+#elif defined(_WIN32)
+  // Note Windows targets are assumed to be little endian.
+  return static_cast<DaalaBitReader::WindowSize>(
+      (sizeof(x) == 8) ? _byteswap_uint64(static_cast<unsigned __int64>(x))
+                       : _byteswap_ulong(static_cast<unsigned long>(x)));
+#else
+#error Unknown compiler!
+#endif  // defined(__GNUC__)
+}
+
 }  // namespace
 
 #if !LIBGAV1_CXX17
@@ -517,12 +536,32 @@ DaalaBitReader::DaalaBitReader(const uint8_t* data, size_t size,
                                bool allow_update_cdf)
     : data_(data),
       data_end_(data + size),
-      data_memcpy_end_((size >= sizeof(uint64_t))
-                           ? data + size - sizeof(uint64_t) + 1
+      data_memcpy_end_((size >= sizeof(WindowSize))
+                           ? data + size - sizeof(WindowSize) + 1
                            : data),
-      allow_update_cdf_(allow_update_cdf) {
+      allow_update_cdf_(allow_update_cdf),
+      values_in_range_(kCdfMaxProbability) {
+  if (data_ < data_memcpy_end_) {
+    // This is a simplified version of PopulateBits() which loads 8 extra bits
+    // and skips the unnecessary shifts of value and window_diff_.
+    WindowSize value;
+    memcpy(&value, data_, sizeof(value));
+    data_ += sizeof(value);
+    window_diff_ = HostToBigEndian(value) ^ -1;
+    // Note the initial value of bits_ is larger than kMaxCachedBits as it's
+    // used to restore the most significant 0 bit that would be present after
+    // PopulateBits() when we extract the first symbol value.
+    // As shown in Section 8.2.2 Initialization process for symbol decoder,
+    // which uses a fixed offset to read the symbol values, the most
+    // significant bit is always 0:
+    //   The variable numBits is set equal to Min( sz * 8, 15).
+    //   The variable buf is read using the f(numBits) parsing process.
+    //   The variable paddedBuf is set equal to ( buf << (15 - numBits) ).
+    //   The variable SymbolValue is set to ((1 << 15) - 1) ^ paddedBuf.
+    bits_ = kWindowSize - 15;
+    return;
+  }
   window_diff_ = 0;
-  values_in_range_ = kCdfMaxProbability;
   bits_ = -15;
   PopulateBits();
 }
@@ -961,11 +1000,7 @@ void DaalaBitReader::PopulateBits() {
     // single ldr instruction.
     memcpy(&value, data_, sizeof(value));
     data_ += kMaxCachedBits >> 3;
-#if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
-    value = __builtin_bswap64(value);
-#endif
-
-    value ^= -1;
+    value = HostToBigEndian(value) ^ -1;
     value >>= kWindowSize - kMaxCachedBits;
     window_diff_ = value | (window_diff_ << kMaxCachedBits);
     bits_ += kMaxCachedBits;
