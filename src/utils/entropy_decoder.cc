@@ -1040,7 +1040,7 @@ void DaalaBitReader::PopulateBits() {
 }
 
 void DaalaBitReader::NormalizeRange() {
-  const int bits_used = 15 - FloorLog2(values_in_range_);
+  const int bits_used = 15 ^ FloorLog2(values_in_range_);
   bits_ -= bits_used;
   values_in_range_ <<= bits_used;
   if (bits_ < 0) PopulateBits();

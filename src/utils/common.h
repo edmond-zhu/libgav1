@@ -110,7 +110,7 @@ inline int CountLeadingZeros(uint32_t n) {
   const unsigned char bit_set = _BitScanReverse(&first_set_bit, n);
   assert(bit_set != 0);
   static_cast<void>(bit_set);
-  return 31 - static_cast<int>(first_set_bit);
+  return 31 ^ static_cast<int>(first_set_bit);
 }
 
 inline int CountLeadingZeros(uint64_t n) {
@@ -125,14 +125,14 @@ inline int CountLeadingZeros(uint64_t n) {
     const unsigned char bit_set = _BitScanReverse(&first_set_bit, n_hi);
     assert(bit_set != 0);
     static_cast<void>(bit_set);
-    return 31 - static_cast<int>(first_set_bit);
+    return 31 ^ static_cast<int>(first_set_bit);
   }
   const unsigned char bit_set = _BitScanReverse(
       &first_set_bit, static_cast<unsigned long>(n));  // NOLINT(runtime/int)
 #endif  // defined(HAVE_BITSCANREVERSE64)
   assert(bit_set != 0);
   static_cast<void>(bit_set);
-  return 63 - static_cast<int>(first_set_bit);
+  return 63 ^ static_cast<int>(first_set_bit);
 }
 
 #undef HAVE_BITSCANREVERSE64
@@ -185,22 +185,22 @@ inline int CountTrailingZeros(uint32_t n) {
 
 inline int FloorLog2(int32_t n) {
   assert(n > 0);
-  return 31 - CountLeadingZeros(static_cast<uint32_t>(n));
+  return 31 ^ CountLeadingZeros(static_cast<uint32_t>(n));
 }
 
 inline int FloorLog2(uint32_t n) {
   assert(n > 0);
-  return 31 - CountLeadingZeros(n);
+  return 31 ^ CountLeadingZeros(n);
 }
 
 inline int FloorLog2(int64_t n) {
   assert(n > 0);
-  return 63 - CountLeadingZeros(static_cast<uint64_t>(n));
+  return 63 ^ CountLeadingZeros(static_cast<uint64_t>(n));
 }
 
 inline int FloorLog2(uint64_t n) {
   assert(n > 0);
-  return 63 - CountLeadingZeros(n);
+  return 63 ^ CountLeadingZeros(n);
 }
 
 inline int CeilLog2(unsigned int n) {
