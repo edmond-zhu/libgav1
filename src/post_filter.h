@@ -170,25 +170,6 @@ class PostFilter {
     return DoDeblock(frame_header_, do_post_filter_mask_);
   }
 
-  // This function takes the cdef filtered buffer and the deblocked buffer to
-  // prepare a block as input for loop restoration.
-  // In striped loop restoration:
-  // The filtering needs to fetch the area of size (width + 6) x (height + 4),
-  // in which (width + 6) x height area is from upscaled frame
-  // (superres_buffer). Top 2 rows and bottom 2 rows are from deblocked frame
-  // (deblock_buffer). Special cases are: (1). when it is the top border, the
-  // top 2 rows are from cdef filtered frame. (2). when it is the bottom border,
-  // the bottom 2 rows are from cdef filtered frame. This function is called
-  // only when cdef is applied for this frame.
-  template <typename Pixel>
-  static void PrepareLoopRestorationBlock(const Pixel* src_buffer,
-                                          ptrdiff_t src_stride,
-                                          const Pixel* deblock_buffer,
-                                          ptrdiff_t deblock_stride, Pixel* dst,
-                                          ptrdiff_t dst_stride, int width,
-                                          int height, bool frame_top_border,
-                                          bool frame_bottom_border);
-
   uint8_t GetZeroDeltaDeblockFilterLevel(int segment_id, int level_index,
                                          ReferenceFrameType type,
                                          int mode_id) const {
@@ -551,11 +532,6 @@ extern template void PostFilter::ExtendFrame<uint8_t>(uint8_t* frame_start,
                                                       ptrdiff_t stride,
                                                       int left, int right,
                                                       int top, int bottom);
-extern template void PostFilter::PrepareLoopRestorationBlock<uint8_t>(
-    const uint8_t* src_buffer, ptrdiff_t src_stride,
-    const uint8_t* deblock_buffer, ptrdiff_t deblock_stride, uint8_t* dst,
-    ptrdiff_t dst_stride, const int width, const int height,
-    const bool frame_top_border, const bool frame_bottom_border);
 
 #if LIBGAV1_MAX_BITDEPTH >= 10
 extern template void PostFilter::ExtendFrame<uint16_t>(uint16_t* frame_start,
@@ -563,11 +539,6 @@ extern template void PostFilter::ExtendFrame<uint16_t>(uint16_t* frame_start,
                                                        ptrdiff_t stride,
                                                        int left, int right,
                                                        int top, int bottom);
-extern template void PostFilter::PrepareLoopRestorationBlock<uint16_t>(
-    const uint16_t* src_buffer, ptrdiff_t src_stride,
-    const uint16_t* deblock_buffer, ptrdiff_t deblock_stride, uint16_t* dst,
-    ptrdiff_t dst_stride, const int width, const int height,
-    const bool frame_top_border, const bool frame_bottom_border);
 #endif
 
 }  // namespace libgav1
