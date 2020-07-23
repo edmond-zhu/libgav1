@@ -143,13 +143,14 @@ inline void WienerVertical(const int16_t* wiener_buffer, const int width,
 // filter[3] = 0 - 2 * (filter[0] + filter[1] + filter[2]).
 // Thus in libaom's computation, an offset of 128 is needed for filter[3].
 template <int bitdepth, typename Pixel>
-void WienerFilter_C(const void* const source, const void* const top_border,
-                    const void* const bottom_border, void* const dest,
-                    const RestorationUnitInfo& restoration_info,
-                    const ptrdiff_t source_stride,
-                    const ptrdiff_t border_stride, const ptrdiff_t dest_stride,
-                    const int width, const int height,
-                    RestorationBuffer* const restoration_buffer) {
+void WienerFilter_C(const RestorationUnitInfo& restoration_info,
+                    const void* const source, const ptrdiff_t source_stride,
+                    const void* const top_border, const ptrdiff_t top_stride,
+                    const void* const bottom_border,
+                    const ptrdiff_t bottom_stride, const int width,
+                    const int height,
+                    RestorationBuffer* const restoration_buffer,
+                    void* const dest, const ptrdiff_t dest_stride) {
   constexpr int kCenterTap = kWienerFilterTaps / 2;
   const int16_t* const number_leading_zero_coefficients =
       restoration_info.wiener_info.number_leading_zero_coefficients;
@@ -171,40 +172,40 @@ void WienerFilter_C(const void* const source, const void* const top_border,
   auto* wiener_buffer = wiener_buffer_org + number_rows_to_skip * width;
 
   if (number_leading_zero_coefficients[WienerInfo::kHorizontal] == 0) {
-    WienerHorizontal<bitdepth, Pixel>(top + (2 - height_extra) * border_stride,
-                                      border_stride, width, height_extra,
+    WienerHorizontal<bitdepth, Pixel>(top + (2 - height_extra) * top_stride,
+                                      top_stride, width, height_extra,
                                       filter_horizontal, 0, &wiener_buffer);
     WienerHorizontal<bitdepth, Pixel>(src, source_stride, width, height,
                                       filter_horizontal, 0, &wiener_buffer);
-    WienerHorizontal<bitdepth, Pixel>(bottom, border_stride, width,
+    WienerHorizontal<bitdepth, Pixel>(bottom, bottom_stride, width,
                                       height_extra, filter_horizontal, 0,
                                       &wiener_buffer);
   } else if (number_leading_zero_coefficients[WienerInfo::kHorizontal] == 1) {
-    WienerHorizontal<bitdepth, Pixel>(top + (2 - height_extra) * border_stride,
-                                      border_stride, width, height_extra,
+    WienerHorizontal<bitdepth, Pixel>(top + (2 - height_extra) * top_stride,
+                                      top_stride, width, height_extra,
                                       filter_horizontal, 1, &wiener_buffer);
     WienerHorizontal<bitdepth, Pixel>(src, source_stride, width, height,
                                       filter_horizontal, 1, &wiener_buffer);
-    WienerHorizontal<bitdepth, Pixel>(bottom, border_stride, width,
+    WienerHorizontal<bitdepth, Pixel>(bottom, bottom_stride, width,
                                       height_extra, filter_horizontal, 1,
                                       &wiener_buffer);
   } else if (number_leading_zero_coefficients[WienerInfo::kHorizontal] == 2) {
-    WienerHorizontal<bitdepth, Pixel>(top + (2 - height_extra) * border_stride,
-                                      border_stride, width, height_extra,
+    WienerHorizontal<bitdepth, Pixel>(top + (2 - height_extra) * top_stride,
+                                      top_stride, width, height_extra,
                                       filter_horizontal, 2, &wiener_buffer);
     WienerHorizontal<bitdepth, Pixel>(src, source_stride, width, height,
                                       filter_horizontal, 2, &wiener_buffer);
-    WienerHorizontal<bitdepth, Pixel>(bottom, border_stride, width,
+    WienerHorizontal<bitdepth, Pixel>(bottom, bottom_stride, width,
                                       height_extra, filter_horizontal, 2,
                                       &wiener_buffer);
   } else {
     assert(number_leading_zero_coefficients[WienerInfo::kHorizontal] == 3);
-    WienerHorizontal<bitdepth, Pixel>(top + (2 - height_extra) * border_stride,
-                                      border_stride, width, height_extra,
+    WienerHorizontal<bitdepth, Pixel>(top + (2 - height_extra) * top_stride,
+                                      top_stride, width, height_extra,
                                       filter_horizontal, 3, &wiener_buffer);
     WienerHorizontal<bitdepth, Pixel>(src, source_stride, width, height,
                                       filter_horizontal, 3, &wiener_buffer);
-    WienerHorizontal<bitdepth, Pixel>(bottom, border_stride, width,
+    WienerHorizontal<bitdepth, Pixel>(bottom, bottom_stride, width,
                                       height_extra, filter_horizontal, 3,
                                       &wiener_buffer);
   }
@@ -547,10 +548,11 @@ inline void BoxFilter(const Pixel* const src, const ptrdiff_t src_stride,
 
 template <int bitdepth, typename Pixel>
 inline void BoxFilterProcess(const RestorationUnitInfo& restoration_info,
-                             const Pixel* src, const Pixel* const top_border,
+                             const Pixel* src, const ptrdiff_t src_stride,
+                             const Pixel* const top_border,
+                             const ptrdiff_t top_stride,
                              const Pixel* bottom_border,
-                             const ptrdiff_t src_stride,
-                             const ptrdiff_t border_stride, const int width,
+                             const ptrdiff_t bottom_stride, const int width,
                              const int height, SgrBuffer* const sgr_buffer,
                              Pixel* dst, const ptrdiff_t dst_stride) {
   const auto temp_stride = Align<ptrdiff_t>(width, 8);
@@ -590,7 +592,7 @@ inline void BoxFilterProcess(const RestorationUnitInfo& restoration_info,
   b565[1] = b565[0] + temp_stride;
   assert(scales[0] != 0);
   assert(scales[1] != 0);
-  BoxSum<Pixel>(top_border, border_stride, 2, width + 2, sum3, sum5 + 1,
+  BoxSum<Pixel>(top_border, top_stride, 2, width + 2, sum3, sum5 + 1,
                 square_sum3, square_sum5 + 1);
   sum5[0] = sum5[1];
   square_sum5[0] = square_sum5[1];
@@ -640,7 +642,7 @@ inline void BoxFilterProcess(const RestorationUnitInfo& restoration_info,
     ptrdiff_t stride;
     if ((height & 1) == 0) {
       sr = bottom_border;
-      stride = border_stride;
+      stride = bottom_stride;
     } else {
       sr = src + 2 * src_stride;
       stride = bottom_border - (src + 2 * src_stride);
@@ -668,7 +670,7 @@ inline void BoxFilterProcess(const RestorationUnitInfo& restoration_info,
       std::swap(ma565[0], ma565[1]);
       std::swap(b565[0], b565[1]);
     }
-    BoxSum<Pixel>(bottom_border + border_stride, src_stride, 1, width + 2,
+    BoxSum<Pixel>(bottom_border + bottom_stride, src_stride, 1, width + 2,
                   sum3 + 2, sum5 + 3, square_sum3 + 2, square_sum5 + 3);
     sum5[4] = sum5[3];
     square_sum5[4] = square_sum5[3];
@@ -692,10 +694,10 @@ inline void BoxFilterProcess(const RestorationUnitInfo& restoration_info,
 template <int bitdepth, typename Pixel>
 inline void BoxFilterProcessPass1(
     const RestorationUnitInfo& restoration_info, const Pixel* src,
-    const Pixel* const top_border, const Pixel* bottom_border,
-    const ptrdiff_t src_stride, const ptrdiff_t border_stride, const int width,
-    const int height, SgrBuffer* const sgr_buffer, Pixel* dst,
-    const ptrdiff_t dst_stride) {
+    const ptrdiff_t src_stride, const Pixel* const top_border,
+    const ptrdiff_t top_stride, const Pixel* bottom_border,
+    const ptrdiff_t bottom_stride, const int width, const int height,
+    SgrBuffer* const sgr_buffer, Pixel* dst, const ptrdiff_t dst_stride) {
   const auto temp_stride = Align<ptrdiff_t>(width, 8);
   const ptrdiff_t sum_stride = temp_stride + 8;
   const int sgr_proj_index = restoration_info.sgr_proj_info.index;
@@ -714,7 +716,7 @@ inline void BoxFilterProcessPass1(
   b565[0] = sgr_buffer->b565;
   b565[1] = b565[0] + temp_stride;
   assert(scale != 0);
-  BoxSum<Pixel, 5>(top_border, border_stride, 2, width + 2, sum5 + 1,
+  BoxSum<Pixel, 5>(top_border, top_stride, 2, width + 2, sum5 + 1,
                    square_sum5 + 1);
   sum5[0] = sum5[1];
   square_sum5[0] = square_sum5[1];
@@ -747,7 +749,7 @@ inline void BoxFilterProcessPass1(
     ptrdiff_t stride;
     if ((height & 1) == 0) {
       sr = bottom_border;
-      stride = border_stride;
+      stride = bottom_stride;
     } else {
       sr = src + 2 * src_stride;
       stride = bottom_border - (src + 2 * src_stride);
@@ -767,7 +769,7 @@ inline void BoxFilterProcessPass1(
       Circulate5PointersBy2<uint16_t>(sum5);
       Circulate5PointersBy2<uint32_t>(square_sum5);
     }
-    BoxSum<Pixel, 5>(bottom_border + border_stride, border_stride, 1, width + 2,
+    BoxSum<Pixel, 5>(bottom_border + bottom_stride, bottom_stride, 1, width + 2,
                      sum5 + 3, square_sum5 + 3);
     sum5[4] = sum5[3];
     square_sum5[4] = square_sum5[3];
@@ -785,10 +787,10 @@ inline void BoxFilterProcessPass1(
 template <int bitdepth, typename Pixel>
 inline void BoxFilterProcessPass2(
     const RestorationUnitInfo& restoration_info, const Pixel* src,
-    const Pixel* const top_border, const Pixel* bottom_border,
-    const ptrdiff_t src_stride, const ptrdiff_t border_stride, const int width,
-    const int height, SgrBuffer* const sgr_buffer, Pixel* dst,
-    const ptrdiff_t dst_stride) {
+    const ptrdiff_t src_stride, const Pixel* const top_border,
+    const ptrdiff_t top_stride, const Pixel* bottom_border,
+    const ptrdiff_t bottom_stride, const int width, const int height,
+    SgrBuffer* const sgr_buffer, Pixel* dst, const ptrdiff_t dst_stride) {
   assert(restoration_info.sgr_proj_info.multiplier[0] == 0);
   const auto temp_stride = Align<ptrdiff_t>(width, 8);
   const ptrdiff_t sum_stride = temp_stride + 8;
@@ -813,7 +815,7 @@ inline void BoxFilterProcessPass2(
   b444[0] = sgr_buffer->b444;
   b444[1] = b444[0] + temp_stride;
   assert(scale != 0);
-  BoxSum<Pixel, 3>(top_border, border_stride, 2, width + 2, sum3, square_sum3);
+  BoxSum<Pixel, 3>(top_border, top_stride, 2, width + 2, sum3, square_sum3);
   BoxSum<Pixel, 3>(src, src_stride, 1, width + 2, sum3 + 2, square_sum3 + 2);
   BoxFilterPreProcess3<bitdepth>(sum3, square_sum3, width, scale, false,
                                  sgr_buffer, ma343[0], b343[0], nullptr,
@@ -825,7 +827,7 @@ inline void BoxFilterProcessPass2(
     s = src + src_stride;
   } else {
     s = bottom_border;
-    bottom_border += border_stride;
+    bottom_border += bottom_stride;
   }
   BoxSum<Pixel, 3>(s, 0, 1, width + 2, sum3 + 2, square_sum3 + 2);
   BoxFilterPreProcess3<bitdepth>(sum3, square_sum3, width, scale, true,
@@ -856,7 +858,7 @@ inline void BoxFilterProcessPass2(
                                     b444, dst);
     src += src_stride;
     dst += dst_stride;
-    bottom_border += border_stride;
+    bottom_border += bottom_stride;
     Circulate3PointersBy1<uint16_t>(ma343);
     Circulate3PointersBy1<uint32_t>(b343);
     std::swap(ma444[0], ma444[1]);
@@ -865,14 +867,15 @@ inline void BoxFilterProcessPass2(
 }
 
 template <int bitdepth, typename Pixel>
-void SelfGuidedFilter_C(const void* const source, const void* const top_border,
-                        const void* const bottom_border, void* const dest,
-                        const RestorationUnitInfo& restoration_info,
-                        const ptrdiff_t source_stride,
-                        const ptrdiff_t border_stride,
-                        const ptrdiff_t dest_stride, const int width,
+void SelfGuidedFilter_C(const RestorationUnitInfo& restoration_info,
+                        const void* const source, const ptrdiff_t source_stride,
+                        const void* const top_border,
+                        const ptrdiff_t top_stride,
+                        const void* const bottom_border,
+                        const ptrdiff_t bottom_stride, const int width,
                         const int height,
-                        RestorationBuffer* const restoration_buffer) {
+                        RestorationBuffer* const restoration_buffer,
+                        void* const dest, const ptrdiff_t dest_stride) {
   const int index = restoration_info.sgr_proj_info.index;
   const int radius_pass_0 = kSgrProjParams[index][0];  // 2 or 0
   const int radius_pass_1 = kSgrProjParams[index][2];  // 1 or 0
@@ -886,16 +889,16 @@ void SelfGuidedFilter_C(const void* const source, const void* const top_border,
     // following assertion.
     assert(radius_pass_0 != 0);
     BoxFilterProcessPass1<bitdepth, Pixel>(
-        restoration_info, src - 3, top - 3, bottom - 3, source_stride,
-        border_stride, width, height, sgr_buffer, dst, dest_stride);
+        restoration_info, src - 3, source_stride, top - 3, top_stride,
+        bottom - 3, bottom_stride, width, height, sgr_buffer, dst, dest_stride);
   } else if (radius_pass_0 == 0) {
     BoxFilterProcessPass2<bitdepth, Pixel>(
-        restoration_info, src - 2, top - 2, bottom - 2, source_stride,
-        border_stride, width, height, sgr_buffer, dst, dest_stride);
+        restoration_info, src - 2, source_stride, top - 2, top_stride,
+        bottom - 2, bottom_stride, width, height, sgr_buffer, dst, dest_stride);
   } else {
     BoxFilterProcess<bitdepth, Pixel>(
-        restoration_info, src - 3, top - 3, bottom - 3, source_stride,
-        border_stride, width, height, sgr_buffer, dst, dest_stride);
+        restoration_info, src - 3, source_stride, top - 3, top_stride,
+        bottom - 3, bottom_stride, width, height, sgr_buffer, dst, dest_stride);
   }
 }
 

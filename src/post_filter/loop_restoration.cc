@@ -161,12 +161,12 @@ void PostFilter::ApplyLoopRestorationForOneRowInWindow(
       const dsp::LoopRestorationFunc restoration_func =
           dsp_.loop_restorations[type - 2];
       restoration_func(
-          source, source - kRestorationVerticalBorder * source_stride,
-          source + current_process_unit_height * source_stride,
-          &(*loop_restored_window)[row][column], restoration_info[unit_column],
-          source_stride, source_stride, loop_restored_window->columns(),
+          restoration_info[unit_column], source, source_stride,
+          source - kRestorationVerticalBorder * source_stride, source_stride,
+          source + current_process_unit_height * source_stride, source_stride,
           current_process_unit_width, current_process_unit_height,
-          &restoration_buffer);
+          &restoration_buffer, &(*loop_restored_window)[row][column],
+          loop_restored_window->columns());
     }
     ++unit_column;
     column += plane_unit_size;

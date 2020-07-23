@@ -359,18 +359,20 @@ using SuperResRowFunc = void (*)(const void* source, const int upscaled_width,
                                  void* const dest);
 
 // Loop restoration function signature. Sections 7.16, 7.17.
-// |source| is the input frame buffer, which is deblocked and cdef filtered.
-// |dest| is the output.
 // |restoration_info| contains loop restoration information, such as filter
 // type, strength.
-// |source_stride| and |dest_stride| are given in pixels.
-// |buffer| contains buffers required for self guided filter and wiener filter.
-// They must be initialized before calling.
+// |source| is the input frame buffer, which is deblocked and cdef filtered.
+// |top_border| and |bottom_border| are the top and bottom borders.
+// |dest| is the output.
+// |source_stride|, |top_stride|, |bottom_stride| and |dest_stride| are given in
+// pixels.
+// |restoration_buffer| contains buffers required for self guided filter and
+// wiener filter. They must be initialized before calling.
 using LoopRestorationFunc = void (*)(
-    const void* source, const void* top_border, const void* bottom_border,
-    void* dest, const RestorationUnitInfo& restoration_info,
-    ptrdiff_t source_stride, ptrdiff_t border_stride, ptrdiff_t dest_stride,
-    int width, int height, RestorationBuffer* buffer);
+    const RestorationUnitInfo& restoration_info, const void* source,
+    ptrdiff_t source_stride, const void* top_border, ptrdiff_t top_stride,
+    const void* bottom_border, ptrdiff_t bottom_stride, int width, int height,
+    RestorationBuffer* restoration_buffer, void* dest, ptrdiff_t dest_stride);
 
 // Index 0 is Wiener Filter.
 // Index 1 is Self Guided Restoration Filter.
