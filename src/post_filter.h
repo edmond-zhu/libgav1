@@ -249,6 +249,9 @@ class PostFilter {
   }
 
   template <typename Pixel>
+  static void ExtendLine(void* line_start, int width, int left, int right);
+
+  template <typename Pixel>
   static void ExtendFrame(Pixel* frame_start, int width, int height,
                           ptrdiff_t stride, int left, int right, int top,
                           int bottom);
@@ -527,6 +530,10 @@ class PostFilter {
   friend class PostFilterHelperFuncTest;
 };
 
+extern template void PostFilter::ExtendLine<uint8_t>(void* line_start,
+                                                     int width, int left,
+                                                     int right);
+
 extern template void PostFilter::ExtendFrame<uint8_t>(uint8_t* frame_start,
                                                       int width, int height,
                                                       ptrdiff_t stride,
@@ -534,6 +541,10 @@ extern template void PostFilter::ExtendFrame<uint8_t>(uint8_t* frame_start,
                                                       int top, int bottom);
 
 #if LIBGAV1_MAX_BITDEPTH >= 10
+extern template void PostFilter::ExtendLine<uint16_t>(void* line_start,
+                                                      int width, int left,
+                                                      int right);
+
 extern template void PostFilter::ExtendFrame<uint16_t>(uint16_t* frame_start,
                                                        int width, int height,
                                                        ptrdiff_t stride,

@@ -15,20 +15,6 @@
 #include "src/utils/blocking_counter.h"
 
 namespace libgav1 {
-namespace {
-
-template <typename Pixel>
-void ExtendLine(uint8_t* const line_start, const int width, const int left,
-                const int right) {
-  auto* const start = reinterpret_cast<Pixel*>(line_start);
-  const Pixel* src = start;
-  Pixel* dst = start - left;
-  // Copy to left and right borders.
-  Memset(dst, src[0], left);
-  Memset(dst + (left + width), src[width - 1], right);
-}
-
-}  // namespace
 
 template <bool in_place>
 void PostFilter::ApplySuperRes(const std::array<uint8_t*, kMaxPlanes>& buffers,
@@ -180,7 +166,6 @@ void PostFilter::ApplySuperResThreaded() {
   pending_workers.Wait();
 }
 
-// This function lives in this file so that it has access to ExtendLine<>.
 void PostFilter::SetupDeblockBuffer(int row4x4_start, int sb4x4) {
   assert(row4x4_start >= 0);
   assert(DoCdef());
