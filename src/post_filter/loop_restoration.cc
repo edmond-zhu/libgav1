@@ -161,8 +161,8 @@ void PostFilter::ApplyLoopRestorationForOneRowInWindow(
       const dsp::LoopRestorationFunc restoration_func =
           dsp_.loop_restorations[type - 2];
       restoration_func(
-          source, source - kRestorationVerticalBorder * source_stride - 3,
-          source + current_process_unit_height * source_stride - 3,
+          source, source - kRestorationVerticalBorder * source_stride,
+          source + current_process_unit_height * source_stride,
           &(*loop_restored_window)[row][column], restoration_info[unit_column],
           source_stride, source_stride, loop_restored_window->columns(),
           current_process_unit_width, current_process_unit_height,
