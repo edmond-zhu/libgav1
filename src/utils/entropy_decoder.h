@@ -85,9 +85,9 @@ class DaalaBitReader : public BitReader {
 
   const uint8_t* data_;
   const uint8_t* const data_end_;
-  // If |data_| < |data_memcpy_end_|, then we can read WindowSize bytes from
-  // |data_|. Note with WindowSize == 4 this is only used in the constructor,
-  // not PopulateBits().
+  // If |data_| < |data_memcpy_end_|, then we can read sizeof(WindowSize) bytes
+  // from |data_|. Note with sizeof(WindowSize) == 4 this is only used in the
+  // constructor, not PopulateBits().
   const uint8_t* const data_memcpy_end_;
   const bool allow_update_cdf_;
   // Number of cached bits of data in the current value.
