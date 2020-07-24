@@ -43,19 +43,16 @@ void PostFilter::ApplyLoopRestorationForOneRowInWindow(
     if (restoration_info[unit_column].type == kLoopRestorationTypeNone) {
       const ptrdiff_t dst_stride = loop_restored_window->columns();
       Pixel* dst = &(*loop_restored_window)[row][column];
-      int k = current_process_unit_height;
       if (do_cdef) {
+        int k = current_process_unit_height;
         do {
           memmove(dst, src, current_process_unit_width * sizeof(Pixel));
           src += src_stride;
           dst += dst_stride;
         } while (--k != 0);
       } else {
-        do {
-          memcpy(dst, src, current_process_unit_width * sizeof(Pixel));
-          src += src_stride;
-          dst += dst_stride;
-        } while (--k != 0);
+        CopyPlane(src, src_stride, current_process_unit_width,
+                  current_process_unit_height, dst, dst_stride);
       }
     } else {
       const Pixel* top_border = src - kRestorationVerticalBorder * src_stride;
