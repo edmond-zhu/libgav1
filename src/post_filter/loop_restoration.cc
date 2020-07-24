@@ -17,11 +17,10 @@
 namespace libgav1 {
 
 template <typename Pixel>
-void PostFilter::ApplyLoopRestorationForOneRowInWindow(
+void PostFilter::ApplyLoopRestorationForOneRow(
     const Pixel* src_buffer, const Plane plane, const int plane_height,
-    const int plane_width, const int y, const int x, const int row,
-    const int unit_row, const int current_process_unit_height,
-    const int plane_unit_size, const int window_width,
+    const int plane_width, const int y, const int row, const int unit_row,
+    const int current_process_unit_height, const int plane_unit_size,
     Array2DView<Pixel>* const loop_restored_window) {
   const int num_horizontal_units =
       restoration_info_->num_horizontal_units(static_cast<Plane>(plane));
@@ -30,14 +29,13 @@ void PostFilter::ApplyLoopRestorationForOneRowInWindow(
       restoration_info_->loop_restoration_info(static_cast<Plane>(plane),
                                                unit_row * num_horizontal_units);
   const bool in_place = DoCdef() || thread_pool_ != nullptr;
-  int unit_column = x / plane_unit_size;
-  src_buffer += (y + row) * src_stride + x;
+  const int unit_y = y + row;
+  src_buffer += unit_y * src_stride;
+  int unit_column = 0;
   int column = 0;
   do {
-    const int unit_x = x + column;
-    const int unit_y = y + row;
     const int current_process_unit_width =
-        std::min(plane_unit_size, plane_width - unit_x);
+        std::min(plane_unit_size, plane_width - column);
     const Pixel* src = src_buffer + column;
     unit_column = std::min(unit_column, num_horizontal_units - 1);
     if (restoration_info[unit_column].type == kLoopRestorationTypeNone) {
@@ -70,7 +68,7 @@ void PostFilter::ApplyLoopRestorationForOneRowInWindow(
             std::max(MultiplyBy4(Ceil(unit_y, deblock_buffer_units)) - 4, 0);
         const Pixel* deblock_buffer =
             reinterpret_cast<const Pixel*>(deblock_buffer_.data(plane)) +
-            deblock_unit_y * deblock_stride + unit_x;
+            deblock_unit_y * deblock_stride + column;
         if (unit_y != 0) {
           top_border = deblock_buffer;
           top_stride = deblock_stride;
@@ -97,7 +95,7 @@ void PostFilter::ApplyLoopRestorationForOneRowInWindow(
     }
     ++unit_column;
     column += plane_unit_size;
-  } while (column < window_width);
+  } while (column < plane_width);
 }
 
 template <typename Pixel>
@@ -138,20 +136,19 @@ void PostFilter::ApplyLoopRestorationSingleThread(const int row4x4_start,
           current_process_unit_height, static_cast<int>(stride),
           reinterpret_cast<Pixel*>(loop_restoration_buffer_[plane]) +
               y * stride);
-      ApplyLoopRestorationForOneRowInWindow<Pixel>(
+      ApplyLoopRestorationForOneRow<Pixel>(
           reinterpret_cast<Pixel*>(superres_buffer_[plane]),
-          static_cast<Plane>(plane), plane_height, plane_width, y, 0, 0,
-          unit_row, current_process_unit_height, plane_unit_size, plane_width,
-          &loop_restored_window);
+          static_cast<Plane>(plane), plane_height, plane_width, y, 0, unit_row,
+          current_process_unit_height, plane_unit_size, &loop_restored_window);
     }
   }
 }
 
-// Multi-thread version of loop restoration, based on a moving window of size
-// |window_buffer_width_|x|window_buffer_height_|. Inside the moving window, we
-// create a filtering job for each row and each filtering job is submitted to
-// the thread pool. Each free thread takes one job from the thread pool and
-// completes filtering until all jobs are finished.
+// Multi-thread version of loop restoration, based on a moving window of
+// |window_buffer_height_| rows. Inside the moving window, we create a filtering
+// job for each row and each filtering job is submitted to the thread pool. Each
+// free thread takes one job from the thread pool and completes filtering until
+// all jobs are finished.
 template <typename Pixel>
 void PostFilter::ApplyLoopRestorationThreaded() {
   const int plane_process_unit_height[kMaxPlanes] = {
@@ -203,51 +200,46 @@ void PostFilter::ApplyLoopRestorationThreaded() {
       }
       const int jobs_for_threadpool =
           vertical_units_per_window * num_workers / (num_workers + 1);
-      for (int x = 0; x < plane_width; x += window_buffer_width_) {
-        const int actual_window_width =
-            std::min(window_buffer_width_, plane_width - x);
-        assert(jobs_for_threadpool < vertical_units_per_window);
-        loop_restored_window.Reset(
-            actual_window_height, static_cast<int>(src_stride),
-            reinterpret_cast<Pixel*>(loop_restoration_buffer_[plane]) +
-                y * src_stride + x);
-        BlockingCounter pending_jobs(jobs_for_threadpool);
-        int job_count = 0;
-        int current_process_unit_height;
-        for (int row = 0; row < actual_window_height;
-             row += current_process_unit_height) {
-          const int unit_y = y + row;
-          const int expected_height = plane_process_unit_height[plane] -
-                                      ((unit_y == 0) ? unit_height_offset : 0);
-          current_process_unit_height =
-              std::min(expected_height, plane_height - unit_y);
-          const int unit_row =
-              std::min((unit_y + unit_height_offset) / plane_unit_size,
-                       num_vertical_units - 1);
+      assert(jobs_for_threadpool < vertical_units_per_window);
+      loop_restored_window.Reset(
+          actual_window_height, static_cast<int>(src_stride),
+          reinterpret_cast<Pixel*>(loop_restoration_buffer_[plane]) +
+              y * src_stride);
+      BlockingCounter pending_jobs(jobs_for_threadpool);
+      int job_count = 0;
+      int current_process_unit_height;
+      for (int row = 0; row < actual_window_height;
+           row += current_process_unit_height) {
+        const int unit_y = y + row;
+        const int expected_height = plane_process_unit_height[plane] -
+                                    ((unit_y == 0) ? unit_height_offset : 0);
+        current_process_unit_height =
+            std::min(expected_height, plane_height - unit_y);
+        const int unit_row =
+            std::min((unit_y + unit_height_offset) / plane_unit_size,
+                     num_vertical_units - 1);
 
-          if (job_count < jobs_for_threadpool) {
-            thread_pool_->Schedule(
-                [this, src_buffer, plane, plane_height, plane_width, y, x, row,
-                 unit_row, current_process_unit_height, plane_unit_size,
-                 actual_window_width, &loop_restored_window, &pending_jobs]() {
-                  ApplyLoopRestorationForOneRowInWindow<Pixel>(
-                      src_buffer, static_cast<Plane>(plane), plane_height,
-                      plane_width, y, x, row, unit_row,
-                      current_process_unit_height, plane_unit_size,
-                      actual_window_width, &loop_restored_window);
-                  pending_jobs.Decrement();
-                });
-          } else {
-            ApplyLoopRestorationForOneRowInWindow<Pixel>(
+        if (job_count < jobs_for_threadpool) {
+          thread_pool_->Schedule([this, src_buffer, plane, plane_height,
+                                  plane_width, y, row, unit_row,
+                                  current_process_unit_height, plane_unit_size,
+                                  &loop_restored_window, &pending_jobs]() {
+            ApplyLoopRestorationForOneRow<Pixel>(
                 src_buffer, static_cast<Plane>(plane), plane_height,
-                plane_width, y, x, row, unit_row, current_process_unit_height,
-                plane_unit_size, actual_window_width, &loop_restored_window);
-          }
-          ++job_count;
+                plane_width, y, row, unit_row, current_process_unit_height,
+                plane_unit_size, &loop_restored_window);
+            pending_jobs.Decrement();
+          });
+        } else {
+          ApplyLoopRestorationForOneRow<Pixel>(
+              src_buffer, static_cast<Plane>(plane), plane_height, plane_width,
+              y, row, unit_row, current_process_unit_height, plane_unit_size,
+              &loop_restored_window);
         }
-        // Wait for all jobs of current window to finish.
-        pending_jobs.Wait();
+        ++job_count;
       }
+      // Wait for all jobs of current window to finish.
+      pending_jobs.Wait();
       if (y == 0) y -= unit_height_offset;
     }
   }
