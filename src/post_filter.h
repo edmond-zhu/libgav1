@@ -301,11 +301,12 @@ class PostFilter {
   template <typename Pixel>
   void CopyPlane(const Pixel* src, ptrdiff_t src_stride, int width, int height,
                  Pixel* dst, ptrdiff_t dst_stride) {
-    for (int y = 0; y < height; ++y) {
+    assert(height > 0);
+    do {
       memcpy(dst, src, width * sizeof(Pixel));
       src += src_stride;
       dst += dst_stride;
-    }
+    } while (--height != 0);
   }
 
   // Functions for the Deblocking filter.
