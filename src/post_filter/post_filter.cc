@@ -35,10 +35,9 @@ namespace {
 #include "src/post_filter/deblock_thresholds.inc"
 
 // Row indices of deblocked pixels needed by loop restoration. This is used to
-// populate the |deblock_buffer_| when cdef is on. The first dimension is
+// populate the |deblock_buffer_| when cdef is on. The dimension is
 // subsampling_y.
-constexpr int kDeblockedRowsForLoopRestoration[2][4] = {{54, 55, 56, 57},
-                                                        {26, 27, 28, 29}};
+constexpr int kDeblockedRowsForLoopRestoration[2] = {54, 26};
 
 }  // namespace
 
@@ -306,8 +305,7 @@ void PostFilter::ExtendBordersForReferenceFrame() {
 
 void PostFilter::CopyDeblockedPixels(Plane plane, int row4x4) {
   const ptrdiff_t src_stride = frame_buffer_.stride(plane);
-  const uint8_t* const src =
-      GetSourceBuffer(static_cast<Plane>(plane), row4x4, 0);
+  const uint8_t* const src = GetSourceBuffer(plane, row4x4, 0);
   const ptrdiff_t dst_stride = deblock_buffer_.stride(plane);
   const int row_offset = DivideBy4(row4x4);
   uint8_t* dst = deblock_buffer_.data(plane) + dst_stride * row_offset;
@@ -316,11 +314,10 @@ void PostFilter::CopyDeblockedPixels(Plane plane, int row4x4) {
   int last_valid_row = -1;
   const int plane_height =
       SubsampledValue(frame_header_.height, subsampling_y_[plane]);
-  for (int i = 0; i < 4; ++i) {
-    int row = kDeblockedRowsForLoopRestoration[subsampling_y_[plane]][i];
-    const int absolute_row =
-        (MultiplyBy4(row4x4) >> subsampling_y_[plane]) + row;
-    if (absolute_row >= plane_height) {
+  int row = kDeblockedRowsForLoopRestoration[subsampling_y_[plane]];
+  const int absolute_row = (MultiplyBy4(row4x4) >> subsampling_y_[plane]) + row;
+  for (int i = 0; i < 4; ++i, ++row) {
+    if (absolute_row + i >= plane_height) {
       if (last_valid_row == -1) {
         // We have run out of rows and there no valid row to copy. This will not
         // be used by loop restoration, so we can simply break here. However,
