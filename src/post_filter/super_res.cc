@@ -166,6 +166,8 @@ void PostFilter::ApplySuperResThreaded() {
   pending_workers.Wait();
 }
 
+// TODO(linfengz): Update ApplySuperRes() to process planes one by one. Skip a
+// plane if it has no loop restoration.
 void PostFilter::SetupDeblockBuffer(int row4x4_start, int sb4x4) {
   assert(row4x4_start >= 0);
   assert(DoCdef());
@@ -193,6 +195,9 @@ void PostFilter::SetupDeblockBuffer(int row4x4_start, int sb4x4) {
     }
     // Extend the left and right boundaries needed for loop restoration.
     for (int plane = 0; plane < planes_; ++plane) {
+      if (loop_restoration_.type[plane] == kLoopRestorationTypeNone) {
+        continue;
+      }
       uint8_t* src = deblock_buffer_.data(plane) +
                      row_offset_start * deblock_buffer_.stride(plane);
       const int plane_width =

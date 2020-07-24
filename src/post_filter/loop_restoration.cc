@@ -29,7 +29,7 @@ void PostFilter::ApplyLoopRestorationForOneRowInWindow(
   const RestorationUnitInfo* const restoration_info =
       restoration_info_->loop_restoration_info(static_cast<Plane>(plane),
                                                unit_row * num_horizontal_units);
-  const bool do_cdef = DoCdef();
+  const bool in_place = DoCdef() || thread_pool_ != nullptr;
   int unit_column = x / plane_unit_size;
   src_buffer += (y + row) * src_stride + x;
   int column = 0;
@@ -43,7 +43,7 @@ void PostFilter::ApplyLoopRestorationForOneRowInWindow(
     if (restoration_info[unit_column].type == kLoopRestorationTypeNone) {
       const ptrdiff_t dst_stride = loop_restored_window->columns();
       Pixel* dst = &(*loop_restored_window)[row][column];
-      if (do_cdef) {
+      if (in_place) {
         int k = current_process_unit_height;
         do {
           memmove(dst, src, current_process_unit_width * sizeof(Pixel));
@@ -62,7 +62,7 @@ void PostFilter::ApplyLoopRestorationForOneRowInWindow(
       top_stride = bottom_stride = src_stride;
       const bool frame_bottom_border =
           (unit_y + current_process_unit_height >= plane_height);
-      if (do_cdef && (unit_y != 0 || !frame_bottom_border)) {
+      if (in_place && (unit_y != 0 || !frame_bottom_border)) {
         const int deblock_buffer_units = 64 >> subsampling_y_[plane];
         const ptrdiff_t deblock_stride =
             deblock_buffer_.stride(plane) / sizeof(Pixel);
@@ -151,24 +151,13 @@ void PostFilter::ApplyLoopRestorationSingleThread(const int row4x4_start,
 // |window_buffer_width_|x|window_buffer_height_|. Inside the moving window, we
 // create a filtering job for each row and each filtering job is submitted to
 // the thread pool. Each free thread takes one job from the thread pool and
-// completes filtering until all jobs are finished. This approach requires an
-// extra buffer (|threaded_window_buffer_|) to hold the filtering output, whose
-// size is the size of the window. It also needs block buffers (i.e.,
-// |block_buffer| in ApplyLoopRestorationForOneRowInWindow()) to store
-// intermediate results in loop restoration for each thread. After all units
-// inside the window are filtered, the output is written to the frame buffer.
+// completes filtering until all jobs are finished.
 template <typename Pixel>
 void PostFilter::ApplyLoopRestorationThreaded() {
   const int plane_process_unit_height[kMaxPlanes] = {
       kRestorationUnitHeight, kRestorationUnitHeight >> subsampling_y_[kPlaneU],
       kRestorationUnitHeight >> subsampling_y_[kPlaneV]};
   Array2DView<Pixel> loop_restored_window;
-  if (!DoCdef()) {
-    loop_restored_window.Reset(
-        window_buffer_height_, window_buffer_width_,
-        reinterpret_cast<Pixel*>(threaded_window_buffer_));
-  }
-
   for (int plane = kPlaneY; plane < planes_; ++plane) {
     if (loop_restoration_.type[plane] == kLoopRestorationTypeNone) {
       continue;
@@ -218,12 +207,10 @@ void PostFilter::ApplyLoopRestorationThreaded() {
         const int actual_window_width =
             std::min(window_buffer_width_, plane_width - x);
         assert(jobs_for_threadpool < vertical_units_per_window);
-        if (DoCdef()) {
-          loop_restored_window.Reset(
-              actual_window_height, static_cast<int>(src_stride),
-              reinterpret_cast<Pixel*>(loop_restoration_buffer_[plane]) +
-                  y * src_stride + x);
-        }
+        loop_restored_window.Reset(
+            actual_window_height, static_cast<int>(src_stride),
+            reinterpret_cast<Pixel*>(loop_restoration_buffer_[plane]) +
+                y * src_stride + x);
         BlockingCounter pending_jobs(jobs_for_threadpool);
         int job_count = 0;
         int current_process_unit_height;
@@ -260,15 +247,6 @@ void PostFilter::ApplyLoopRestorationThreaded() {
         }
         // Wait for all jobs of current window to finish.
         pending_jobs.Wait();
-        if (!DoCdef()) {
-          // Copy |threaded_window_buffer_| to output frame.
-          CopyPlane<Pixel>(
-              reinterpret_cast<const Pixel*>(threaded_window_buffer_),
-              window_buffer_width_, actual_window_width, actual_window_height,
-              reinterpret_cast<Pixel*>(loop_restoration_buffer_[plane]) +
-                  y * src_stride + x,
-              src_stride);
-        }
       }
       if (y == 0) y -= unit_height_offset;
     }

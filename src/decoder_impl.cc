@@ -1345,7 +1345,8 @@ StatusCode DecoderImpl::DecodeTiles(
     }
   }
 
-  if (do_cdef && do_restoration) {
+  if (do_restoration &&
+      (do_cdef || threading_strategy.post_filter_thread_pool() != nullptr)) {
     // We need to store 4 rows per 64x64 unit.
     const int num_deblock_units = MultiplyBy4(Ceil(frame_header.rows4x4, 16));
     // subsampling_y is set to zero irrespective of the actual frame's

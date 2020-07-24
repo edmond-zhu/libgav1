@@ -235,7 +235,7 @@ PostFilter::PostFilter(const ObuFrameHeader& frame_header,
       if (DoRestoration() &&
           loop_restoration_.type[plane] != kLoopRestorationTypeNone) {
         horizontal_shift += frame_buffer_.alignment();
-        if (!DoCdef()) {
+        if (!DoCdef() && thread_pool_ == nullptr) {
           vertical_shift += kRestorationVerticalBorder;
         }
         superres_buffer_[plane] +=
@@ -393,6 +393,46 @@ void PostFilter::CopyBordersForOneSuperBlockRow(int row4x4, int sb4x4,
   }
 }
 
+void PostFilter::SetupDeblockBuffer(const int row4x4) {
+  assert(row4x4 >= 0);
+  assert(!DoCdef());
+  assert(DoRestoration());
+  int plane = 0;
+  do {
+    if (loop_restoration_.type[plane] == kLoopRestorationTypeNone) {
+      continue;
+    }
+    const ptrdiff_t src_stride = frame_buffer_.stride(plane);
+    const ptrdiff_t dst_stride = deblock_buffer_.stride(plane);
+    const int row_offset = DivideBy4(row4x4);
+    const int num_pixels =
+        SubsampledValue(upscaled_width_, subsampling_x_[plane]);
+    const int plane_height = SubsampledValue(height_, subsampling_y_[plane]);
+    const int row = kDeblockedRowsForLoopRestoration[subsampling_y_[plane]];
+    const int absolute_row =
+        (MultiplyBy4(row4x4) >> subsampling_y_[plane]) + row;
+    const uint8_t* src =
+        GetSuperResBuffer(static_cast<Plane>(plane), row4x4, 0) +
+        row * src_stride;
+    uint8_t* dst = deblock_buffer_.data(plane) + dst_stride * row_offset;
+    for (int i = 0; i < 4; ++i) {
+      memcpy(dst, src, num_pixels * pixel_size_);
+#if LIBGAV1_MAX_BITDEPTH >= 10
+      if (bitdepth_ >= 10) {
+        ExtendLine<uint16_t>(dst, num_pixels, kRestorationHorizontalBorder,
+                             kRestorationHorizontalBorder);
+      } else  // NOLINT.
+#endif
+        ExtendLine<uint8_t>(dst, num_pixels, kRestorationHorizontalBorder,
+                            kRestorationHorizontalBorder);
+      // If we run out of rows, copy the last valid row (mimics the bottom
+      // border extension).
+      if (absolute_row + i < plane_height - 1) src += src_stride;
+      dst += dst_stride;
+    }
+  } while (++plane < planes_);
+}
+
 void PostFilter::ApplyFilteringThreaded() {
   if (DoDeblock()) ApplyDeblockFilterThreaded();
   if (DoCdef() && DoRestoration()) {
@@ -403,7 +443,16 @@ void PostFilter::ApplyFilteringThreaded() {
   }
   if (DoCdef()) ApplyCdef();
   if (DoSuperRes()) ApplySuperResThreaded();
-  if (DoRestoration()) ApplyLoopRestoration();
+  if (DoRestoration()) {
+    if (!DoCdef()) {
+      int row4x4 = 0;
+      do {
+        SetupDeblockBuffer(row4x4);
+        row4x4 += kNum4x4InLoopFilterUnit;
+      } while (row4x4 < frame_header_.rows4x4);
+    }
+    ApplyLoopRestoration();
+  }
   ExtendBordersForReferenceFrame();
 }
 

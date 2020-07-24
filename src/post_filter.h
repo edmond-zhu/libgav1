@@ -58,7 +58,7 @@ class PostFilter {
   // The overall flow of data in this class (for both single and multi-threaded
   // cases) is as follows:
   //   -> Input: |frame_buffer_|.
-  //   -> Initialize |source_buffer_|, |cdef_buffer_| and
+  //   -> Initialize |source_buffer_|, |cdef_buffer_|, |superres_buffer_| and
   //      |loop_restoration_buffer_|.
   //   -> Deblocking:
   //      * Input: |source_buffer_|
@@ -68,9 +68,9 @@ class PostFilter {
   //      * Output: |cdef_buffer_|
   //   -> SuperRes:
   //      * Input: |cdef_buffer_|
-  //      * Output: |cdef_buffer_|
+  //      * Output: |superres_buffer_|
   //   -> Loop Restoration:
-  //      * Input: |cdef_buffer_|
+  //      * Input: |superres_buffer_|
   //      * Output: |loop_restoration_buffer_|.
   //   -> Now |frame_buffer_| contains the filtered frame.
   PostFilter(const ObuFrameHeader& frame_header,
@@ -108,12 +108,12 @@ class PostFilter {
   //         copied into the |cdef_buffer_| (which is just |source_buffer_| with
   //         a shift to the top-left).
   // * SuperRes: Near in-place filtering (with an additional line buffer for
-  //             each row). The output is written to |cdef_buffer_|.
-  // * Restoration: Uses the |cdef_buffer_| and |deblock_buffer_| as the input
-  //                and the output is written into the
-  //                |threaded_window_buffer_|. It is then copied to the
-  //                |loop_restoration_buffer_| (which is just |cdef_buffer_|
-  //                with a shift to the top-left).
+  //             each row). The output is written to |superres_buffer_|.
+  // * Restoration: Near in-place filtering.
+  //                Uses the |superres_buffer_| and |deblock_buffer_| as the
+  //                input and the output is written into
+  //                |loop_restoration_buffer_| (which is just |superres_buffer_|
+  //                with a shift to the left).
   void ApplyFilteringThreaded();
 
   // Does the overall post processing filter for one superblock row starting at
@@ -128,12 +128,12 @@ class PostFilter {
   // * Cdef: In-place filtering. The output is written into |cdef_buffer_|
   //         (which is just |source_buffer_| with a shift to the top-left).
   // * SuperRes: Near in-place filtering (with an additional line buffer for
-  //             each row). The output is written to |cdef_buffer_|.
-  // * Restoration: Near in-place filtering. Uses a local block of size 64x64.
-  //                Uses the |cdef_buffer_| and |deblock_buffer_| as the input
-  //                and the output is written into |loop_restoration_buffer_|
-  //                (which is just |source_buffer_| with a shift to the
-  //                top-left).
+  //             each row). The output is written to |superres_buffer_|.
+  // * Restoration: Near in-place filtering.
+  //                Uses the |superres_buffer_| and |deblock_buffer_| as the
+  //                input and the output is written into
+  //                |loop_restoration_buffer_| (which is just |superres_buffer_|
+  //                with a shift to the left or top-left).
   // Returns the index of the last row whose post processing is complete and can
   // be used for referencing.
   int ApplyFilteringForOneSuperBlockRow(int row4x4, int sb4x4, bool is_last_row,
@@ -228,6 +228,11 @@ class PostFilter {
                            plane, row4x4, column4x4);
   }
 
+  uint8_t* GetSuperResBuffer(Plane plane, int row4x4, int column4x4) const {
+    return GetBufferOffset(superres_buffer_[plane], frame_buffer_.stride(plane),
+                           plane, row4x4, column4x4);
+  }
+
   static int GetWindowBufferWidth(const ThreadPool* const thread_pool,
                                   const ObuFrameHeader& frame_header) {
     return (thread_pool == nullptr) ? 0
@@ -287,6 +292,13 @@ class PostFilter {
   void CopyBordersForOneSuperBlockRow(int row4x4, int sb4x4,
                                       bool for_loop_restoration);
   // Sets up the |deblock_buffer_| for loop restoration.
+  // TODO(linfengz): Unify duplicates in the following two functions if
+  // possible.
+  // This is called when there is no CDEF filter. We copy rows from
+  // |superres_buffer_| and do the line extension.
+  void SetupDeblockBuffer(int row4x4_start);
+  // This is called when there is CDEF filter. We copy rows from
+  // |source_buffer_|, apply superres and do the line extension.
   void SetupDeblockBuffer(int row4x4_start, int sb4x4);
   // Returns true if we can perform border extension in loop (i.e.) without
   // waiting until the entire frame is decoded. If intra_block_copy is true, we
@@ -476,8 +488,8 @@ class PostFilter {
   } super_res_info_[kMaxPlanes];
   const Array2D<int16_t>& cdef_index_;
   const Array2D<TransformSize>& inter_transform_sizes_;
-  // Pointer to the data buffer used for multi-threaded cdef or loop
-  // restoration. The size of this buffer must be at least
+  // Pointer to the data buffer used for multi-threaded cdef.
+  // The size of this buffer must be at least
   // |window_buffer_width_| * |window_buffer_height_| * |pixel_size_|.
   // Or |planes_| times that for multi-threaded cdef.
   // If |thread_pool_| is nullptr, then this buffer is not used and can be
