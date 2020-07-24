@@ -543,12 +543,12 @@ Tile::Tile(int tile_number, const uint8_t* const data, size_t size,
                          buffer.stride(plane),
                          post_filter_.GetUnfilteredBuffer(plane));
     const int plane_height =
-        RightShiftWithRounding(frame_header_.height, subsampling_y_[plane]);
+        SubsampledValue(frame_header_.height, subsampling_y_[plane]);
     deblock_row_limit_[plane] =
         std::min(frame_header_.rows4x4, DivideBy4(plane_height + 3)
                                             << subsampling_y_[plane]);
     const int plane_width =
-        RightShiftWithRounding(frame_header_.width, subsampling_x_[plane]);
+        SubsampledValue(frame_header_.width, subsampling_x_[plane]);
     deblock_column_limit_[plane] =
         std::min(frame_header_.columns4x4, DivideBy4(plane_width + 3)
                                                << subsampling_x_[plane]);

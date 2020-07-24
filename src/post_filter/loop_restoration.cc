@@ -112,10 +112,9 @@ void PostFilter::ApplyLoopRestorationSingleThread(const int row4x4_start,
     const ptrdiff_t stride = frame_buffer_.stride(plane) / sizeof(Pixel);
     const int unit_height_offset =
         kRestorationUnitOffset >> subsampling_y_[plane];
-    const int plane_height =
-        RightShiftWithRounding(height_, subsampling_y_[plane]);
+    const int plane_height = SubsampledValue(height_, subsampling_y_[plane]);
     const int plane_width =
-        RightShiftWithRounding(upscaled_width_, subsampling_x_[plane]);
+        SubsampledValue(upscaled_width_, subsampling_x_[plane]);
     const int num_vertical_units =
         restoration_info_->num_vertical_units(static_cast<Plane>(plane));
     const int plane_unit_size = loop_restoration_.unit_size[plane];
@@ -183,9 +182,8 @@ void PostFilter::ApplyLoopRestorationThreaded() {
     const int num_vertical_units =
         restoration_info_->num_vertical_units(static_cast<Plane>(plane));
     const int plane_width =
-        RightShiftWithRounding(upscaled_width_, subsampling_x_[plane]);
-    const int plane_height =
-        RightShiftWithRounding(height_, subsampling_y_[plane]);
+        SubsampledValue(upscaled_width_, subsampling_x_[plane]);
+    const int plane_height = SubsampledValue(height_, subsampling_y_[plane]);
     PostFilter::ExtendFrame<Pixel>(
         src_buffer, plane_width, plane_height, src_stride,
         kRestorationHorizontalBorder, kRestorationHorizontalBorder,

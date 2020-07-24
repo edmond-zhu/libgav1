@@ -510,6 +510,8 @@ inline int GetFilterIndex(const int filter_index, const int length) {
   return filter_index;
 }
 
+// This has identical results as RightShiftWithRounding since |subsampling| can
+// only be 0 or 1.
 constexpr int SubsampledValue(int value, int subsampling) {
   return (value + subsampling) >> subsampling;
 }

@@ -196,7 +196,7 @@ void PostFilter::SetupDeblockBuffer(int row4x4_start, int sb4x4) {
       uint8_t* src = deblock_buffer_.data(plane) +
                      row_offset_start * deblock_buffer_.stride(plane);
       const int plane_width =
-          RightShiftWithRounding(upscaled_width_, subsampling_x_[plane]);
+          SubsampledValue(upscaled_width_, subsampling_x_[plane]);
       for (int i = 0; i < 4; ++i) {
 #if LIBGAV1_MAX_BITDEPTH >= 10
         if (bitdepth_ >= 10) {

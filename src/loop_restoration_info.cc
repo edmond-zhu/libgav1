@@ -70,12 +70,10 @@ bool LoopRestorationInfo::Reset(const LoopRestoration* const loop_restoration,
       continue;
     }
     plane_needs_filtering_[plane] = true;
-    const int plane_width = (plane == kPlaneY)
-                                ? width
-                                : RightShiftWithRounding(width, subsampling_x_);
+    const int plane_width =
+        (plane == kPlaneY) ? width : SubsampledValue(width, subsampling_x_);
     const int plane_height =
-        (plane == kPlaneY) ? height
-                           : RightShiftWithRounding(height, subsampling_y_);
+        (plane == kPlaneY) ? height : SubsampledValue(height, subsampling_y_);
     num_horizontal_units_[plane] = std::max(
         1, (plane_width + DivideBy2(loop_restoration_->unit_size[plane])) /
                loop_restoration_->unit_size[plane]);

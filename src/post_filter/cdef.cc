@@ -102,8 +102,8 @@ void PostFilter::PrepareCdefBlock(int block_width4x4, int block_height4x4,
   const int8_t subsampling_y = y_plane ? 0 : subsampling_y_[kPlaneU];
   const int start_x = MultiplyBy4(column4x4) >> subsampling_x;
   const int start_y = MultiplyBy4(row4x4) >> subsampling_y;
-  const int plane_width = RightShiftWithRounding(width_, subsampling_x);
-  const int plane_height = RightShiftWithRounding(height_, subsampling_y);
+  const int plane_width = SubsampledValue(width_, subsampling_x);
+  const int plane_height = SubsampledValue(height_, subsampling_y);
   const int block_width = MultiplyBy4(block_width4x4) >> subsampling_x;
   const int block_height = MultiplyBy4(block_height4x4) >> subsampling_y;
   // unit_width, unit_height are the same as block_width, block_height unless

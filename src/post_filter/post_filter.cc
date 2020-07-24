@@ -201,9 +201,9 @@ PostFilter::PostFilter(const ObuFrameHeader& frame_header,
   if (DoSuperRes()) {
     for (int plane = 0; plane < planes_; ++plane) {
       const int downscaled_width =
-          RightShiftWithRounding(width_, subsampling_x_[plane]);
+          SubsampledValue(width_, subsampling_x_[plane]);
       const int upscaled_width =
-          RightShiftWithRounding(upscaled_width_, subsampling_x_[plane]);
+          SubsampledValue(upscaled_width_, subsampling_x_[plane]);
       const int superres_width = downscaled_width << kSuperResScaleBits;
       super_res_info_[plane].step =
           (superres_width + upscaled_width / 2) / upscaled_width;
@@ -280,9 +280,8 @@ void PostFilter::ExtendBordersForReferenceFrame() {
   if (frame_header_.refresh_frame_flags == 0) return;
   for (int plane = kPlaneY; plane < planes_; ++plane) {
     const int plane_width =
-        RightShiftWithRounding(upscaled_width_, subsampling_x_[plane]);
-    const int plane_height =
-        RightShiftWithRounding(height_, subsampling_y_[plane]);
+        SubsampledValue(upscaled_width_, subsampling_x_[plane]);
+    const int plane_height = SubsampledValue(height_, subsampling_y_[plane]);
     assert(frame_buffer_.left_border(plane) >= kMinLeftBorderPixels &&
            frame_buffer_.right_border(plane) >= kMinRightBorderPixels &&
            frame_buffer_.top_border(plane) >= kMinTopBorderPixels &&
@@ -354,15 +353,14 @@ void PostFilter::CopyBordersForOneSuperBlockRow(int row4x4, int sb4x4,
   const int extra_rows = (for_loop_restoration && !DoCdef()) ? 2 : 0;
   for (int plane = 0; plane < planes_; ++plane) {
     const int plane_width =
-        RightShiftWithRounding(upscaled_width_, subsampling_x_[plane]);
-    const int plane_height =
-        RightShiftWithRounding(height_, subsampling_y_[plane]);
+        SubsampledValue(upscaled_width_, subsampling_x_[plane]);
+    const int plane_height = SubsampledValue(height_, subsampling_y_[plane]);
     const int row = (MultiplyBy4(row4x4) - row_offset) >> subsampling_y_[plane];
     assert(row >= 0);
     if (row >= plane_height) break;
     const int num_rows =
-        std::min(RightShiftWithRounding(MultiplyBy4(sb4x4) - height_offset,
-                                        subsampling_y_[plane]) +
+        std::min(SubsampledValue(MultiplyBy4(sb4x4) - height_offset,
+                                 subsampling_y_[plane]) +
                      extra_rows,
                  plane_height - row);
     // We only need to track the progress of the Y plane since the progress of
