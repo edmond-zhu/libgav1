@@ -131,8 +131,9 @@ void PostFilter::ApplyLoopRestorationSingleThread(const int row4x4_start,
     for (int sb_y = 0; sb_y < sb4x4;
          sb_y += 16, y += current_process_unit_height) {
       if (y >= plane_height) break;
-      const int unit_row = std::min((y + unit_height_offset) / plane_unit_size,
-                                    num_vertical_units - 1);
+      const int unit_row = std::min(
+          (y + unit_height_offset) >> loop_restoration_.unit_size_log2[plane],
+          num_vertical_units - 1);
       current_process_unit_height = std::min(expected_height, plane_height - y);
       expected_height = plane_process_unit_height;
       Array2DView<Pixel> loop_restored_window(
@@ -154,9 +155,6 @@ void PostFilter::ApplyLoopRestorationSingleThread(const int row4x4_start,
 // all jobs are finished.
 template <typename Pixel>
 void PostFilter::ApplyLoopRestorationThreaded() {
-  const int plane_process_unit_height[kMaxPlanes] = {
-      kRestorationUnitHeight, kRestorationUnitHeight >> subsampling_y_[kPlaneU],
-      kRestorationUnitHeight >> subsampling_y_[kPlaneV]};
   Array2DView<Pixel> loop_restored_window;
   for (int plane = kPlaneY; plane < planes_; ++plane) {
     if (loop_restoration_.type[plane] == kLoopRestorationTypeNone) {
@@ -173,6 +171,7 @@ void PostFilter::ApplyLoopRestorationThreaded() {
     const int plane_width =
         SubsampledValue(upscaled_width_, subsampling_x_[plane]);
     const int plane_height = SubsampledValue(height_, subsampling_y_[plane]);
+    const int plane_process_unit_height_log2 = 6 - subsampling_y_[plane];
     PostFilter::ExtendFrame<Pixel>(
         src_buffer, plane_width, plane_height, src_stride,
         kRestorationHorizontalBorder, kRestorationHorizontalBorder,
@@ -183,9 +182,8 @@ void PostFilter::ApplyLoopRestorationThreaded() {
       const int actual_window_height =
           std::min(window_buffer_height_ - ((y == 0) ? unit_height_offset : 0),
                    plane_height - y);
-      int vertical_units_per_window =
-          (actual_window_height + plane_process_unit_height[plane] - 1) /
-          plane_process_unit_height[plane];
+      int vertical_units_per_window = RightShiftWithCeiling(
+          actual_window_height, plane_process_unit_height_log2);
       if (y == 0) {
         // The first row of loop restoration processing units is not 64x64, but
         // 64x56 (|unit_height_offset| = 8 rows less than other restoration
@@ -194,11 +192,12 @@ void PostFilter::ApplyLoopRestorationThreaded() {
         // special handling for it.
         const int height_without_first_unit =
             actual_window_height -
-            std::min(actual_window_height,
-                     plane_process_unit_height[plane] - unit_height_offset);
+            std::min(
+                actual_window_height,
+                (1 << plane_process_unit_height_log2) - unit_height_offset);
         vertical_units_per_window =
-            (height_without_first_unit + plane_process_unit_height[plane] - 1) /
-                plane_process_unit_height[plane] +
+            RightShiftWithCeiling(height_without_first_unit,
+                                  plane_process_unit_height_log2) +
             1;
       }
       const int jobs_for_threadpool =
@@ -214,12 +213,13 @@ void PostFilter::ApplyLoopRestorationThreaded() {
       for (int row = 0; row < actual_window_height;
            row += current_process_unit_height) {
         const int unit_y = y + row;
-        const int expected_height = plane_process_unit_height[plane] -
+        const int expected_height = (1 << plane_process_unit_height_log2) -
                                     ((unit_y == 0) ? unit_height_offset : 0);
         current_process_unit_height =
             std::min(expected_height, plane_height - unit_y);
         const int unit_row =
-            std::min((unit_y + unit_height_offset) / plane_unit_size,
+            std::min((unit_y + unit_height_offset) >>
+                         loop_restoration_.unit_size_log2[plane],
                      num_vertical_units - 1);
 
         if (job_count < jobs_for_threadpool) {
