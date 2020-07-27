@@ -74,12 +74,12 @@ bool LoopRestorationInfo::Reset(const LoopRestoration* const loop_restoration,
         (plane == kPlaneY) ? width : SubsampledValue(width, subsampling_x_);
     const int plane_height =
         (plane == kPlaneY) ? height : SubsampledValue(height, subsampling_y_);
-    num_horizontal_units_[plane] = std::max(
-        1, (plane_width + DivideBy2(loop_restoration_->unit_size[plane])) /
-               loop_restoration_->unit_size[plane]);
+    num_horizontal_units_[plane] =
+        std::max(1, RightShiftWithRounding(
+                        plane_width, loop_restoration_->unit_size_log2[plane]));
     num_vertical_units_[plane] = std::max(
-        1, (plane_height + DivideBy2(loop_restoration_->unit_size[plane])) /
-               loop_restoration_->unit_size[plane]);
+        1, RightShiftWithRounding(plane_height,
+                                  loop_restoration_->unit_size_log2[plane]));
     num_units_[plane] =
         num_horizontal_units_[plane] * num_vertical_units_[plane];
     total_num_units += num_units_[plane];
@@ -108,16 +108,15 @@ bool LoopRestorationInfo::PopulateUnitInfoForSuperBlock(
   assert(unit_info != nullptr);
   if (!plane_needs_filtering_[plane]) return false;
   const int denominator_column =
-      is_superres_scaled
-          ? loop_restoration_->unit_size[plane] * kSuperResScaleNumerator
-          : loop_restoration_->unit_size[plane];
+      (is_superres_scaled ? kSuperResScaleNumerator : 1)
+      << loop_restoration_->unit_size_log2[plane];
   const int numerator_column =
       is_superres_scaled ? superres_scale_denominator : 1;
   const int pixel_column_start =
       RowOrColumn4x4ToPixel(column4x4, plane, subsampling_x_);
   const int pixel_column_end = RowOrColumn4x4ToPixel(
       column4x4 + kNum4x4BlocksWide[block_size], plane, subsampling_x_);
-  const int unit_row = loop_restoration_->unit_size[plane];
+  const int unit_row = 1 << loop_restoration_->unit_size_log2[plane];
   const int pixel_row_start =
       RowOrColumn4x4ToPixel(row4x4, plane, subsampling_y_);
   const int pixel_row_end = RowOrColumn4x4ToPixel(

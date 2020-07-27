@@ -118,7 +118,7 @@ void PostFilter::ApplyLoopRestorationSingleThread(const int row4x4_start,
         SubsampledValue(upscaled_width_, subsampling_x_[plane]);
     const int num_vertical_units =
         restoration_info_->num_vertical_units(static_cast<Plane>(plane));
-    const int plane_unit_size = loop_restoration_.unit_size[plane];
+    const int plane_unit_size = 1 << loop_restoration_.unit_size_log2[plane];
     const int plane_process_unit_height =
         kRestorationUnitHeight >> subsampling_y_[plane];
     int y = (row4x4_start == 0)
@@ -167,7 +167,7 @@ void PostFilter::ApplyLoopRestorationThreaded() {
         kRestorationUnitOffset >> subsampling_y_[plane];
     auto* const src_buffer = reinterpret_cast<Pixel*>(superres_buffer_[plane]);
     const ptrdiff_t src_stride = frame_buffer_.stride(plane) / sizeof(Pixel);
-    const int plane_unit_size = loop_restoration_.unit_size[plane];
+    const int plane_unit_size = 1 << loop_restoration_.unit_size_log2[plane];
     const int num_vertical_units =
         restoration_info_->num_vertical_units(static_cast<Plane>(plane));
     const int plane_width =

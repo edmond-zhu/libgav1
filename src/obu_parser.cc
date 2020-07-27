@@ -1149,8 +1149,7 @@ bool ObuParser::ParseLoopRestorationParameters() {
         unit_shift += unit_extra_shift;
       }
     }
-    loop_restoration->unit_size[kPlaneY] =
-        kLoopRestorationTileSizeMax >> (2 - unit_shift);
+    loop_restoration->unit_size_log2[kPlaneY] = 6 + unit_shift;
     uint8_t uv_shift = 0;
     if (sequence_header_.color_config.subsampling_x != 0 &&
         sequence_header_.color_config.subsampling_y != 0 &&
@@ -1158,9 +1157,9 @@ bool ObuParser::ParseLoopRestorationParameters() {
       OBU_READ_BIT_OR_FAIL;
       uv_shift = scratch;
     }
-    loop_restoration->unit_size[kPlaneU] =
-        loop_restoration->unit_size[kPlaneV] =
-            loop_restoration->unit_size[0] >> uv_shift;
+    loop_restoration->unit_size_log2[kPlaneU] =
+        loop_restoration->unit_size_log2[kPlaneV] =
+            loop_restoration->unit_size_log2[0] - uv_shift;
   }
   return true;
 }
