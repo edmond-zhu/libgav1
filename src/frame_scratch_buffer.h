@@ -63,11 +63,11 @@ struct FrameScratchBuffer {
   AlignedDynamicBuffer<uint8_t, kCacheLineSize> threaded_window_buffer;
   // Buffer used to temporarily store the input row for applying SuperRes.
   AlignedDynamicBuffer<uint8_t, 16> superres_line_buffer;
-  // Buffer used to store the deblocked pixels that are necessary for loop
-  // restoration. This buffer will store 4 rows for every 64x64 block (4 rows
-  // for every 32x32 for chroma with subsampling). The indices of the rows that
-  // are stored are specified in |kDeblockedRowsForLoopRestoration|.
-  YuvBuffer deblock_buffer;
+  // Buffer used to store the loop restoration borders. This buffer will store 4
+  // rows for every 64x64 block (4 rows for every 32x32 for chroma with
+  // subsampling). The indices of the rows that are stored are specified in
+  // |kLoopRestorationBorderRows|.
+  YuvBuffer loop_restoration_border;
   // The size of this dynamic buffer is |tile_rows|.
   DynamicBuffer<IntraPredictionBuffer> intra_prediction_buffers;
   TileScratchBufferPool tile_scratch_buffer_pool;

@@ -1348,14 +1348,14 @@ StatusCode DecoderImpl::DecodeTiles(
   if (do_restoration &&
       (do_cdef || threading_strategy.post_filter_thread_pool() != nullptr)) {
     // We need to store 4 rows per 64x64 unit.
-    const int num_deblock_units = MultiplyBy4(Ceil(frame_header.rows4x4, 16));
+    const int num_units = MultiplyBy4(Ceil(frame_header.rows4x4, 16));
     // subsampling_y is set to zero irrespective of the actual frame's
-    // subsampling since we need to store exactly |num_deblock_units| rows of
-    // the deblocked pixels.
-    if (!frame_scratch_buffer->deblock_buffer.Realloc(
+    // subsampling since we need to store exactly |num_units| rows of the loop
+    // restoration border pixels.
+    if (!frame_scratch_buffer->loop_restoration_border.Realloc(
             sequence_header.color_config.bitdepth,
             sequence_header.color_config.is_monochrome,
-            frame_header.upscaled_width, num_deblock_units,
+            frame_header.upscaled_width, num_units,
             sequence_header.color_config.subsampling_x,
             /*subsampling_y=*/0, kBorderPixels, kBorderPixels, kBorderPixels,
             kBorderPixels, nullptr, nullptr, nullptr)) {

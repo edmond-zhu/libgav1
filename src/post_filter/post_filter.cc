@@ -34,10 +34,10 @@ namespace {
 // Import all the constants in the anonymous namespace.
 #include "src/post_filter/deblock_thresholds.inc"
 
-// Row indices of deblocked pixels needed by loop restoration. This is used to
-// populate the |deblock_buffer_| when cdef is on. The dimension is
-// subsampling_y.
-constexpr int kDeblockedRowsForLoopRestoration[2] = {54, 26};
+// Row indices of loop restoration border. This is used to populate the
+// |loop_restoration_border_| when either cdef is on or multithreading is
+// enabled. The dimension is subsampling_y.
+constexpr int kLoopRestorationBorderRows[2] = {54, 26};
 
 }  // namespace
 
@@ -190,7 +190,7 @@ PostFilter::PostFilter(const ObuFrameHeader& frame_header,
       superres_line_buffer_(frame_scratch_buffer->superres_line_buffer.get()),
       block_parameters_(frame_scratch_buffer->block_parameters_holder),
       frame_buffer_(*frame_buffer),
-      deblock_buffer_(frame_scratch_buffer->deblock_buffer),
+      loop_restoration_border_(frame_scratch_buffer->loop_restoration_border),
       do_post_filter_mask_(do_post_filter_mask),
       thread_pool_(
           frame_scratch_buffer->threading_strategy.post_filter_thread_pool()),
@@ -305,15 +305,15 @@ void PostFilter::ExtendBordersForReferenceFrame() {
 void PostFilter::CopyDeblockedPixels(Plane plane, int row4x4) {
   const ptrdiff_t src_stride = frame_buffer_.stride(plane);
   const uint8_t* const src = GetSourceBuffer(plane, row4x4, 0);
-  const ptrdiff_t dst_stride = deblock_buffer_.stride(plane);
+  const ptrdiff_t dst_stride = loop_restoration_border_.stride(plane);
   const int row_offset = DivideBy4(row4x4);
-  uint8_t* dst = deblock_buffer_.data(plane) + dst_stride * row_offset;
+  uint8_t* dst = loop_restoration_border_.data(plane) + dst_stride * row_offset;
   const int num_pixels = SubsampledValue(MultiplyBy4(frame_header_.columns4x4),
                                          subsampling_x_[plane]);
   int last_valid_row = -1;
   const int plane_height =
       SubsampledValue(frame_header_.height, subsampling_y_[plane]);
-  int row = kDeblockedRowsForLoopRestoration[subsampling_y_[plane]];
+  int row = kLoopRestorationBorderRows[subsampling_y_[plane]];
   const int absolute_row = (MultiplyBy4(row4x4) >> subsampling_y_[plane]) + row;
   for (int i = 0; i < 4; ++i, ++row) {
     if (absolute_row + i >= plane_height) {
@@ -393,7 +393,7 @@ void PostFilter::CopyBordersForOneSuperBlockRow(int row4x4, int sb4x4,
   }
 }
 
-void PostFilter::SetupDeblockBuffer(const int row4x4) {
+void PostFilter::SetupLoopRestorationBorder(const int row4x4) {
   assert(row4x4 >= 0);
   assert(!DoCdef());
   assert(DoRestoration());
@@ -403,18 +403,19 @@ void PostFilter::SetupDeblockBuffer(const int row4x4) {
       continue;
     }
     const ptrdiff_t src_stride = frame_buffer_.stride(plane);
-    const ptrdiff_t dst_stride = deblock_buffer_.stride(plane);
+    const ptrdiff_t dst_stride = loop_restoration_border_.stride(plane);
     const int row_offset = DivideBy4(row4x4);
     const int num_pixels =
         SubsampledValue(upscaled_width_, subsampling_x_[plane]);
     const int plane_height = SubsampledValue(height_, subsampling_y_[plane]);
-    const int row = kDeblockedRowsForLoopRestoration[subsampling_y_[plane]];
+    const int row = kLoopRestorationBorderRows[subsampling_y_[plane]];
     const int absolute_row =
         (MultiplyBy4(row4x4) >> subsampling_y_[plane]) + row;
     const uint8_t* src =
         GetSuperResBuffer(static_cast<Plane>(plane), row4x4, 0) +
         row * src_stride;
-    uint8_t* dst = deblock_buffer_.data(plane) + dst_stride * row_offset;
+    uint8_t* dst =
+        loop_restoration_border_.data(plane) + dst_stride * row_offset;
     for (int i = 0; i < 4; ++i) {
       memcpy(dst, src, num_pixels * pixel_size_);
 #if LIBGAV1_MAX_BITDEPTH >= 10
@@ -438,7 +439,7 @@ void PostFilter::ApplyFilteringThreaded() {
   if (DoCdef() && DoRestoration()) {
     for (int row4x4 = 0; row4x4 < frame_header_.rows4x4;
          row4x4 += kNum4x4InLoopFilterUnit) {
-      SetupDeblockBuffer(row4x4, kNum4x4InLoopFilterUnit);
+      SetupLoopRestorationBorder(row4x4, kNum4x4InLoopFilterUnit);
     }
   }
   if (DoCdef()) ApplyCdef();
@@ -447,7 +448,7 @@ void PostFilter::ApplyFilteringThreaded() {
     if (!DoCdef()) {
       int row4x4 = 0;
       do {
-        SetupDeblockBuffer(row4x4);
+        SetupLoopRestorationBorder(row4x4);
         row4x4 += kNum4x4InLoopFilterUnit;
       } while (row4x4 < frame_header_.rows4x4);
     }
@@ -464,7 +465,7 @@ int PostFilter::ApplyFilteringForOneSuperBlockRow(int row4x4, int sb4x4,
     ApplyDeblockFilterForOneSuperBlockRow(row4x4, sb4x4);
   }
   if (DoRestoration() && DoCdef()) {
-    SetupDeblockBuffer(row4x4, sb4x4);
+    SetupLoopRestorationBorder(row4x4, sb4x4);
   }
   if (DoCdef()) {
     ApplyCdefForOneSuperBlockRow(row4x4, sb4x4, is_last_row);

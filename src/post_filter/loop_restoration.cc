@@ -61,23 +61,22 @@ void PostFilter::ApplyLoopRestorationForOneRow(
       const bool frame_bottom_border =
           (unit_y + current_process_unit_height >= plane_height);
       if (in_place && (unit_y != 0 || !frame_bottom_border)) {
-        const int deblock_buffer_units = 64 >> subsampling_y_[plane];
-        const ptrdiff_t deblock_stride =
-            deblock_buffer_.stride(plane) / sizeof(Pixel);
-        const int deblock_unit_y =
-            std::max(MultiplyBy4(Ceil(unit_y, deblock_buffer_units)) - 4, 0);
-        const Pixel* deblock_buffer =
-            reinterpret_cast<const Pixel*>(deblock_buffer_.data(plane)) +
-            deblock_unit_y * deblock_stride + column;
+        const int border_units = 64 >> subsampling_y_[plane];
+        const ptrdiff_t border_stride =
+            loop_restoration_border_.stride(plane) / sizeof(Pixel);
+        const int border_unit_y =
+            std::max(MultiplyBy4(Ceil(unit_y, border_units)) - 4, 0);
+        const Pixel* border = reinterpret_cast<const Pixel*>(
+                                  loop_restoration_border_.data(plane)) +
+                              border_unit_y * border_stride + column;
         if (unit_y != 0) {
-          top_border = deblock_buffer;
-          top_stride = deblock_stride;
-          deblock_buffer += 4 * deblock_stride;
+          top_border = border;
+          top_stride = border_stride;
+          border += 4 * border_stride;
         }
         if (!frame_bottom_border) {
-          bottom_border =
-              deblock_buffer + kRestorationVerticalBorder * deblock_stride;
-          bottom_stride = deblock_stride;
+          bottom_border = border + kRestorationVerticalBorder * border_stride;
+          bottom_stride = border_stride;
         }
       }
       RestorationBuffer restoration_buffer;

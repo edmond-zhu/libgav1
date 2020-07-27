@@ -102,16 +102,16 @@ class PostFilter {
   // Filter behavior (multi-threaded):
   // * Deblock: In-place filtering. The output is written to |source_buffer_|.
   //            If cdef and loop restoration are both on, then 4 rows (as
-  //            specified by |kDeblockedRowsForLoopRestoration|) in every 64x64
-  //            block is copied into |deblock_buffer_|.
+  //            specified by |kLoopRestorationBorderRows|) in every 64x64 block
+  //            is copied into |loop_restoration_border_|.
   // * Cdef: Filtering output is written into |threaded_window_buffer_| and then
   //         copied into the |cdef_buffer_| (which is just |source_buffer_| with
   //         a shift to the top-left).
   // * SuperRes: Near in-place filtering (with an additional line buffer for
   //             each row). The output is written to |superres_buffer_|.
   // * Restoration: Near in-place filtering.
-  //                Uses the |superres_buffer_| and |deblock_buffer_| as the
-  //                input and the output is written into
+  //                Uses the |superres_buffer_| and |loop_restoration_border_|
+  //                as the input and the output is written into
   //                |loop_restoration_buffer_| (which is just |superres_buffer_|
   //                with a shift to the left).
   void ApplyFilteringThreaded();
@@ -123,15 +123,15 @@ class PostFilter {
   // Filter behavior (single-threaded):
   // * Deblock: In-place filtering. The output is written to |source_buffer_|.
   //            If cdef and loop restoration are both on, then 4 rows (as
-  //            specified by |kDeblockedRowsForLoopRestoration|) in every 64x64
-  //            block is copied into |deblock_buffer_|.
+  //            specified by |kLoopRestorationBorderRows|) in every 64x64 block
+  //            is copied into |loop_restoration_border_|.
   // * Cdef: In-place filtering. The output is written into |cdef_buffer_|
   //         (which is just |source_buffer_| with a shift to the top-left).
   // * SuperRes: Near in-place filtering (with an additional line buffer for
   //             each row). The output is written to |superres_buffer_|.
   // * Restoration: Near in-place filtering.
-  //                Uses the |superres_buffer_| and |deblock_buffer_| as the
-  //                input and the output is written into
+  //                Uses the |superres_buffer_| and |loop_restoration_border_|
+  //                as the input and the output is written into
   //                |loop_restoration_buffer_| (which is just |superres_buffer_|
   //                with a shift to the left or top-left).
   // Returns the index of the last row whose post processing is complete and can
@@ -291,15 +291,15 @@ class PostFilter {
   // updated.
   void CopyBordersForOneSuperBlockRow(int row4x4, int sb4x4,
                                       bool for_loop_restoration);
-  // Sets up the |deblock_buffer_| for loop restoration.
+  // Sets up the |loop_restoration_border_| for loop restoration.
   // TODO(linfengz): Unify duplicates in the following two functions if
   // possible.
   // This is called when there is no CDEF filter. We copy rows from
   // |superres_buffer_| and do the line extension.
-  void SetupDeblockBuffer(int row4x4_start);
+  void SetupLoopRestorationBorder(int row4x4_start);
   // This is called when there is CDEF filter. We copy rows from
   // |source_buffer_|, apply superres and do the line extension.
-  void SetupDeblockBuffer(int row4x4_start, int sb4x4);
+  void SetupLoopRestorationBorder(int row4x4_start, int sb4x4);
   // Returns true if we can perform border extension in loop (i.e.) without
   // waiting until the entire frame is decoded. If intra_block_copy is true, we
   // do in-loop border extension only if the upscaled_width is the same as 4 *
@@ -518,13 +518,15 @@ class PostFilter {
   // A view into |frame_buffer_| that points to the output of the Loop Restored
   // planes (to facilitate in-place Loop Restoration).
   uint8_t* loop_restoration_buffer_[kMaxPlanes];
-  // Buffer used to store the deblocked pixels that are necessary for loop
+  // Buffer used to store the border pixels that are necessary for loop
   // restoration. This buffer will store 4 rows for every 64x64 block (4 rows
   // for every 32x32 for chroma with subsampling). The indices of the rows that
-  // are stored are specified in |kDeblockedRowsForLoopRestoration|. First 4
-  // rows of this buffer are never populated and never used.
-  // This buffer is used only when both Cdef and Loop Restoration are on.
-  YuvBuffer& deblock_buffer_;
+  // are stored are specified in |kLoopRestorationBorderRows|. First 4 rows of
+  // this buffer are never populated and never used.
+  // This buffer is used only when both of the following conditions are true:
+  //   (1). Loop Restoration is on.
+  //   (2). Cdef is on, or multi-threading is enabled for post filter.
+  YuvBuffer& loop_restoration_border_;
   const uint8_t do_post_filter_mask_;
   ThreadPool* const thread_pool_;
   const int window_buffer_width_;

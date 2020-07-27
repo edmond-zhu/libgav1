@@ -168,7 +168,7 @@ void PostFilter::ApplySuperResThreaded() {
 
 // TODO(linfengz): Update ApplySuperRes() to process planes one by one. Skip a
 // plane if it has no loop restoration.
-void PostFilter::SetupDeblockBuffer(int row4x4_start, int sb4x4) {
+void PostFilter::SetupLoopRestorationBorder(int row4x4_start, int sb4x4) {
   assert(row4x4_start >= 0);
   assert(DoCdef());
   assert(DoRestoration());
@@ -180,15 +180,16 @@ void PostFilter::SetupDeblockBuffer(int row4x4_start, int sb4x4) {
     const int row_offset_start = DivideBy4(row4x4);
     if (DoSuperRes()) {
       std::array<uint8_t*, kMaxPlanes> buffers = {
-          deblock_buffer_.data(kPlaneY) +
-              row_offset_start * deblock_buffer_.stride(kPlaneY),
-          deblock_buffer_.data(kPlaneU) +
-              row_offset_start * deblock_buffer_.stride(kPlaneU),
-          deblock_buffer_.data(kPlaneV) +
-              row_offset_start * deblock_buffer_.stride(kPlaneV)};
-      std::array<int, kMaxPlanes> strides = {deblock_buffer_.stride(kPlaneY),
-                                             deblock_buffer_.stride(kPlaneU),
-                                             deblock_buffer_.stride(kPlaneV)};
+          loop_restoration_border_.data(kPlaneY) +
+              row_offset_start * loop_restoration_border_.stride(kPlaneY),
+          loop_restoration_border_.data(kPlaneU) +
+              row_offset_start * loop_restoration_border_.stride(kPlaneU),
+          loop_restoration_border_.data(kPlaneV) +
+              row_offset_start * loop_restoration_border_.stride(kPlaneV)};
+      std::array<int, kMaxPlanes> strides = {
+          loop_restoration_border_.stride(kPlaneY),
+          loop_restoration_border_.stride(kPlaneU),
+          loop_restoration_border_.stride(kPlaneV)};
       std::array<int, kMaxPlanes> rows = {4, 4, 4};
       ApplySuperRes<false>(buffers, strides, rows,
                            /*line_buffer_offset=*/0);
@@ -198,8 +199,8 @@ void PostFilter::SetupDeblockBuffer(int row4x4_start, int sb4x4) {
       if (loop_restoration_.type[plane] == kLoopRestorationTypeNone) {
         continue;
       }
-      uint8_t* src = deblock_buffer_.data(plane) +
-                     row_offset_start * deblock_buffer_.stride(plane);
+      uint8_t* src = loop_restoration_border_.data(plane) +
+                     row_offset_start * loop_restoration_border_.stride(plane);
       const int plane_width =
           SubsampledValue(upscaled_width_, subsampling_x_[plane]);
       for (int i = 0; i < 4; ++i) {
@@ -213,7 +214,7 @@ void PostFilter::SetupDeblockBuffer(int row4x4_start, int sb4x4) {
           ExtendLine<uint8_t>(src, plane_width, kRestorationHorizontalBorder,
                               kRestorationHorizontalBorder);
         }
-        src += deblock_buffer_.stride(plane);
+        src += loop_restoration_border_.stride(plane);
       }
     }
   }
