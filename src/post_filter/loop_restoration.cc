@@ -30,7 +30,18 @@ void PostFilter::ApplyLoopRestorationForOneRow(
                                                unit_row * num_horizontal_units);
   const bool in_place = DoCdef() || thread_pool_ != nullptr;
   const int unit_y = y + row;
+  const Pixel* border = nullptr;
+  ptrdiff_t border_stride = 0;
   src_buffer += unit_y * src_stride;
+  if (in_place) {
+    const int border_units = 64 >> subsampling_y_[plane];
+    const int border_unit_y =
+        std::max(MultiplyBy4(Ceil(unit_y, border_units)) - 4, 0);
+    border_stride = loop_restoration_border_.stride(plane) / sizeof(Pixel);
+    border =
+        reinterpret_cast<const Pixel*>(loop_restoration_border_.data(plane)) +
+        border_unit_y * border_stride;
+  }
   int unit_column = 0;
   int column = 0;
   do {
@@ -61,21 +72,15 @@ void PostFilter::ApplyLoopRestorationForOneRow(
       const bool frame_bottom_border =
           (unit_y + current_process_unit_height >= plane_height);
       if (in_place && (unit_y != 0 || !frame_bottom_border)) {
-        const int border_units = 64 >> subsampling_y_[plane];
-        const ptrdiff_t border_stride =
-            loop_restoration_border_.stride(plane) / sizeof(Pixel);
-        const int border_unit_y =
-            std::max(MultiplyBy4(Ceil(unit_y, border_units)) - 4, 0);
-        const Pixel* border = reinterpret_cast<const Pixel*>(
-                                  loop_restoration_border_.data(plane)) +
-                              border_unit_y * border_stride + column;
+        const Pixel* loop_restoration_border = border + column;
         if (unit_y != 0) {
-          top_border = border;
+          top_border = loop_restoration_border;
           top_stride = border_stride;
-          border += 4 * border_stride;
+          loop_restoration_border += 4 * border_stride;
         }
         if (!frame_bottom_border) {
-          bottom_border = border + kRestorationVerticalBorder * border_stride;
+          bottom_border = loop_restoration_border +
+                          kRestorationVerticalBorder * border_stride;
           bottom_stride = border_stride;
         }
       }
