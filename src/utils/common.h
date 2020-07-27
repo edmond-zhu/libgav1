@@ -215,6 +215,11 @@ constexpr int Ceil(int dividend, int divisor) {
   return dividend / divisor + static_cast<int>(dividend % divisor != 0);
 }
 
+inline int RightShiftWithCeiling(int value, int bits) {
+  assert(bits > 0);
+  return (value + (1 << bits) - 1) >> bits;
+}
+
 inline int32_t RightShiftWithRounding(int32_t value, int bits) {
   assert(bits >= 0);
   return (value + ((1 << bits) >> 1)) >> bits;

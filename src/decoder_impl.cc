@@ -1348,7 +1348,8 @@ StatusCode DecoderImpl::DecodeTiles(
   if (do_restoration &&
       (do_cdef || threading_strategy.post_filter_thread_pool() != nullptr)) {
     // We need to store 4 rows per 64x64 unit.
-    const int num_units = MultiplyBy4(Ceil(frame_header.rows4x4, 16));
+    const int num_units =
+        MultiplyBy4(RightShiftWithCeiling(frame_header.rows4x4, 4));
     // subsampling_y is set to zero irrespective of the actual frame's
     // subsampling since we need to store exactly |num_units| rows of the loop
     // restoration border pixels.

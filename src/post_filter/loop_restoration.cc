@@ -34,9 +34,8 @@ void PostFilter::ApplyLoopRestorationForOneRow(
   ptrdiff_t border_stride = 0;
   src_buffer += unit_y * src_stride;
   if (in_place) {
-    const int border_units = 64 >> subsampling_y_[plane];
-    const int border_unit_y =
-        std::max(MultiplyBy4(Ceil(unit_y, border_units)) - 4, 0);
+    const int border_unit_y = std::max(
+        RightShiftWithCeiling(unit_y, 4 - subsampling_y_[plane]) - 4, 0);
     border_stride = loop_restoration_border_.stride(plane) / sizeof(Pixel);
     border =
         reinterpret_cast<const Pixel*>(loop_restoration_border_.data(plane)) +
