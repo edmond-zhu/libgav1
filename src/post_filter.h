@@ -413,13 +413,13 @@ class PostFilter {
 
   // Functions for the Loop Restoration filter.
 
+  // |stride| is shared by |src_buffer| and |dst_buffer|.
   template <typename Pixel>
-  void ApplyLoopRestorationForOneRow(const Pixel* src_buffer, Plane plane,
-                                     int plane_height, int plane_width, int y,
-                                     int row, int unit_row,
+  void ApplyLoopRestorationForOneRow(const Pixel* src_buffer, ptrdiff_t stride,
+                                     Plane plane, int plane_height,
+                                     int plane_width, int y, int unit_row,
                                      int current_process_unit_height,
-                                     int plane_unit_size,
-                                     Array2DView<Pixel>* loop_restored_window);
+                                     int plane_unit_size, Pixel* dst_buffer);
   // Applies loop restoration for the superblock row starting at |row4x4_start|
   // with a height of 4*|sb4x4|.
   template <typename Pixel>
