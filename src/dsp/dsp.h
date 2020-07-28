@@ -364,15 +364,14 @@ using SuperResRowFunc = void (*)(const void* source, const int upscaled_width,
 // |source| is the input frame buffer, which is deblocked and cdef filtered.
 // |top_border| and |bottom_border| are the top and bottom borders.
 // |dest| is the output.
-// |source_stride|, |top_stride|, |bottom_stride| and |dest_stride| are given in
-// pixels.
+// |stride| is given in pixels, and shared by |source|, |top_border|,
+// |bottom_border| and |dest|.
 // |restoration_buffer| contains buffers required for self guided filter and
 // wiener filter. They must be initialized before calling.
 using LoopRestorationFunc = void (*)(
     const RestorationUnitInfo& restoration_info, const void* source,
-    ptrdiff_t source_stride, const void* top_border, ptrdiff_t top_stride,
-    const void* bottom_border, ptrdiff_t bottom_stride, int width, int height,
-    RestorationBuffer* restoration_buffer, void* dest, ptrdiff_t dest_stride);
+    const void* top_border, const void* bottom_border, ptrdiff_t stride,
+    int width, int height, RestorationBuffer* restoration_buffer, void* dest);
 
 // Index 0 is Wiener Filter.
 // Index 1 is Self Guided Restoration Filter.
