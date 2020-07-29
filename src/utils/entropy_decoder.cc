@@ -99,13 +99,15 @@ void UpdateCdf(uint16_t* const cdf, const int symbol_count, const int symbol) {
   // signed integer and right-shifted. This requires the right shift of a
   // signed integer be an arithmetic shift, which is true for clang, gcc, and
   // Visual C++.
-  for (int i = 0; i < symbol_count - 1; ++i) {
+  assert(symbol_count - 1 > 0);
+  int i = 0;
+  do {
     if (i < symbol) {
       cdf[i] += (kCdfMaxProbability - cdf[i]) >> rate;
     } else {
       cdf[i] -= cdf[i] >> rate;
     }
-  }
+  } while (++i < symbol_count - 1);
   cdf[symbol_count] += static_cast<uint16_t>(count < 32);
 }
 
