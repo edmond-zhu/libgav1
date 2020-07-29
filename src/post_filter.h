@@ -402,7 +402,6 @@ class PostFilter {
   // output will be written to the same row as the input row.
   template <bool in_place>
   void ApplySuperRes(const std::array<uint8_t*, kMaxPlanes>& buffers,
-                     const std::array<int, kMaxPlanes>& strides,
                      const std::array<int, kMaxPlanes>& rows,
                      size_t line_buffer_offset);  // Section 7.16.
   // Applies SuperRes for the superblock row starting at |row4x4| with a height
