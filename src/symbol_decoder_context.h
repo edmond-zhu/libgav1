@@ -17,6 +17,7 @@
 #ifndef LIBGAV1_SRC_SYMBOL_DECODER_CONTEXT_H_
 #define LIBGAV1_SRC_SYMBOL_DECODER_CONTEXT_H_
 
+#include <cassert>
 #include <cstdint>
 
 #include "src/dsp/constants.h"
@@ -102,7 +103,21 @@ struct SymbolDecoderContext {
 
   // Returns the cdf array index for inter_tx_type or intra_tx_type based on
   // |tx_set|.
-  static int TxTypeIndex(TransformSet tx_set);
+  static int TxTypeIndex(TransformSet tx_set) {
+    assert(tx_set != kTransformSetDctOnly);
+    switch (tx_set) {
+      case kTransformSetInter1:
+      case kTransformSetIntra1:
+        return 0;
+      case kTransformSetInter2:
+      case kTransformSetIntra2:
+        return 1;
+      case kTransformSetInter3:
+        return 2;
+      default:
+        return -1;
+    }
+  }
 
   // Resets the intra_frame_y_mode_cdf array to the default.
   void ResetIntraFrameYModeCdf();
