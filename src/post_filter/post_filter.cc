@@ -317,20 +317,7 @@ void PostFilter::CopyDeblockedPixels(Plane plane, int row4x4) {
   const int absolute_row = (MultiplyBy4(row4x4) >> subsampling_y_[plane]) + row;
   for (int i = 0; i < 4; ++i, ++row) {
     if (absolute_row + i >= plane_height) {
-      if (last_valid_row == -1) {
-        // We have run out of rows and there no valid row to copy. This will not
-        // be used by loop restoration, so we can simply break here. However,
-        // MSAN does not know that this is never used (since we sometimes apply
-        // superres to this row as well). So zero it out in case of MSAN.
-#if LIBGAV1_MSAN
-        if (DoSuperRes()) {
-          memset(dst, 0, num_pixels * pixel_size_);
-          dst += dst_stride;
-          continue;
-        }
-#endif
-        break;
-      }
+      if (last_valid_row == -1) break;
       // If we run out of rows, copy the last valid row (mimics the bottom
       // border extension).
       row = last_valid_row;
