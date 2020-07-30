@@ -51,9 +51,7 @@ void PostFilter::ApplySuperRes(const std::array<uint8_t*, kMaxPlanes>& buffers,
 #endif  // LIBGAV1_MAX_BITDEPTH >= 10
     for (int y = 0; y < rows[plane];
          ++y, input += frame_buffer_.stride(plane)) {
-      if (!in_place) {
-        memcpy(line_buffer_start, input, plane_width);
-      }
+      if (!in_place) memcpy(line_buffer_start, input, plane_width);
       ExtendLine<uint8_t>(in_place ? input : line_buffer_start, plane_width,
                           kSuperResHorizontalBorder, kSuperResHorizontalBorder);
       dsp_.super_res_row(in_place ? input : line_buffer_start,
@@ -173,25 +171,23 @@ void PostFilter::SetupLoopRestorationBorder(int row4x4_start, int sb4x4) {
       CopyDeblockedPixels(static_cast<Plane>(plane), row4x4);
     }
     const int row_offset_start = DivideBy4(row4x4);
+    std::array<uint8_t*, kMaxPlanes> buffers = {
+        loop_restoration_border_.data(kPlaneY) +
+            row_offset_start * loop_restoration_border_.stride(kPlaneY),
+        loop_restoration_border_.data(kPlaneU) +
+            row_offset_start * loop_restoration_border_.stride(kPlaneU),
+        loop_restoration_border_.data(kPlaneV) +
+            row_offset_start * loop_restoration_border_.stride(kPlaneV)};
     if (DoSuperRes()) {
-      std::array<uint8_t*, kMaxPlanes> buffers = {
-          loop_restoration_border_.data(kPlaneY) +
-              row_offset_start * loop_restoration_border_.stride(kPlaneY),
-          loop_restoration_border_.data(kPlaneU) +
-              row_offset_start * loop_restoration_border_.stride(kPlaneU),
-          loop_restoration_border_.data(kPlaneV) +
-              row_offset_start * loop_restoration_border_.stride(kPlaneV)};
       std::array<int, kMaxPlanes> rows = {4, 4, 4};
-      ApplySuperRes<false>(buffers, rows,
-                           /*line_buffer_offset=*/0);
+      ApplySuperRes<false>(buffers, rows, /*line_buffer_offset=*/0);
     }
     // Extend the left and right boundaries needed for loop restoration.
     for (int plane = 0; plane < planes_; ++plane) {
       if (loop_restoration_.type[plane] == kLoopRestorationTypeNone) {
         continue;
       }
-      uint8_t* src = loop_restoration_border_.data(plane) +
-                     row_offset_start * loop_restoration_border_.stride(plane);
+      uint8_t* src = buffers[plane];
       const int plane_width =
           SubsampledValue(upscaled_width_, subsampling_x_[plane]);
       for (int i = 0; i < 4; ++i) {
