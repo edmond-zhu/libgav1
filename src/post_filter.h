@@ -239,8 +239,8 @@ class PostFilter {
                                     : Align(frame_header.upscaled_width, 64);
   }
 
-  // For multi-threaded cdef and loop restoration, window height is the minimum
-  // of the following two quantities:
+  // For multi-threaded cdef, window height is the minimum of the following two
+  // quantities:
   //  1) thread_count * 64
   //  2) frame_height rounded up to the nearest power of 64
   // Where 64 is the block size for cdef and loop restoration.
@@ -412,23 +412,7 @@ class PostFilter {
 
   // Functions for the Loop Restoration filter.
 
-  // |stride| is shared by |src_buffer| and |dst_buffer|.
-  template <typename Pixel>
-  void ApplyLoopRestorationForOneRow(const Pixel* src_buffer, ptrdiff_t stride,
-                                     Plane plane, int plane_height,
-                                     int plane_width, int y, int unit_row,
-                                     int current_process_unit_height,
-                                     int plane_unit_size, Pixel* dst_buffer);
-  // Applies loop restoration for the superblock row starting at |row4x4_start|
-  // with a height of 4*|sb4x4|.
-  template <typename Pixel>
-  void ApplyLoopRestorationSingleThread(int row4x4_start, int sb4x4);
-  void ApplyLoopRestoration(int row4x4_start, int sb4x4);
-  template <typename Pixel>
-  void ApplyLoopRestorationThreaded();
-  // Note for ApplyLoopRestoration():
-  // First, we must differentiate loop restoration processing unit from loop
-  // restoration unit.
+  // Notes about Loop Restoration:
   // (1). Loop restoration processing unit size is default to 64x64.
   // Only when the remaining filtering area is smaller than 64x64, the
   // processing unit size is the actual area size.
@@ -457,7 +441,25 @@ class PostFilter {
   // then sizes of the first row of processing units are 64x56, 64x56, 12x56,
   // respectively. The second row is 64x64, 64x64, 12x64.
   // The third row is 64x20, 64x20, 12x20.
-  void ApplyLoopRestoration();
+
+  // |stride| is shared by |src_buffer| and |dst_buffer|.
+  template <typename Pixel>
+  void ApplyLoopRestorationForOneRow(const Pixel* src_buffer, ptrdiff_t stride,
+                                     Plane plane, int plane_height,
+                                     int plane_width, int y, int unit_row,
+                                     int current_process_unit_height,
+                                     int plane_unit_size, Pixel* dst_buffer);
+  // Applies loop restoration for the superblock row starting at |row4x4_start|
+  // with a height of 4*|sb4x4|.
+  template <typename Pixel>
+  void ApplyLoopRestorationForOneSuperBlockRow(int row4x4_start, int sb4x4);
+  // Helper function that calls the right variant of
+  // ApplyLoopRestorationForOneSuperBlockRow based on the bitdepth.
+  void ApplyLoopRestoration(int row4x4_start, int sb4x4);
+  // Worker function used to facilitate multithreaded Loop Restoration.
+  void ApplyLoopRestorationWorker(std::atomic<int>* row4x4_atomic);
+  // Applies Loop Restoration to the entire frame using multiple-threads.
+  void ApplyLoopRestorationThreaded();
 
   const ObuFrameHeader& frame_header_;
   const LoopRestoration& loop_restoration_;

@@ -106,6 +106,7 @@ enum {
   kMaxScaledSuperBlockSizeInPixels = 128 * 2,
   kMaxSuperBlockSizeSquareInPixels = 128 * 128,
   kNum4x4InLoopFilterUnit = 16,
+  kNum4x4InLoopRestorationUnit = 16,
   kProjectionMvClamp = (1 << 14) - 1,  // == 16383
   kProjectionMvMaxHorizontalOffset = 8,
   kCdefUnitSize = 64,

@@ -335,9 +335,10 @@ void PostFilter::CopyBordersForOneSuperBlockRow(int row4x4, int sb4x4,
   const int row_offset = (row4x4 == 0) ? 0 : 8;
   // Number of rows to be subtracted from the height described by sb4x4.
   const int height_offset = (row4x4 == 0) ? 8 : 0;
-  // If cdef is off, then loop restoration needs 2 extra rows for the bottom
-  // border in each plane.
-  const int extra_rows = (for_loop_restoration && !DoCdef()) ? 2 : 0;
+  // If cdef is off and post filter multithreading is off, then loop restoration
+  // needs 2 extra rows for the bottom border in each plane.
+  const int extra_rows =
+      (for_loop_restoration && thread_pool_ == nullptr && !DoCdef()) ? 2 : 0;
   for (int plane = 0; plane < planes_; ++plane) {
     const int plane_width =
         SubsampledValue(upscaled_width_, subsampling_x_[plane]);
@@ -438,7 +439,7 @@ void PostFilter::ApplyFilteringThreaded() {
         row4x4 += kNum4x4InLoopFilterUnit;
       } while (row4x4 < frame_header_.rows4x4);
     }
-    ApplyLoopRestoration();
+    ApplyLoopRestorationThreaded();
   }
   ExtendBordersForReferenceFrame();
 }
