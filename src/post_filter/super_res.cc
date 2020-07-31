@@ -63,7 +63,6 @@ void PostFilter::ApplySuperRes(const std::array<uint8_t*, kMaxPlanes>& buffers,
   }
 }
 
-// Used by post_filter_test.cc.
 template void PostFilter::ApplySuperRes<false>(
     const std::array<uint8_t*, kMaxPlanes>& buffers,
     const std::array<int, kMaxPlanes>& rows, size_t line_buffer_offset);
@@ -157,54 +156,6 @@ void PostFilter::ApplySuperResThreaded() {
   }
   // Wait for the threadpool jobs to finish.
   pending_workers.Wait();
-}
-
-// TODO(linfengz): Update ApplySuperRes() to process planes one by one. Skip a
-// plane if it has no loop restoration.
-void PostFilter::SetupLoopRestorationBorder(int row4x4_start, int sb4x4) {
-  assert(row4x4_start >= 0);
-  assert(DoCdef());
-  assert(DoRestoration());
-  for (int sb_y = 0; sb_y < sb4x4; sb_y += 16) {
-    const int row4x4 = row4x4_start + sb_y;
-    for (int plane = 0; plane < planes_; ++plane) {
-      CopyDeblockedPixels(static_cast<Plane>(plane), row4x4);
-    }
-    const int row_offset_start = DivideBy4(row4x4);
-    std::array<uint8_t*, kMaxPlanes> buffers = {
-        loop_restoration_border_.data(kPlaneY) +
-            row_offset_start * loop_restoration_border_.stride(kPlaneY),
-        loop_restoration_border_.data(kPlaneU) +
-            row_offset_start * loop_restoration_border_.stride(kPlaneU),
-        loop_restoration_border_.data(kPlaneV) +
-            row_offset_start * loop_restoration_border_.stride(kPlaneV)};
-    if (DoSuperRes()) {
-      std::array<int, kMaxPlanes> rows = {4, 4, 4};
-      ApplySuperRes<false>(buffers, rows, /*line_buffer_offset=*/0);
-    }
-    // Extend the left and right boundaries needed for loop restoration.
-    for (int plane = 0; plane < planes_; ++plane) {
-      if (loop_restoration_.type[plane] == kLoopRestorationTypeNone) {
-        continue;
-      }
-      uint8_t* src = buffers[plane];
-      const int plane_width =
-          SubsampledValue(upscaled_width_, subsampling_x_[plane]);
-      for (int i = 0; i < 4; ++i) {
-#if LIBGAV1_MAX_BITDEPTH >= 10
-        if (bitdepth_ >= 10) {
-          ExtendLine<uint16_t>(src, plane_width, kRestorationHorizontalBorder,
-                               kRestorationHorizontalBorder);
-        } else  // NOLINT.
-#endif
-        {
-          ExtendLine<uint8_t>(src, plane_width, kRestorationHorizontalBorder,
-                              kRestorationHorizontalBorder);
-        }
-        src += loop_restoration_border_.stride(plane);
-      }
-    }
-  }
 }
 
 }  // namespace libgav1
