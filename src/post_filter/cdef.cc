@@ -190,6 +190,8 @@ void PostFilter::ApplyCdefForOneUnit(uint16_t* cdef_block, const int index,
   uint8_t* cdef_buffer_row_base[kMaxPlanes];
   int src_buffer_row_base_stride[kMaxPlanes];
   const uint8_t* src_buffer_row_base[kMaxPlanes];
+  const uint16_t* cdef_src_row_base[kMaxPlanes];
+  int cdef_src_row_base_stride[kMaxPlanes];
   int column_step[kMaxPlanes];
   assert(planes_ >= 1);
   for (int plane = kPlaneY; plane < planes_; ++plane) {
@@ -205,6 +207,12 @@ void PostFilter::ApplyCdefForOneUnit(uint16_t* cdef_block, const int index,
                                  start_x * sizeof(Pixel);
     src_buffer_row_base_stride[plane] =
         frame_buffer_.stride(plane) * (kStep >> subsampling_y_[plane]);
+    cdef_src_row_base[plane] =
+        cdef_block +
+        plane * kCdefUnitSizeWithBorders * kCdefUnitSizeWithBorders +
+        kCdefBorder * kCdefUnitSizeWithBorders + kCdefBorder;
+    cdef_src_row_base_stride[plane] =
+        kCdefUnitSizeWithBorders * (kStep >> subsampling_y_[plane]);
     column_step[plane] = (kStep >> subsampling_x_[plane]) * sizeof(Pixel);
   }
 
@@ -248,6 +256,7 @@ void PostFilter::ApplyCdefForOneUnit(uint16_t* cdef_block, const int index,
   do {
     uint8_t* cdef_buffer_base = cdef_buffer_row_base[kPlaneY];
     const uint8_t* src_buffer_base = src_buffer_row_base[kPlaneY];
+    const uint16_t* cdef_src_base = cdef_src_row_base[kPlaneY];
     BlockParameters* const* bp0 = bp_row0_base;
     BlockParameters* const* bp1 = bp_row1_base;
     int column4x4 = column4x4_start;
@@ -256,6 +265,7 @@ void PostFilter::ApplyCdefForOneUnit(uint16_t* cdef_block, const int index,
       const int block_height = kStep;
       const int cdef_stride = cdef_buffer_stride[kPlaneY];
       uint8_t* const cdef_buffer = cdef_buffer_base;
+      const uint16_t* const cdef_src = cdef_src_base;
       const int src_stride = frame_buffer_.stride(kPlaneY);
       const uint8_t* const src_buffer = src_buffer_base;
 
@@ -288,11 +298,6 @@ void PostFilter::ApplyCdefForOneUnit(uint16_t* cdef_block, const int index,
           CopyPixels(src_buffer, src_stride, cdef_buffer, cdef_stride,
                      block_width, block_height, sizeof(Pixel));
         } else {
-          uint16_t* cdef_src =
-              cdef_block + kCdefBorder * kCdefUnitSizeWithBorders + kCdefBorder;
-          cdef_src +=
-              (MultiplyBy4(row4x4 - row4x4_start)) * kCdefUnitSizeWithBorders +
-              (MultiplyBy4(column4x4 - column4x4_start));
           const int strength_index =
               y_strength_index | (static_cast<int>(primary_strength == 0) << 1);
           dsp_.cdef_filters[1][strength_index](
@@ -303,6 +308,7 @@ void PostFilter::ApplyCdefForOneUnit(uint16_t* cdef_block, const int index,
       }
       cdef_buffer_base += column_step[kPlaneY];
       src_buffer_base += column_step[kPlaneY];
+      cdef_src_base += column_step[kPlaneY] / sizeof(Pixel);
 
       bp0 += kStep4x4;
       bp1 += kStep4x4;
@@ -312,6 +318,7 @@ void PostFilter::ApplyCdefForOneUnit(uint16_t* cdef_block, const int index,
 
     cdef_buffer_row_base[kPlaneY] += cdef_buffer_row_base_stride[kPlaneY];
     src_buffer_row_base[kPlaneY] += src_buffer_row_base_stride[kPlaneY];
+    cdef_src_row_base[kPlaneY] += cdef_src_row_base_stride[kPlaneY];
     bp_row0_base += bp_stride;
     bp_row1_base += bp_stride;
     row4x4 += kStep4x4;
@@ -357,12 +364,14 @@ void PostFilter::ApplyCdefForOneUnit(uint16_t* cdef_block, const int index,
     do {
       uint8_t* cdef_buffer_base = cdef_buffer_row_base[plane];
       const uint8_t* src_buffer_base = src_buffer_row_base[plane];
+      const uint16_t* cdef_src_base = cdef_src_row_base[plane];
       int column4x4 = column4x4_start;
       do {
         const int cdef_stride = cdef_buffer_stride[plane];
         uint8_t* const cdef_buffer = cdef_buffer_base;
         const int src_stride = frame_buffer_.stride(plane);
         const uint8_t* const src_buffer = src_buffer_base;
+        const uint16_t* const cdef_src = cdef_src_base;
         const bool skip = (direction_y[y_index] & kCdefSkip) != 0;
         int dual_cdef = 0;
 
@@ -396,13 +405,6 @@ void PostFilter::ApplyCdefForOneUnit(uint16_t* cdef_block, const int index,
             }
           }
 
-          uint16_t* cdef_src = cdef_block + plane * kCdefUnitSizeWithBorders *
-                                                kCdefUnitSizeWithBorders;
-          cdef_src += kCdefBorder * kCdefUnitSizeWithBorders + kCdefBorder;
-          cdef_src +=
-              (MultiplyBy4(row4x4 - row4x4_start) >> subsampling_y) *
-                  kCdefUnitSizeWithBorders +
-              (MultiplyBy4(column4x4 - column4x4_start) >> subsampling_x);
           // Block width is 8 if either dual_cdef is true or subsampling_x == 0.
           const int width_index = dual_cdef | (subsampling_x ^ 1);
           dsp_.cdef_filters[width_index][uv_strength_index](
@@ -415,12 +417,14 @@ void PostFilter::ApplyCdefForOneUnit(uint16_t* cdef_block, const int index,
         // so adjust the pointers and indexes for 2 blocks.
         cdef_buffer_base += column_step[plane] << dual_cdef;
         src_buffer_base += column_step[plane] << dual_cdef;
+        cdef_src_base += (column_step[plane] / sizeof(Pixel)) << dual_cdef;
         column4x4 += kStep4x4 << dual_cdef;
         y_index += 1 << dual_cdef;
       } while (column4x4 < column4x4_start + block_width4x4);
 
       cdef_buffer_row_base[plane] += cdef_buffer_row_base_stride[plane];
       src_buffer_row_base[plane] += src_buffer_row_base_stride[plane];
+      cdef_src_row_base[plane] += cdef_src_row_base_stride[plane];
       row4x4 += kStep4x4;
     } while (row4x4 < row4x4_start + block_height4x4);
   }
