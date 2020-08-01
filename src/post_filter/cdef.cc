@@ -430,7 +430,8 @@ void PostFilter::ApplyCdefForOneUnit(uint16_t* cdef_block, const int index,
   }
 }
 
-void PostFilter::ApplyCdefForOneSuperBlockRowHelper(int row4x4,
+void PostFilter::ApplyCdefForOneSuperBlockRowHelper(uint16_t* cdef_block,
+                                                    int row4x4,
                                                     int block_height4x4) {
   for (int column4x4 = 0; column4x4 < frame_header_.columns4x4;
        column4x4 += kStep64x64) {
@@ -440,12 +441,12 @@ void PostFilter::ApplyCdefForOneSuperBlockRowHelper(int row4x4,
 
 #if LIBGAV1_MAX_BITDEPTH >= 10
     if (bitdepth_ >= 10) {
-      ApplyCdefForOneUnit<uint16_t>(cdef_block_, index, block_width4x4,
+      ApplyCdefForOneUnit<uint16_t>(cdef_block, index, block_width4x4,
                                     block_height4x4, row4x4, column4x4);
       continue;
     }
 #endif  // LIBGAV1_MAX_BITDEPTH >= 10
-    ApplyCdefForOneUnit<uint8_t>(cdef_block_, index, block_width4x4,
+    ApplyCdefForOneUnit<uint8_t>(cdef_block, index, block_width4x4,
                                  block_height4x4, row4x4, column4x4);
   }
 }
@@ -465,7 +466,7 @@ void PostFilter::ApplyCdefForOneSuperBlockRow(int row4x4_start, int sb4x4,
     // first iteration (y == 0).
     if (row4x4 > 0 && (!is_last_row || y == 0)) {
       assert(row4x4 >= 16);
-      ApplyCdefForOneSuperBlockRowHelper(row4x4 - 2, 2);
+      ApplyCdefForOneSuperBlockRowHelper(cdef_block_, row4x4 - 2, 2);
     }
 
     // Apply cdef for the current superblock row. If this is the last superblock
@@ -475,7 +476,7 @@ void PostFilter::ApplyCdefForOneSuperBlockRow(int row4x4_start, int sb4x4,
         std::min(kStep64x64, frame_header_.rows4x4 - row4x4);
     const int height4x4 = block_height4x4 - (is_last_row ? 0 : 2);
     if (height4x4 > 0) {
-      ApplyCdefForOneSuperBlockRowHelper(row4x4, height4x4);
+      ApplyCdefForOneSuperBlockRowHelper(cdef_block_, row4x4, height4x4);
     }
   }
 }

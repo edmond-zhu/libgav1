@@ -383,7 +383,8 @@ class PostFilter {
                            int column4x4_start);
   // Helper function used by ApplyCdefForOneSuperBlockRow to avoid some code
   // duplication.
-  void ApplyCdefForOneSuperBlockRowHelper(int row4x4, int block_height4x4);
+  void ApplyCdefForOneSuperBlockRowHelper(uint16_t* cdef_block, int row4x4,
+                                          int block_height4x4);
   // Applies cdef filtering for the superblock row starting at |row4x4| with a
   // height of 4*|sb4x4|.
   void ApplyCdefForOneSuperBlockRow(int row4x4, int sb4x4, bool is_last_row);
