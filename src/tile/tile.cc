@@ -1501,10 +1501,9 @@ int Tile::ReadTransformCoefficients(const Block& block, Plane plane,
     context = GetCoeffBaseContextEob(tx_size, eob - 1);
     const uint16_t pos = scan[eob - 1];
     int level =
-        1 + reader_.ReadSymbol(
+        1 + reader_.ReadSymbol<kCoeffBaseEobSymbolCount>(
                 symbol_decoder_context_
-                    .coeff_base_eob_cdf[tx_size_context][plane_type][context],
-                kCoeffBaseEobSymbolCount);
+                    .coeff_base_eob_cdf[tx_size_context][plane_type][context]);
     if (level > kNumQuantizerBaseLevels) {
       level += ReadCoeffBaseRange(
           clamped_tx_size_context,
