@@ -455,7 +455,8 @@ void PostFilter::SetupLoopRestorationBorder(int row4x4_start, int sb4x4) {
             row_offset_start * loop_restoration_border_.stride(kPlaneV)};
     if (DoSuperRes()) {
       std::array<int, kMaxPlanes> rows = {4, 4, 4};
-      ApplySuperRes<false>(buffers, rows, /*line_buffer_offset=*/0);
+      ApplySuperRes<false>(/*src=*/buffers, rows, /*line_buffer_offset=*/0,
+                           /*dst=*/buffers);
     }
     // Extend the left and right boundaries needed for loop restoration.
     for (int plane = 0; plane < planes_; ++plane) {

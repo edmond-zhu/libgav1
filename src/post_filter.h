@@ -396,15 +396,16 @@ class PostFilter {
 
   // Functions for the SuperRes filter.
 
-  // Applies super resolution for the |buffers| for |rows[plane]| rows of each
+  // Applies super resolution for the |src| for |rows[plane]| rows of each
   // plane. If |in_place| is true, the line buffer will not be used and the
   // SuperRes output will be written to a row above the input row. If |in_place|
   // is false, the line buffer will be used to store a copy of the input and the
   // output will be written to the same row as the input row.
   template <bool in_place>
-  void ApplySuperRes(const std::array<uint8_t*, kMaxPlanes>& buffers,
-                     const std::array<int, kMaxPlanes>& rows,
-                     size_t line_buffer_offset);  // Section 7.16.
+  void ApplySuperRes(
+      const std::array<uint8_t*, kMaxPlanes>& src,
+      const std::array<int, kMaxPlanes>& rows, size_t line_buffer_offset,
+      const std::array<uint8_t*, kMaxPlanes>& dst);  // Section 7.16.
   // Applies SuperRes for the superblock row starting at |row4x4| with a height
   // of 4*|sb4x4|.
   void ApplySuperResForOneSuperBlockRow(int row4x4, int sb4x4,
