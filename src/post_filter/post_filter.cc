@@ -434,50 +434,81 @@ void PostFilter::SetupLoopRestorationBorder(const int row4x4) {
   } while (++plane < planes_);
 }
 
-// TODO(linfengz): Update ApplySuperRes() to process planes one by one. Skip a
-// plane if it has no loop restoration.
 void PostFilter::SetupLoopRestorationBorder(int row4x4_start, int sb4x4) {
   assert(row4x4_start >= 0);
   assert(DoCdef());
   assert(DoRestoration());
   for (int sb_y = 0; sb_y < sb4x4; sb_y += 16) {
     const int row4x4 = row4x4_start + sb_y;
-    for (int plane = 0; plane < planes_; ++plane) {
-      CopyDeblockedPixels(static_cast<Plane>(plane), row4x4);
-    }
     const int row_offset_start = DivideBy4(row4x4);
-    std::array<uint8_t*, kMaxPlanes> buffers = {
+    std::array<uint8_t*, kMaxPlanes> dst = {
         loop_restoration_border_.data(kPlaneY) +
             row_offset_start * loop_restoration_border_.stride(kPlaneY),
         loop_restoration_border_.data(kPlaneU) +
             row_offset_start * loop_restoration_border_.stride(kPlaneU),
         loop_restoration_border_.data(kPlaneV) +
             row_offset_start * loop_restoration_border_.stride(kPlaneV)};
+    // If SuperRes is enabled, then we apply SuperRes for the rows to be copied
+    // directly with |loop_restoration_border_| as the destination. Otherwise,
+    // we simply copy the rows.
     if (DoSuperRes()) {
-      std::array<int, kMaxPlanes> rows = {4, 4, 4};
-      ApplySuperRes<false>(/*src=*/buffers, rows, /*line_buffer_offset=*/0,
-                           /*dst=*/buffers);
+      std::array<uint8_t*, kMaxPlanes> src;
+      std::array<int, kMaxPlanes> rows;
+      for (int plane = 0; plane < planes_; ++plane) {
+        if (loop_restoration_.type[plane] == kLoopRestorationTypeNone) {
+          rows[plane] = 0;
+          continue;
+        }
+        const int plane_height =
+            SubsampledValue(frame_header_.height, subsampling_y_[plane]);
+        const int row = kLoopRestorationBorderRows[subsampling_y_[plane]];
+        const int absolute_row =
+            (MultiplyBy4(row4x4) >> subsampling_y_[plane]) + row;
+        src[plane] = GetSourceBuffer(static_cast<Plane>(plane), row4x4, 0) +
+                     row * frame_buffer_.stride(plane);
+        rows[plane] = Clip3(plane_height - absolute_row, 0, 4);
+      }
+      ApplySuperRes<false>(src, rows, /*line_buffer_offset=*/0, dst);
+      // If we run out of rows, copy the last valid row (mimics the bottom
+      // border extension).
+      for (int plane = 0; plane < planes_; ++plane) {
+        if (rows[plane] == 0 || rows[plane] >= 4) continue;
+        const ptrdiff_t stride = frame_buffer_.stride(plane);
+        uint8_t* dst_line = dst[plane] + rows[plane] * stride;
+        const uint8_t* const src_line = dst_line - stride;
+        const int upscaled_width = super_res_info_[plane].upscaled_width;
+        for (int i = rows[plane]; i < 4; ++i) {
+          memcpy(dst_line, src_line, upscaled_width * pixel_size_);
+          dst_line += stride;
+        }
+      }
+    } else {
+      for (int plane = 0; plane < planes_; ++plane) {
+        CopyDeblockedPixels(static_cast<Plane>(plane), row4x4);
+      }
     }
     // Extend the left and right boundaries needed for loop restoration.
     for (int plane = 0; plane < planes_; ++plane) {
       if (loop_restoration_.type[plane] == kLoopRestorationTypeNone) {
         continue;
       }
-      uint8_t* src = buffers[plane];
+      uint8_t* dst_line = dst[plane];
       const int plane_width =
           SubsampledValue(upscaled_width_, subsampling_x_[plane]);
       for (int i = 0; i < 4; ++i) {
 #if LIBGAV1_MAX_BITDEPTH >= 10
         if (bitdepth_ >= 10) {
-          ExtendLine<uint16_t>(src, plane_width, kRestorationHorizontalBorder,
+          ExtendLine<uint16_t>(dst_line, plane_width,
+                               kRestorationHorizontalBorder,
                                kRestorationHorizontalBorder);
         } else  // NOLINT.
 #endif
         {
-          ExtendLine<uint8_t>(src, plane_width, kRestorationHorizontalBorder,
+          ExtendLine<uint8_t>(dst_line, plane_width,
+                              kRestorationHorizontalBorder,
                               kRestorationHorizontalBorder);
         }
-        src += loop_restoration_border_.stride(plane);
+        dst_line += loop_restoration_border_.stride(plane);
       }
     }
   }
