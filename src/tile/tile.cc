@@ -1452,33 +1452,38 @@ int Tile::ReadTransformCoefficients(const Block& block, Plane plane,
   const PlaneType plane_type = GetPlaneType(plane);
   const TransformClass tx_class = GetTransformClass(*tx_type);
   context = static_cast<int>(tx_class != kTransformClass2D);
-  uint16_t* cdf;
+  int eob_pt = 1;
   switch (eob_multi_size) {
     case 0:
-      cdf = symbol_decoder_context_.eob_pt_16_cdf[plane_type][context];
+      eob_pt += reader_.ReadSymbol<kEobPt16SymbolCount>(
+          symbol_decoder_context_.eob_pt_16_cdf[plane_type][context]);
       break;
     case 1:
-      cdf = symbol_decoder_context_.eob_pt_32_cdf[plane_type][context];
+      eob_pt += reader_.ReadSymbol<kEobPt32SymbolCount>(
+          symbol_decoder_context_.eob_pt_32_cdf[plane_type][context]);
       break;
     case 2:
-      cdf = symbol_decoder_context_.eob_pt_64_cdf[plane_type][context];
+      eob_pt += reader_.ReadSymbol<kEobPt64SymbolCount>(
+          symbol_decoder_context_.eob_pt_64_cdf[plane_type][context]);
       break;
     case 3:
-      cdf = symbol_decoder_context_.eob_pt_128_cdf[plane_type][context];
+      eob_pt += reader_.ReadSymbol<kEobPt128SymbolCount>(
+          symbol_decoder_context_.eob_pt_128_cdf[plane_type][context]);
       break;
     case 4:
-      cdf = symbol_decoder_context_.eob_pt_256_cdf[plane_type][context];
+      eob_pt += reader_.ReadSymbol<kEobPt256SymbolCount>(
+          symbol_decoder_context_.eob_pt_256_cdf[plane_type][context]);
       break;
     case 5:
-      cdf = symbol_decoder_context_.eob_pt_512_cdf[plane_type];
+      eob_pt += reader_.ReadSymbol<kEobPt512SymbolCount>(
+          symbol_decoder_context_.eob_pt_512_cdf[plane_type]);
       break;
     case 6:
     default:
-      cdf = symbol_decoder_context_.eob_pt_1024_cdf[plane_type];
+      eob_pt += reader_.ReadSymbol<kEobPt1024SymbolCount>(
+          symbol_decoder_context_.eob_pt_1024_cdf[plane_type]);
       break;
   }
-  const int eob_pt =
-      1 + reader_.ReadSymbol(cdf, kEobPt16SymbolCount + eob_multi_size);
   int eob = (eob_pt < 2) ? eob_pt : ((1 << (eob_pt - 2)) + 1);
   if (eob_pt >= 3) {
     context = eob_pt - 3;

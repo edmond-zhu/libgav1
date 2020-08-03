@@ -215,6 +215,10 @@ void UpdateCdf8(uint16_t* const cdf, const int symbol) {
   UpdateCdf7To9<8>(cdf, symbol);
 }
 
+void UpdateCdf9(uint16_t* const cdf, const int symbol) {
+  UpdateCdf7To9<9>(cdf, symbol);
+}
+
 void UpdateCdf11(uint16_t* const cdf, const int symbol) {
   uint16x8_t cdf_vec = vld1q_u16(cdf + 2);
   const uint16_t count = cdf[11];
@@ -384,6 +388,10 @@ void UpdateCdf8(uint16_t* const cdf, const int symbol) {
   UpdateCdf7To9<8>(cdf, symbol);
 }
 
+void UpdateCdf9(uint16_t* const cdf, const int symbol) {
+  UpdateCdf7To9<9>(cdf, symbol);
+}
+
 void UpdateCdf11(uint16_t* const cdf, const int symbol) {
   __m128i cdf_vec = LoadUnaligned16(cdf + 2);
   const uint16_t count = cdf[11];
@@ -492,6 +500,10 @@ void UpdateCdf7(uint16_t* const cdf, const int symbol) {
 
 void UpdateCdf8(uint16_t* const cdf, const int symbol) {
   UpdateCdf(cdf, 8, symbol);
+}
+
+void UpdateCdf9(uint16_t* const cdf, const int symbol) {
+  UpdateCdf(cdf, 9, symbol);
 }
 
 void UpdateCdf11(uint16_t* const cdf, const int symbol) {
@@ -671,6 +683,8 @@ int DaalaBitReader::ReadSymbol(uint16_t* const cdf) {
       UpdateCdf7(cdf, symbol);
     } else if (symbol_count == 8) {
       UpdateCdf8(cdf, symbol);
+    } else if (symbol_count == 9) {
+      UpdateCdf9(cdf, symbol);
     } else if (symbol_count == 11) {
       UpdateCdf11(cdf, symbol);
     } else if (symbol_count == 13) {
@@ -1052,8 +1066,10 @@ void DaalaBitReader::NormalizeRange() {
 template int DaalaBitReader::ReadSymbol<3>(uint16_t* cdf);
 template int DaalaBitReader::ReadSymbol<4>(uint16_t* cdf);
 template int DaalaBitReader::ReadSymbol<5>(uint16_t* cdf);
+template int DaalaBitReader::ReadSymbol<6>(uint16_t* cdf);
 template int DaalaBitReader::ReadSymbol<7>(uint16_t* cdf);
 template int DaalaBitReader::ReadSymbol<8>(uint16_t* cdf);
+template int DaalaBitReader::ReadSymbol<9>(uint16_t* cdf);
 template int DaalaBitReader::ReadSymbol<10>(uint16_t* cdf);
 template int DaalaBitReader::ReadSymbol<11>(uint16_t* cdf);
 template int DaalaBitReader::ReadSymbol<13>(uint16_t* cdf);
