@@ -194,7 +194,8 @@ void PostFilter::ApplyCdefForOneUnit(uint16_t* cdef_block, const int index,
   int cdef_src_row_base_stride[kMaxPlanes];
   int column_step[kMaxPlanes];
   assert(planes_ >= 1);
-  for (int plane = kPlaneY; plane < planes_; ++plane) {
+  int plane = kPlaneY;
+  do {
     const int start_y = MultiplyBy4(row4x4_start) >> subsampling_y_[plane];
     const int start_x = MultiplyBy4(column4x4_start) >> subsampling_x_[plane];
     cdef_buffer_row_base[plane] = GetCdefBufferAndStride(
@@ -214,16 +215,17 @@ void PostFilter::ApplyCdefForOneUnit(uint16_t* cdef_block, const int index,
     cdef_src_row_base_stride[plane] =
         kCdefUnitSizeWithBorders * (kStep >> subsampling_y_[plane]);
     column_step[plane] = (kStep >> subsampling_x_[plane]) * sizeof(Pixel);
-  }
+  } while (++plane < planes_);
 
   if (index == -1) {
-    for (int plane = kPlaneY; plane < planes_; ++plane) {
+    int plane = kPlaneY;
+    do {
       CopyPixels(src_buffer_row_base[plane], frame_buffer_.stride(plane),
                  cdef_buffer_row_base[plane], cdef_buffer_stride[plane],
                  MultiplyBy4(block_width4x4) >> subsampling_x_[plane],
                  MultiplyBy4(block_height4x4) >> subsampling_y_[plane],
                  sizeof(Pixel));
-    }
+    } while (++plane < planes_);
     return;
   }
 
@@ -539,7 +541,8 @@ void PostFilter::ApplyCdefThreaded() {
       pending_jobs.Wait();
 
       // Copy |threaded_window_buffer_| to |cdef_buffer_|.
-      for (int plane = kPlaneY; plane < planes_; ++plane) {
+      int plane = kPlaneY;
+      do {
         const ptrdiff_t src_stride =
             frame_buffer_.stride(plane) / sizeof(Pixel);
         const int plane_row = MultiplyBy4(row4x4) >> subsampling_y_[plane];
@@ -558,7 +561,7 @@ void PostFilter::ApplyCdefThreaded() {
             reinterpret_cast<Pixel*>(cdef_buffer_[plane]) +
                 plane_row * src_stride + plane_column,
             src_stride);
-      }
+      } while (++plane < planes_);
     }
   }
 }

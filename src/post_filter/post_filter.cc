@@ -199,7 +199,8 @@ PostFilter::PostFilter(const ObuFrameHeader& frame_header,
   const int8_t zero_delta_lf[kFrameLfCount] = {};
   ComputeDeblockFilterLevels(zero_delta_lf, deblock_filter_levels_);
   if (DoSuperRes()) {
-    for (int plane = 0; plane < planes_; ++plane) {
+    int plane = 0;
+    do {
       const int downscaled_width =
           SubsampledValue(width_, subsampling_x_[plane]);
       const int upscaled_width =
@@ -216,20 +217,22 @@ PostFilter::PostFilter(const ObuFrameHeader& frame_header,
            (1 << (kSuperResExtraBits - 1)) - error / 2) &
           kSuperResScaleMask;
       super_res_info_[plane].upscaled_width = upscaled_width;
-    }
+    } while (++plane < planes_);
   }
-  for (int plane = 0; plane < planes_; ++plane) {
+  int plane = 0;
+  do {
     loop_restoration_buffer_[plane] = frame_buffer_.data(plane);
     cdef_buffer_[plane] = frame_buffer_.data(plane);
     superres_buffer_[plane] = frame_buffer_.data(plane);
     source_buffer_[plane] = frame_buffer_.data(plane);
-  }
+  } while (++plane < planes_);
   // In single threaded mode, we apply SuperRes without making a copy of the
   // input row by writing the output to one row to the top (we refer to this
   // process as "in place superres" in our code).
   const bool in_place_superres = DoSuperRes() && thread_pool_ == nullptr;
   if (DoCdef() || DoRestoration() || in_place_superres) {
-    for (int plane = 0; plane < planes_; ++plane) {
+    plane = 0;
+    do {
       int horizontal_shift = 0;
       int vertical_shift = 0;
       if (DoRestoration() &&
@@ -255,7 +258,7 @@ PostFilter::PostFilter(const ObuFrameHeader& frame_header,
       assert(vertical_shift <= frame_buffer_.bottom_border(plane));
       source_buffer_[plane] += vertical_shift * frame_buffer_.stride(plane) +
                                horizontal_shift * pixel_size_;
-    }
+    } while (++plane < planes_);
   }
 }
 
@@ -278,7 +281,8 @@ void PostFilter::ExtendFrameBoundary(uint8_t* const frame_start,
 
 void PostFilter::ExtendBordersForReferenceFrame() {
   if (frame_header_.refresh_frame_flags == 0) return;
-  for (int plane = kPlaneY; plane < planes_; ++plane) {
+  int plane = kPlaneY;
+  do {
     const int plane_width =
         SubsampledValue(upscaled_width_, subsampling_x_[plane]);
     const int plane_height = SubsampledValue(height_, subsampling_y_[plane]);
@@ -299,7 +303,7 @@ void PostFilter::ExtendBordersForReferenceFrame() {
         frame_buffer_.stride(plane), frame_buffer_.left_border(plane),
         frame_buffer_.right_border(plane), frame_buffer_.top_border(plane),
         frame_buffer_.bottom_border(plane));
-  }
+  } while (++plane < planes_);
 }
 
 void PostFilter::CopyDeblockedPixels(Plane plane, int row4x4) {
@@ -339,7 +343,8 @@ void PostFilter::CopyBordersForOneSuperBlockRow(int row4x4, int sb4x4,
   // needs 2 extra rows for the bottom border in each plane.
   const int extra_rows =
       (for_loop_restoration && thread_pool_ == nullptr && !DoCdef()) ? 2 : 0;
-  for (int plane = 0; plane < planes_; ++plane) {
+  int plane = 0;
+  do {
     const int plane_width =
         SubsampledValue(upscaled_width_, subsampling_x_[plane]);
     const int plane_height = SubsampledValue(height_, subsampling_y_[plane]);
@@ -378,7 +383,7 @@ void PostFilter::CopyBordersForOneSuperBlockRow(int row4x4, int sb4x4,
             : 0;
     ExtendFrameBoundary(start, plane_width, num_rows, stride, left_border,
                         right_border, top_border, bottom_border);
-  }
+  } while (++plane < planes_);
 }
 
 void PostFilter::SetupLoopRestorationBorder(const int row4x4) {
@@ -441,7 +446,8 @@ void PostFilter::SetupLoopRestorationBorder(int row4x4_start, int sb4x4) {
     if (DoSuperRes()) {
       std::array<uint8_t*, kMaxPlanes> src;
       std::array<int, kMaxPlanes> rows;
-      for (int plane = 0; plane < planes_; ++plane) {
+      int plane = 0;
+      do {
         if (loop_restoration_.type[plane] == kLoopRestorationTypeNone) {
           rows[plane] = 0;
           continue;
@@ -454,11 +460,12 @@ void PostFilter::SetupLoopRestorationBorder(int row4x4_start, int sb4x4) {
         src[plane] = GetSourceBuffer(static_cast<Plane>(plane), row4x4, 0) +
                      row * frame_buffer_.stride(plane);
         rows[plane] = Clip3(plane_height - absolute_row, 0, 4);
-      }
+      } while (++plane < planes_);
       ApplySuperRes<false>(src, rows, /*line_buffer_offset=*/0, dst);
       // If we run out of rows, copy the last valid row (mimics the bottom
       // border extension).
-      for (int plane = 0; plane < planes_; ++plane) {
+      plane = 0;
+      do {
         if (rows[plane] == 0 || rows[plane] >= 4) continue;
         const ptrdiff_t stride = frame_buffer_.stride(plane);
         uint8_t* dst_line = dst[plane] + rows[plane] * stride;
@@ -468,14 +475,16 @@ void PostFilter::SetupLoopRestorationBorder(int row4x4_start, int sb4x4) {
           memcpy(dst_line, src_line, upscaled_width * pixel_size_);
           dst_line += stride;
         }
-      }
+      } while (++plane < planes_);
     } else {
-      for (int plane = 0; plane < planes_; ++plane) {
+      int plane = 0;
+      do {
         CopyDeblockedPixels(static_cast<Plane>(plane), row4x4);
-      }
+      } while (++plane < planes_);
     }
     // Extend the left and right boundaries needed for loop restoration.
-    for (int plane = 0; plane < planes_; ++plane) {
+    int plane = 0;
+    do {
       if (loop_restoration_.type[plane] == kLoopRestorationTypeNone) {
         continue;
       }
@@ -497,7 +506,7 @@ void PostFilter::SetupLoopRestorationBorder(int row4x4_start, int sb4x4) {
         }
         dst_line += loop_restoration_border_.stride(plane);
       }
-    }
+    } while (++plane < planes_);
   }
 }
 

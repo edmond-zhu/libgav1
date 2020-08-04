@@ -96,7 +96,8 @@ void PostFilter::ApplyLoopRestorationForOneSuperBlockRow(const int row4x4_start,
                                                          const int sb4x4) {
   assert(row4x4_start >= 0);
   assert(DoRestoration());
-  for (int plane = 0; plane < planes_; ++plane) {
+  int plane = 0;
+  do {
     if (loop_restoration_.type[plane] == kLoopRestorationTypeNone) {
       continue;
     }
@@ -131,7 +132,7 @@ void PostFilter::ApplyLoopRestorationForOneSuperBlockRow(const int row4x4_start,
           reinterpret_cast<Pixel*>(loop_restoration_buffer_[plane]) +
               y * stride);
     }
-  }
+  } while (++plane < planes_);
 }
 
 void PostFilter::ApplyLoopRestoration(const int row4x4_start, const int sb4x4) {

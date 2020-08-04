@@ -1797,8 +1797,9 @@ bool Tile::Residual(const Block& block, ProcessingMode mode) {
   const BlockParameters& bp = *block.bp;
   for (int chunk_y = 0; chunk_y < height_chunks; ++chunk_y) {
     for (int chunk_x = 0; chunk_x < width_chunks; ++chunk_x) {
-      for (int plane = 0; plane < (block.HasChroma() ? PlaneCount() : 1);
-           ++plane) {
+      const int num_planes = block.HasChroma() ? PlaneCount() : 1;
+      int plane = 0;
+      do {
         const int subsampling_x = subsampling_x_[plane];
         const int subsampling_y = subsampling_y_[plane];
         // For Y Plane, when lossless is true |bp.transform_size| is always
@@ -1837,7 +1838,7 @@ bool Tile::Residual(const Block& block, ProcessingMode mode) {
             }
           }
         }
-      }
+      } while (++plane < num_planes);
     }
   }
   return true;
@@ -2002,7 +2003,9 @@ bool Tile::AssignIntraMv(const Block& block) {
 }
 
 void Tile::ResetEntropyContext(const Block& block) {
-  for (int plane = 0; plane < (block.HasChroma() ? PlaneCount() : 1); ++plane) {
+  const int num_planes = block.HasChroma() ? PlaneCount() : 1;
+  int plane = 0;
+  do {
     const int subsampling_x = subsampling_x_[plane];
     const int start_x = block.column4x4 >> subsampling_x;
     const int end_x =
@@ -2021,7 +2024,7 @@ void Tile::ResetEntropyContext(const Block& block) {
            end_y - start_y);
     memset(&dc_categories_[kEntropyContextLeft][plane][start_y], 0,
            end_y - start_y);
-  }
+  } while (++plane < num_planes);
 }
 
 bool Tile::ComputePrediction(const Block& block) {
