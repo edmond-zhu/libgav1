@@ -82,7 +82,7 @@ void PostFilter::ApplySuperResForOneSuperBlockRow(int row4x4_start, int sb4x4,
   // superblock.
   if (row4x4_start > 0) {
     const int row4x4 = row4x4_start - 2;
-    int plane = 0;
+    int plane = kPlaneY;
     do {
       const int row =
           (MultiplyBy4(row4x4) >> subsampling_y_[plane]) + num_rows_extra;
@@ -101,7 +101,7 @@ void PostFilter::ApplySuperResForOneSuperBlockRow(int row4x4_start, int sb4x4,
   const int num_rows4x4 =
       std::min(sb4x4, frame_header_.rows4x4 - row4x4_start) -
       (is_last_row ? 0 : 2);
-  int plane = 0;
+  int plane = kPlaneY;
   do {
     const ptrdiff_t row_offset =
         (MultiplyBy4(row4x4_start) >> subsampling_y_[plane]) *
@@ -141,7 +141,7 @@ void PostFilter::ApplySuperResThreaded() {
     std::array<uint8_t*, kMaxPlanes> src;
     std::array<uint8_t*, kMaxPlanes> dst;
     std::array<int, kMaxPlanes> rows;
-    int plane = 0;
+    int plane = kPlaneY;
     do {
       src[plane] =
           GetBufferOffset(cdef_buffer_[plane], frame_buffer_.stride(plane),

@@ -503,7 +503,7 @@ Tile::Tile(int tile_number, const uint8_t* const data, size_t size,
   memset(delta_lf_, 0, sizeof(delta_lf_));
   delta_lf_all_zero_ = true;
   const YuvBuffer& buffer = post_filter_.frame_buffer();
-  for (int plane = 0; plane < PlaneCount(); ++plane) {
+  for (int plane = kPlaneY; plane < PlaneCount(); ++plane) {
     // Verify that the borders are big enough for Reconstruct(). max_tx_length
     // is the maximum value of tx_width and tx_height for the plane.
     const int max_tx_length = (plane == kPlaneY) ? 64 : 32;
@@ -921,7 +921,7 @@ void Tile::PopulateIntraPredictionBuffer(int row4x4) {
   const size_t pixel_size =
       (sequence_header_.color_config.bitdepth == 8 ? sizeof(uint8_t)
                                                    : sizeof(uint16_t));
-  for (int plane = 0; plane < PlaneCount(); ++plane) {
+  for (int plane = kPlaneY; plane < PlaneCount(); ++plane) {
     const int row_to_copy =
         (MultiplyBy4(row4x4 + block_width4x4) >> subsampling_y_[plane]) - 1;
     const size_t pixels_to_copy =
@@ -1798,7 +1798,7 @@ bool Tile::Residual(const Block& block, ProcessingMode mode) {
   for (int chunk_y = 0; chunk_y < height_chunks; ++chunk_y) {
     for (int chunk_x = 0; chunk_x < width_chunks; ++chunk_x) {
       const int num_planes = block.HasChroma() ? PlaneCount() : 1;
-      int plane = 0;
+      int plane = kPlaneY;
       do {
         const int subsampling_x = subsampling_x_[plane];
         const int subsampling_y = subsampling_y_[plane];
@@ -2004,7 +2004,7 @@ bool Tile::AssignIntraMv(const Block& block) {
 
 void Tile::ResetEntropyContext(const Block& block) {
   const int num_planes = block.HasChroma() ? PlaneCount() : 1;
-  int plane = 0;
+  int plane = kPlaneY;
   do {
     const int subsampling_x = subsampling_x_[plane];
     const int start_x = block.column4x4 >> subsampling_x;
@@ -2043,7 +2043,7 @@ bool Tile::ComputePrediction(const Block& block) {
   bool is_local_valid = false;
   // Local warping parameters, similar usage as is_local_valid.
   GlobalMotion local_warp_params;
-  int plane = 0;
+  int plane = kPlaneY;
   do {
     const int8_t subsampling_x = subsampling_x_[plane];
     const int8_t subsampling_y = subsampling_y_[plane];
@@ -2374,7 +2374,7 @@ void Tile::ClearBlockDecoded(TileScratchBuffer* const scratch_buffer,
          sizeof(scratch_buffer->block_decoded));
   // Set specific edge cases to true.
   const int sb_size4 = sequence_header_.use_128x128_superblock ? 32 : 16;
-  for (int plane = 0; plane < PlaneCount(); ++plane) {
+  for (int plane = kPlaneY; plane < PlaneCount(); ++plane) {
     const int subsampling_x = subsampling_x_[plane];
     const int subsampling_y = subsampling_y_[plane];
     const int sb_width4 = (column4x4_end_ - column4x4) >> subsampling_x;

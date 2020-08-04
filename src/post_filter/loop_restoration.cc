@@ -96,7 +96,7 @@ void PostFilter::ApplyLoopRestorationForOneSuperBlockRow(const int row4x4_start,
                                                          const int sb4x4) {
   assert(row4x4_start >= 0);
   assert(DoRestoration());
-  int plane = 0;
+  int plane = kPlaneY;
   do {
     if (loop_restoration_.type[plane] == kLoopRestorationTypeNone) {
       continue;

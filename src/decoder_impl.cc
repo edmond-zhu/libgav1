@@ -1145,7 +1145,7 @@ StatusCode DecoderImpl::CopyFrameToOutputBuffer(
   buffer_.bitdepth = yuv_buffer->bitdepth();
   const int num_planes =
       yuv_buffer->is_monochrome() ? kMaxPlanesMonochrome : kMaxPlanes;
-  int plane = 0;
+  int plane = kPlaneY;
   for (; plane < num_planes; ++plane) {
     buffer_.stride[plane] = yuv_buffer->stride(plane);
     buffer_.plane[plane] = yuv_buffer->data(plane);
@@ -1433,7 +1433,7 @@ StatusCode DecoderImpl::DecodeTiles(
     }
     IntraPredictionBuffer* const intra_prediction_buffers =
         frame_scratch_buffer->intra_prediction_buffers.get();
-    for (int plane = 0; plane < num_planes; ++plane) {
+    for (int plane = kPlaneY; plane < num_planes; ++plane) {
       const int subsampling =
           (plane == kPlaneY) ? 0 : sequence_header.color_config.subsampling_x;
       const size_t intra_prediction_buffer_size =
