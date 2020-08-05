@@ -78,8 +78,9 @@ void PostFilter::ApplySuperResForOneSuperBlockRow(int row4x4_start, int sb4x4,
   std::array<uint8_t*, kMaxPlanes> src;
   std::array<uint8_t*, kMaxPlanes> dst;
   std::array<int, kMaxPlanes> rows;
-  // Apply superres for the last 8-num_rows_extra rows of the previous
-  // superblock.
+  const int num_rows4x4 =
+      std::min(sb4x4, frame_header_.rows4x4 - row4x4_start) -
+      (is_last_row ? 0 : 2);
   if (row4x4_start > 0) {
     const int row4x4 = row4x4_start - 2;
     int plane = kPlaneY;
@@ -92,28 +93,31 @@ void PostFilter::ApplySuperResForOneSuperBlockRow(int row4x4_start, int sb4x4,
       // Note that the |num_rows_extra| subtraction is done after the value is
       // subsampled since we always need to work on |num_rows_extra| extra rows
       // irrespective of the plane subsampling.
+      // Apply superres for the last 8-|num_rows_extra| rows of the previous
+      // superblock.
       rows[plane] = (8 >> subsampling_y_[plane]) - num_rows_extra;
+      // Apply superres for the current superblock row (except for the last
+      // 8-|num_rows_extra| rows).
+      rows[plane] += (MultiplyBy4(num_rows4x4) >> subsampling_y_[plane]) +
+                     (is_last_row ? 0 : num_rows_extra);
     } while (++plane < planes_);
-    ApplySuperRes<true>(src, rows, /*line_buffer_offset=*/0, dst);
+  } else {
+    // Apply superres for the current superblock row (except for the last
+    // 8-|num_rows_extra| rows).
+    int plane = kPlaneY;
+    do {
+      const ptrdiff_t row_offset =
+          (MultiplyBy4(row4x4_start) >> subsampling_y_[plane]) *
+          frame_buffer_.stride(plane);
+      src[plane] = cdef_buffer_[plane] + row_offset;
+      dst[plane] = superres_buffer_[plane] + row_offset;
+      // Note that the |num_rows_extra| addition is done after the value is
+      // subsampled since we always need to work on |num_rows_extra| extra rows
+      // irrespective of the plane subsampling.
+      rows[plane] = (MultiplyBy4(num_rows4x4) >> subsampling_y_[plane]) +
+                    (is_last_row ? 0 : num_rows_extra);
+    } while (++plane < planes_);
   }
-  // Apply superres for the current superblock row (except for the last
-  // 8-num_rows_extra rows).
-  const int num_rows4x4 =
-      std::min(sb4x4, frame_header_.rows4x4 - row4x4_start) -
-      (is_last_row ? 0 : 2);
-  int plane = kPlaneY;
-  do {
-    const ptrdiff_t row_offset =
-        (MultiplyBy4(row4x4_start) >> subsampling_y_[plane]) *
-        frame_buffer_.stride(plane);
-    src[plane] = cdef_buffer_[plane] + row_offset;
-    dst[plane] = superres_buffer_[plane] + row_offset;
-    // Note that the |num_rows_extra| subtraction is done after the value is
-    // subsampled since we always need to work on |num_rows_extra| extra rows
-    // irrespective of the plane subsampling.
-    rows[plane] = (MultiplyBy4(num_rows4x4) >> subsampling_y_[plane]) +
-                  (is_last_row ? 0 : num_rows_extra);
-  } while (++plane < planes_);
   ApplySuperRes<true>(src, rows, /*line_buffer_offset=*/0, dst);
 }
 
