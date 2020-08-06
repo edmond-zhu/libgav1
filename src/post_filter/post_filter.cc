@@ -24,6 +24,7 @@
 #include "src/dsp/constants.h"
 #include "src/dsp/dsp.h"
 #include "src/utils/array_2d.h"
+#include "src/utils/common.h"
 #include "src/utils/constants.h"
 #include "src/utils/memory.h"
 #include "src/utils/types.h"
@@ -40,18 +41,6 @@ namespace {
 constexpr int kLoopRestorationBorderRows[2] = {54, 26};
 
 }  // namespace
-
-// static
-template <typename Pixel>
-void PostFilter::ExtendLine(void* const line_start, const int width,
-                            const int left, const int right) {
-  auto* const start = static_cast<Pixel*>(line_start);
-  const Pixel* src = start;
-  Pixel* dst = start - left;
-  // Copy to left and right borders.
-  Memset(dst, src[0], left);
-  Memset(dst + left + width, src[width - 1], right);
-}
 
 // The following example illustrates how ExtendFrame() extends a frame.
 // Suppose the frame width is 8 and height is 4, and left, right, top, and
@@ -134,10 +123,6 @@ void PostFilter::ExtendFrame(Pixel* const frame_start, const int width,
   }
 }
 
-template void PostFilter::ExtendLine<uint8_t>(void* const line_start,
-                                              const int width, const int left,
-                                              const int right);
-
 template void PostFilter::ExtendFrame<uint8_t>(uint8_t* const frame_start,
                                                const int width,
                                                const int height,
@@ -146,10 +131,6 @@ template void PostFilter::ExtendFrame<uint8_t>(uint8_t* const frame_start,
                                                const int top, const int bottom);
 
 #if LIBGAV1_MAX_BITDEPTH >= 10
-template void PostFilter::ExtendLine<uint16_t>(void* const line_start,
-                                               const int width, const int left,
-                                               const int right);
-
 template void PostFilter::ExtendFrame<uint16_t>(
     uint16_t* const frame_start, const int width, const int height,
     const ptrdiff_t stride, const int left, const int right, const int top,

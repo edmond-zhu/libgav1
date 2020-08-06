@@ -36,6 +36,7 @@
 
 #include "src/utils/bit_mask_set.h"
 #include "src/utils/constants.h"
+#include "src/utils/memory.h"
 #include "src/utils/types.h"
 
 namespace libgav1 {
@@ -56,6 +57,17 @@ inline uint8_t* AlignAddr(uint8_t* const addr, const uintptr_t alignment) {
 
 inline int32_t Clip3(int32_t value, int32_t low, int32_t high) {
   return value < low ? low : (value > high ? high : value);
+}
+
+template <typename Pixel>
+void ExtendLine(void* const line_start, const int width, const int left,
+                const int right) {
+  auto* const start = static_cast<Pixel*>(line_start);
+  const Pixel* src = start;
+  Pixel* dst = start - left;
+  // Copy to left and right borders.
+  Memset(dst, src[0], left);
+  Memset(dst + left + width, src[width - 1], right);
 }
 
 // The following 2 templates set a block of data with uncontiguous memory to

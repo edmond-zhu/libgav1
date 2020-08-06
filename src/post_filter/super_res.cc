@@ -13,6 +13,7 @@
 // limitations under the License.
 #include "src/post_filter.h"
 #include "src/utils/blocking_counter.h"
+#include "src/utils/common.h"
 
 namespace libgav1 {
 
