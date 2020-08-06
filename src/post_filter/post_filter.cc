@@ -187,7 +187,7 @@ PostFilter::PostFilter(const ObuFrameHeader& frame_header,
       threaded_window_buffer_(
           frame_scratch_buffer->threaded_window_buffer.get()),
       restoration_info_(&frame_scratch_buffer->loop_restoration_info),
-      superres_line_buffer_(frame_scratch_buffer->superres_line_buffer.get()),
+      superres_line_buffer_(frame_scratch_buffer->superres_line_buffer),
       block_parameters_(frame_scratch_buffer->block_parameters_holder),
       frame_buffer_(*frame_buffer),
       loop_restoration_border_(frame_scratch_buffer->loop_restoration_border),
@@ -226,11 +226,7 @@ PostFilter::PostFilter(const ObuFrameHeader& frame_header,
     superres_buffer_[plane] = frame_buffer_.data(plane);
     source_buffer_[plane] = frame_buffer_.data(plane);
   } while (++plane < planes_);
-  // In single threaded mode, we apply SuperRes without making a copy of the
-  // input row by writing the output to one row to the top (we refer to this
-  // process as "in place superres" in our code).
-  const bool in_place_superres = DoSuperRes() && thread_pool_ == nullptr;
-  if (DoCdef() || DoRestoration() || in_place_superres) {
+  if (DoCdef() || DoRestoration() || DoSuperRes()) {
     plane = kPlaneY;
     do {
       int horizontal_shift = 0;
@@ -245,7 +241,7 @@ PostFilter::PostFilter(const ObuFrameHeader& frame_header,
             vertical_shift * frame_buffer_.stride(plane) +
             horizontal_shift * pixel_size_;
       }
-      if (in_place_superres) {
+      if (DoSuperRes()) {
         vertical_shift += kSuperResVerticalBorder;
       }
       cdef_buffer_[plane] += vertical_shift * frame_buffer_.stride(plane) +
@@ -461,7 +457,7 @@ void PostFilter::SetupLoopRestorationBorder(int row4x4_start, int sb4x4) {
                      row * frame_buffer_.stride(plane);
         rows[plane] = Clip3(plane_height - absolute_row, 0, 4);
       } while (++plane < planes_);
-      ApplySuperRes<false>(src, rows, /*line_buffer_offset=*/0, dst);
+      ApplySuperRes(src, rows, /*line_buffer_row=*/0, dst);
       // If we run out of rows, copy the last valid row (mimics the bottom
       // border extension).
       plane = kPlaneY;

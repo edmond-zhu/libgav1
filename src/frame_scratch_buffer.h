@@ -62,7 +62,7 @@ struct FrameScratchBuffer {
   // memcpy from an aligned buffer.
   AlignedDynamicBuffer<uint8_t, kCacheLineSize> threaded_window_buffer;
   // Buffer used to temporarily store the input row for applying SuperRes.
-  AlignedDynamicBuffer<uint8_t, 16> superres_line_buffer;
+  YuvBuffer superres_line_buffer;
   // Buffer used to store the loop restoration borders. This buffer will store 4
   // rows for every 64x64 block (4 rows for every 32x32 for chroma with
   // subsampling). The indices of the rows that are stored are specified in

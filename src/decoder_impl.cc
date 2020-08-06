@@ -1201,12 +1201,9 @@ StatusCode DecoderImpl::DecodeTiles(
   // border may need to be bigger. SuperRes border is needed only if we are
   // applying SuperRes in-place which is being done only in single threaded
   // mode.
-  const int bottom_border = GetBottomBorderPixels(
-      do_cdef, do_restoration,
-      do_superres &&
-          frame_scratch_buffer->threading_strategy.post_filter_thread_pool() ==
-              nullptr,
-      sequence_header.color_config.subsampling_y);
+  const int bottom_border =
+      GetBottomBorderPixels(do_cdef, do_restoration, do_superres,
+                            sequence_header.color_config.subsampling_y);
   current_frame->set_chroma_sample_position(
       sequence_header.color_config.chroma_sample_position);
   if (!current_frame->Realloc(sequence_header.color_config.bitdepth,
@@ -1364,19 +1361,23 @@ StatusCode DecoderImpl::DecodeTiles(
     }
   }
 
-  if (do_superres) {
+  if (do_superres && threading_strategy.post_filter_thread_pool() != nullptr) {
     const int num_threads =
-        1 + ((threading_strategy.post_filter_thread_pool() == nullptr)
-                 ? 0
-                 : threading_strategy.post_filter_thread_pool()->num_threads());
-    const size_t superres_line_buffer_size =
-        num_threads *
-        (MultiplyBy4(frame_header.columns4x4) +
-         MultiplyBy2(kSuperResHorizontalBorder) + kSuperResHorizontalPadding) *
-        (sequence_header.color_config.bitdepth == 8 ? sizeof(uint8_t)
-                                                    : sizeof(uint16_t));
-    if (!frame_scratch_buffer->superres_line_buffer.Resize(
-            superres_line_buffer_size)) {
+        threading_strategy.post_filter_thread_pool()->num_threads() + 1;
+    // subsampling_y is set to zero irrespective of the actual frame's
+    // subsampling since we need to store exactly |num_threads| rows of the
+    // down-scaled pixels.
+    // Left and right borders are for line extension. They are doubled for the Y
+    // plane to make sure the U and V planes have enough space after possible
+    // subsampling.
+    if (!frame_scratch_buffer->superres_line_buffer.Realloc(
+            sequence_header.color_config.bitdepth,
+            sequence_header.color_config.is_monochrome,
+            MultiplyBy4(frame_header.columns4x4), num_threads,
+            sequence_header.color_config.subsampling_x,
+            /*subsampling_y=*/0, 2 * kSuperResHorizontalBorder,
+            2 * (kSuperResHorizontalBorder + kSuperResHorizontalPadding), 0, 0,
+            nullptr, nullptr, nullptr)) {
       LIBGAV1_DLOG(ERROR, "Failed to resize superres line buffer.\n");
       return kStatusOutOfMemory;
     }

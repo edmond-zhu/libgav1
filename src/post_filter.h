@@ -107,8 +107,10 @@ class PostFilter {
   // * Cdef: Filtering output is written into |threaded_window_buffer_| and then
   //         copied into the |cdef_buffer_| (which is just |source_buffer_| with
   //         a shift to the top-left).
-  // * SuperRes: Near in-place filtering (with an additional line buffer for
-  //             each row). The output is written to |superres_buffer_|.
+  // * SuperRes: Near in-place filtering. Uses the |cdef_buffer_| and
+  //             |superres_line_buffer_| as the input and the output is written
+  //             into |superres_buffer_| (which is just |cdef_buffer_| with a
+  //             shift to the top).
   // * Restoration: Near in-place filtering.
   //                Uses the |superres_buffer_| and |loop_restoration_border_|
   //                as the input and the output is written into
@@ -127,8 +129,9 @@ class PostFilter {
   //            is copied into |loop_restoration_border_|.
   // * Cdef: In-place filtering. The output is written into |cdef_buffer_|
   //         (which is just |source_buffer_| with a shift to the top-left).
-  // * SuperRes: Near in-place filtering (with an additional line buffer for
-  //             each row). The output is written to |superres_buffer_|.
+  // * SuperRes: Near in-place filtering. Uses the |cdef_buffer_| as the input
+  //             and the output is written into |superres_buffer_| (which is
+  //             just |cdef_buffer_| with a shift to the top).
   // * Restoration: Near in-place filtering.
   //                Uses the |superres_buffer_| and |loop_restoration_border_|
   //                as the input and the output is written into
@@ -397,14 +400,11 @@ class PostFilter {
   // Functions for the SuperRes filter.
 
   // Applies super resolution for the |src| for |rows[plane]| rows of each
-  // plane. If |in_place| is true, the line buffer will not be used and the
-  // SuperRes output will be written to a row above the input row. If |in_place|
-  // is false, the line buffer will be used to store a copy of the input and the
-  // output will be written to the same row as the input row.
-  template <bool in_place>
+  // plane. If |thread_pool_| is not nullptr, one more row will be processed,
+  // the line buffer indicated by |line_buffer_row| will be used as the source.
   void ApplySuperRes(
       const std::array<uint8_t*, kMaxPlanes>& src,
-      const std::array<int, kMaxPlanes>& rows, size_t line_buffer_offset,
+      const std::array<int, kMaxPlanes>& rows, int line_buffer_row,
       const std::array<uint8_t*, kMaxPlanes>& dst);  // Section 7.16.
   // Applies SuperRes for the superblock row starting at |row4x4| with a height
   // of 4*|sb4x4|.
@@ -500,10 +500,11 @@ class PostFilter {
   // nullptr as well.
   uint8_t* const threaded_window_buffer_;
   LoopRestorationInfo* const restoration_info_;
-  // Pointer to the line buffer used by ApplySuperRes(). If SuperRes is on, then
-  // the buffer will be large enough to hold one downscaled row +
-  // 2 * kSuperResHorizontalBorder + kSuperResHorizontalPadding.
-  uint8_t* const superres_line_buffer_;
+  // Line buffer used by multi-threaded ApplySuperRes().
+  // In the multi-threaded case, this buffer will store the last downscaled row
+  // input of each thread to avoid overwrites by the first upscaled row output
+  // of the thread below it.
+  YuvBuffer& superres_line_buffer_;
   const BlockParametersHolder& block_parameters_;
   // Frame buffer to hold cdef filtered frame.
   YuvBuffer cdef_filtered_buffer_;
