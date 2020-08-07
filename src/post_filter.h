@@ -538,8 +538,10 @@ class PostFilter {
   int progress_row_ = -1;
 
   // A block buffer to hold the input that is converted to uint16_t before
-  // cdef filtering. Only used in single threaded case.
-  uint16_t cdef_block_[kCdefUnitSizeWithBorders * kCdefUnitSizeWithBorders * 3];
+  // cdef filtering. Only used in single threaded case. Y plane is processed
+  // separately. U and V planes are processed together. So it is sufficient to
+  // have this buffer to accommodate 2 planes at a time.
+  uint16_t cdef_block_[kCdefUnitSizeWithBorders * kCdefUnitSizeWithBorders * 2];
 
   template <int bitdepth, typename Pixel>
   friend class PostFilterSuperResTest;

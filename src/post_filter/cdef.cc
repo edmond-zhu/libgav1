@@ -129,7 +129,8 @@ void PostFilter::PrepareCdefBlock(int block_width4x4, int block_height4x4,
   const int cdef_border_row_offset = DivideBy4(row4x4) - (is_frame_top ? 0 : 2);
 
   for (int plane = y_plane ? kPlaneY : kPlaneU; plane < max_planes; ++plane) {
-    uint16_t* cdef_src = cdef_source + plane * kCdefUnitSizeWithBorders *
+    uint16_t* cdef_src = cdef_source + static_cast<int>(plane == kPlaneV) *
+                                           kCdefUnitSizeWithBorders *
                                            kCdefUnitSizeWithBorders;
     const int src_stride = frame_buffer_.stride(plane) / sizeof(Pixel);
     const Pixel* src_buffer =
@@ -327,7 +328,8 @@ void PostFilter::ApplyCdefForOneUnit(uint16_t* cdef_block, const int index,
         frame_buffer_.stride(plane) * (kStep >> subsampling_y_[plane]);
     cdef_src_row_base[plane] =
         cdef_block +
-        plane * kCdefUnitSizeWithBorders * kCdefUnitSizeWithBorders +
+        static_cast<int>(plane == kPlaneV) * kCdefUnitSizeWithBorders *
+            kCdefUnitSizeWithBorders +
         kCdefBorder * kCdefUnitSizeWithBorders + kCdefBorder;
     cdef_src_row_base_stride[plane] =
         kCdefUnitSizeWithBorders * (kStep >> subsampling_y_[plane]);
@@ -625,7 +627,7 @@ void PostFilter::ApplyCdefForOneSuperBlockRow(int row4x4_start, int sb4x4,
 
 void PostFilter::ApplyCdefWorker(std::atomic<int>* row4x4_atomic) {
   int row4x4;
-  uint16_t cdef_block[kCdefUnitSizeWithBorders * kCdefUnitSizeWithBorders * 3];
+  uint16_t cdef_block[kCdefUnitSizeWithBorders * kCdefUnitSizeWithBorders * 2];
   while ((row4x4 = row4x4_atomic->fetch_add(
               kStep64x64, std::memory_order_relaxed)) < frame_header_.rows4x4) {
     const int block_height4x4 =
