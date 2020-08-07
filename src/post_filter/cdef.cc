@@ -403,29 +403,28 @@ void PostFilter::ApplyCdefForOneUnit(uint16_t* cdef_block, const int index,
 
         int variance = 0;
         if (compute_direction_and_variance) {
-          if (thread_pool_ == nullptr) {
+          if (thread_pool_ == nullptr ||
+              row4x4 + kStep4x4 < row4x4_start + block_height4x4) {
             dsp_.cdef_direction(src_buffer, src_stride, &direction_y[y_index],
                                 &variance);
+          } else if (sizeof(Pixel) == 2) {
+            dsp_.cdef_direction(cdef_src, kCdefUnitSizeWithBorders * 2,
+                                &direction_y[y_index], &variance);
           } else {
-            if (sizeof(Pixel) == 2) {
-              dsp_.cdef_direction(cdef_src, kCdefUnitSizeWithBorders * 2,
-                                  &direction_y[y_index], &variance);
-            } else {
-              // TODO(vigneshv): This copy can be avoided by finding direction
-              // for the entire frame in a separate loop before beginning to
-              // apply CDEF. This copy seems cheap/performant and so we can
-              // stick with this for now.
-              uint8_t direction_src[8][8];
-              const uint16_t* cdef_src_line = cdef_src;
-              for (auto& direction_src_line : direction_src) {
-                for (int i = 0; i < 8; ++i) {
-                  direction_src_line[i] = cdef_src_line[i];
-                }
-                cdef_src_line += kCdefUnitSizeWithBorders;
+            // If we are in the last row4x4 for this unit, then the last two
+            // input rows have to come from |cdef_border_|. Since we already
+            // have |cdef_src| populated correctly, use that as the input
+            // for the direction process.
+            uint8_t direction_src[8][8];
+            const uint16_t* cdef_src_line = cdef_src;
+            for (auto& direction_src_line : direction_src) {
+              for (int i = 0; i < 8; ++i) {
+                direction_src_line[i] = cdef_src_line[i];
               }
-              dsp_.cdef_direction(direction_src, 8, &direction_y[y_index],
-                                  &variance);
+              cdef_src_line += kCdefUnitSizeWithBorders;
             }
+            dsp_.cdef_direction(direction_src, 8, &direction_y[y_index],
+                                &variance);
           }
         }
         const int direction =
