@@ -104,9 +104,10 @@ class PostFilter {
   //            If cdef and loop restoration are both on, then 4 rows (as
   //            specified by |kLoopRestorationBorderRows|) in every 64x64 block
   //            is copied into |loop_restoration_border_|.
-  // * Cdef: Filtering output is written into |threaded_window_buffer_| and then
-  //         copied into the |cdef_buffer_| (which is just |source_buffer_| with
-  //         a shift to the top-left).
+  // * Cdef: Near in-place filtering. Uses the |source_buffer_| and
+  //         |cdef_border_| as the input and the output is written into
+  //         |cdef_buffer_| (which is just |source_buffer_| with a shift to the
+  //         top-left).
   // * SuperRes: Near in-place filtering. Uses the |cdef_buffer_| and
   //             |superres_line_buffer_| as the input and the output is written
   //             into |superres_buffer_| (which is just |cdef_buffer_| with a
@@ -230,30 +231,13 @@ class PostFilter {
     return GetBufferOffset(source_buffer_[plane], frame_buffer_.stride(plane),
                            plane, row4x4, column4x4);
   }
-
+  uint8_t* GetCdefBuffer(Plane plane, int row4x4, int column4x4) const {
+    return GetBufferOffset(cdef_buffer_[plane], frame_buffer_.stride(plane),
+                           plane, row4x4, column4x4);
+  }
   uint8_t* GetSuperResBuffer(Plane plane, int row4x4, int column4x4) const {
     return GetBufferOffset(superres_buffer_[plane], frame_buffer_.stride(plane),
                            plane, row4x4, column4x4);
-  }
-
-  static int GetWindowBufferWidth(const ThreadPool* const thread_pool,
-                                  const ObuFrameHeader& frame_header) {
-    return (thread_pool == nullptr) ? 0
-                                    : Align(frame_header.upscaled_width, 64);
-  }
-
-  // For multi-threaded cdef, window height is the minimum of the following two
-  // quantities:
-  //  1) thread_count * 64
-  //  2) frame_height rounded up to the nearest power of 64
-  // Where 64 is the block size for cdef and loop restoration.
-  static int GetWindowBufferHeight(const ThreadPool* const thread_pool,
-                                   const ObuFrameHeader& frame_header) {
-    if (thread_pool == nullptr) return 0;
-    const int thread_count = 1 + thread_pool->num_threads();
-    const int window_height = MultiplyBy64(thread_count);
-    const int adjusted_frame_height = Align(frame_header.height, 64);
-    return std::min(adjusted_frame_height, window_height);
   }
 
   template <typename Pixel>
@@ -365,9 +349,9 @@ class PostFilter {
 
   // Functions for the cdef filter.
 
-  uint8_t* GetCdefBufferAndStride(int start_x, int start_y, int plane,
-                                  int window_buffer_plane_size,
-                                  int* cdef_stride) const;
+  // Copies the deblocked pixels necessary for use by the multi-threaded cdef
+  // implementation into |cdef_border_|.
+  void SetupCdefBorder(int row4x4);
   // This function prepares the input source block for cdef filtering. The input
   // source block contains a 12x12 block, with the inner 8x8 as the desired
   // filter region. It pads the block if the 12x12 block includes out of frame
@@ -377,6 +361,32 @@ class PostFilter {
   void PrepareCdefBlock(int block_width4x4, int block_height4x4, int row4x4,
                         int column4x4, uint16_t* cdef_source,
                         ptrdiff_t cdef_stride, bool y_plane);
+  // Helper function used by ApplyCdefForOneUnit. Copies the superblock at
+  // |row4x4_start| and |column4x4_start| of height |block_height4x4| and width
+  // |block_width4x4| as follows:
+  //   * If |thread_pool_| is nullptr or if |is_frame_bottom| is true, then all
+  //     the rows are copied from |src_row_buffer_base|.
+  //   * Otherwise:
+  //       - First 62 (30 for chrome with subsampling) rows are copied from
+  //         |src_buffer_row_base|.
+  //       - Last 2 rows are copied from |cdef_border_|.
+  // This helper function is used to copy the pixels in cases where
+  // PrepareCdefBlock is not invoked.
+  void CopyBlockForCdefHelper(Plane plane, const uint8_t* src_buffer_row_base,
+                              uint8_t* cdef_buffer_row_base, int block_width4x4,
+                              int block_height4x4, int row4x4_start,
+                              int column4x4_start, bool is_frame_bottom);
+  // Helper function used by ApplyCdefForOneUnit. Copies
+  // |block_width|x|block_height| pixels into |cdef_buffer| as follows:
+  //   * If |thread_pool_| is nullptr, the pixels are copied from |src_buffer|.
+  //   * Otherwise, the pixels are copied from |cdef_src|.
+  //  This helper function is used to copy the pixels in cases where
+  //  PrepareCdefBlock has been invoked.
+  void CopyBlockForCdefHelper(const uint8_t* src_buffer, int src_stride,
+                              uint8_t* cdef_buffer, int cdef_stride,
+                              const uint16_t* cdef_src, int block_width,
+                              int block_height);
+  // Applies cdef for one 64x64 block.
   template <typename Pixel>
   void ApplyCdefForOneUnit(uint16_t* cdef_block, int index, int block_width4x4,
                            int block_height4x4, int row4x4_start,
@@ -385,14 +395,13 @@ class PostFilter {
   // duplication.
   void ApplyCdefForOneSuperBlockRowHelper(uint16_t* cdef_block, int row4x4,
                                           int block_height4x4);
-  // Applies cdef filtering for the superblock row starting at |row4x4| with a
+  // Applies CDEF filtering for the superblock row starting at |row4x4| with a
   // height of 4*|sb4x4|.
   void ApplyCdefForOneSuperBlockRow(int row4x4, int sb4x4, bool is_last_row);
-  template <typename Pixel>
-  void ApplyCdefForOneRowInWindow(int row, int column);
-  template <typename Pixel>
+  // Worker function used for multi-threaded CDEF.
+  void ApplyCdefWorker(std::atomic<int>* row4x4_atomic);
+  // Applies CDEF filtering for the entire frame using multiple threads.
   void ApplyCdefThreaded();
-  void ApplyCdef();  // Sections 7.15 and 7.15.1.
 
   // Functions for the SuperRes filter.
 
@@ -489,13 +498,6 @@ class PostFilter {
   } super_res_info_[kMaxPlanes];
   const Array2D<int16_t>& cdef_index_;
   const Array2D<TransformSize>& inter_transform_sizes_;
-  // Pointer to the data buffer used for multi-threaded cdef.
-  // The size of this buffer must be at least
-  // |window_buffer_width_| * |window_buffer_height_| * |pixel_size_|.
-  // Or |planes_| times that for multi-threaded cdef.
-  // If |thread_pool_| is nullptr, then this buffer is not used and can be
-  // nullptr as well.
-  uint8_t* const threaded_window_buffer_;
   LoopRestorationInfo* const restoration_info_;
   // Line buffer used by multi-threaded ApplySuperRes().
   // In the multi-threaded case, this buffer will store the last downscaled row
@@ -519,6 +521,7 @@ class PostFilter {
   // A view into |frame_buffer_| that points to the output of the Loop Restored
   // planes (to facilitate in-place Loop Restoration).
   uint8_t* loop_restoration_buffer_[kMaxPlanes];
+  YuvBuffer& cdef_border_;
   // Buffer used to store the border pixels that are necessary for loop
   // restoration. This buffer will store 4 rows for every 64x64 block (4 rows
   // for every 32x32 for chroma with subsampling). The indices of the rows that
@@ -530,8 +533,6 @@ class PostFilter {
   YuvBuffer& loop_restoration_border_;
   const uint8_t do_post_filter_mask_;
   ThreadPool* const thread_pool_;
-  const int window_buffer_width_;
-  const int window_buffer_height_;
 
   // Tracks the progress of the post filters.
   int progress_row_ = -1;

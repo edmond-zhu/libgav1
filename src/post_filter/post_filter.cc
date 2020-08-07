@@ -165,18 +165,15 @@ PostFilter::PostFilter(const ObuFrameHeader& frame_header,
                             frame_header.loop_filter.level[kPlaneV + 1] != 0),
       cdef_index_(frame_scratch_buffer->cdef_index),
       inter_transform_sizes_(frame_scratch_buffer->inter_transform_sizes),
-      threaded_window_buffer_(
-          frame_scratch_buffer->threaded_window_buffer.get()),
       restoration_info_(&frame_scratch_buffer->loop_restoration_info),
       superres_line_buffer_(frame_scratch_buffer->superres_line_buffer),
       block_parameters_(frame_scratch_buffer->block_parameters_holder),
       frame_buffer_(*frame_buffer),
+      cdef_border_(frame_scratch_buffer->cdef_border),
       loop_restoration_border_(frame_scratch_buffer->loop_restoration_border),
       do_post_filter_mask_(do_post_filter_mask),
       thread_pool_(
-          frame_scratch_buffer->threading_strategy.post_filter_thread_pool()),
-      window_buffer_width_(GetWindowBufferWidth(thread_pool_, frame_header)),
-      window_buffer_height_(GetWindowBufferHeight(thread_pool_, frame_header)) {
+          frame_scratch_buffer->threading_strategy.post_filter_thread_pool()) {
   const int8_t zero_delta_lf[kFrameLfCount] = {};
   ComputeDeblockFilterLevels(zero_delta_lf, deblock_filter_levels_);
   if (DoSuperRes()) {
@@ -495,7 +492,13 @@ void PostFilter::ApplyFilteringThreaded() {
       SetupLoopRestorationBorder(row4x4, kNum4x4InLoopFilterUnit);
     }
   }
-  if (DoCdef()) ApplyCdef();
+  if (DoCdef()) {
+    for (int row4x4 = 0; row4x4 < frame_header_.rows4x4;
+         row4x4 += kNum4x4InLoopFilterUnit) {
+      SetupCdefBorder(row4x4);
+    }
+    ApplyCdefThreaded();
+  }
   if (DoSuperRes()) ApplySuperResThreaded();
   if (DoRestoration()) {
     if (!DoCdef()) {

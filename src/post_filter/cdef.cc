@@ -26,6 +26,8 @@ constexpr uint8_t kCdefUvDirection[2][2][8] = {
     {{0, 1, 2, 3, 4, 5, 6, 7}, {1, 2, 2, 2, 3, 4, 6, 0}},
     {{7, 0, 2, 4, 5, 6, 6, 6}, {0, 1, 2, 3, 4, 5, 6, 7}}};
 
+constexpr int kCdefBorderRows[2][4] = {{0, 1, 62, 63}, {0, 1, 30, 31}};
+
 template <typename Pixel>
 void CopyRowForCdef(const Pixel* src, int block_width, int unit_width,
                     bool is_frame_left, bool is_frame_right,
@@ -72,23 +74,30 @@ void CopyPixels(const uint8_t* src, int src_stride, uint8_t* dst,
 
 }  // namespace
 
-uint8_t* PostFilter::GetCdefBufferAndStride(const int start_x,
-                                            const int start_y, const int plane,
-                                            const int window_buffer_plane_size,
-                                            int* cdef_stride) const {
-  if (thread_pool_ != nullptr) {
-    // write output to threaded_window_buffer.
-    *cdef_stride = window_buffer_width_ * pixel_size_;
-    const int column_window =
-        start_x % (window_buffer_width_ >> subsampling_x_[plane]);
-    const int row_window =
-        start_y % (window_buffer_height_ >> subsampling_y_[plane]);
-    return threaded_window_buffer_ + plane * window_buffer_plane_size +
-           row_window * (*cdef_stride) + column_window * pixel_size_;
-  }
-  // write output to |cdef_buffer_|.
-  *cdef_stride = frame_buffer_.stride(plane);
-  return cdef_buffer_[plane] + start_y * (*cdef_stride) + start_x * pixel_size_;
+void PostFilter::SetupCdefBorder(int row4x4) {
+  assert(row4x4 >= 0);
+  assert(DoCdef());
+  int plane = kPlaneY;
+  do {
+    const ptrdiff_t src_stride = frame_buffer_.stride(plane);
+    const ptrdiff_t dst_stride = cdef_border_.stride(plane);
+    const int row_offset = DivideBy4(row4x4);
+    const int num_pixels = SubsampledValue(
+        MultiplyBy4(frame_header_.columns4x4), subsampling_x_[plane]);
+    const int plane_height = SubsampledValue(MultiplyBy4(frame_header_.rows4x4),
+                                             subsampling_y_[plane]);
+    for (int i = 0; i < 4; ++i) {
+      const int row = kCdefBorderRows[subsampling_y_[plane]][i];
+      const int absolute_row =
+          (MultiplyBy4(row4x4) >> subsampling_y_[plane]) + row;
+      if (absolute_row >= plane_height) break;
+      const uint8_t* src =
+          GetSourceBuffer(static_cast<Plane>(plane), row4x4, 0) +
+          row * src_stride;
+      uint8_t* dst = cdef_border_.data(plane) + dst_stride * (row_offset + i);
+      memcpy(dst, src, num_pixels * pixel_size_);
+    }
+  } while (++plane < planes_);
 }
 
 template <typename Pixel>
@@ -117,6 +126,7 @@ void PostFilter::PrepareCdefBlock(int block_width4x4, int block_height4x4,
   const bool is_frame_top = row4x4 == 0;
   const bool is_frame_bottom = start_y + block_height >= plane_height;
   const int y_offset = is_frame_top ? 0 : kCdefBorder;
+  const int cdef_border_row_offset = DivideBy4(row4x4) - (is_frame_top ? 0 : 2);
 
   for (int plane = y_plane ? kPlaneY : kPlaneU; plane < max_planes; ++plane) {
     uint16_t* cdef_src = cdef_source + plane * kCdefUnitSizeWithBorders *
@@ -125,12 +135,23 @@ void PostFilter::PrepareCdefBlock(int block_width4x4, int block_height4x4,
     const Pixel* src_buffer =
         reinterpret_cast<const Pixel*>(source_buffer_[plane]) +
         (start_y - y_offset) * src_stride + start_x;
+    const int cdef_border_stride = cdef_border_.stride(plane) / sizeof(Pixel);
+    const Pixel* cdef_border =
+        (thread_pool_ == nullptr)
+            ? nullptr
+            : reinterpret_cast<const Pixel*>(cdef_border_.data(plane)) +
+                  cdef_border_row_offset * cdef_border_stride + start_x;
 
     // All the copying code will use negative indices for populating the left
     // border. So the starting point is set to kCdefBorder.
     cdef_src += kCdefBorder;
 
-    // Copy the top 2 rows.
+    // Copy the top 2 rows as follows;
+    // If is_frame_top is true, both the rows are set to kCdefLargeValue.
+    // Otherwise:
+    //   If multi-threaded filtering is off, the rows are copied from
+    //   |src_buffer|.
+    //   Otherwise, the rows are copied from |cdef_border|.
     if (is_frame_top) {
       for (int y = 0; y < kCdefBorder; ++y) {
         Memset(cdef_src - kCdefBorder, kCdefLargeValue,
@@ -138,24 +159,58 @@ void PostFilter::PrepareCdefBlock(int block_width4x4, int block_height4x4,
         cdef_src += cdef_stride;
       }
     } else {
+      const Pixel* top_border =
+          (thread_pool_ == nullptr) ? src_buffer : cdef_border;
+      const int top_border_stride =
+          (thread_pool_ == nullptr) ? src_stride : cdef_border_stride;
       for (int y = 0; y < kCdefBorder; ++y) {
-        CopyRowForCdef(src_buffer, block_width, unit_width, is_frame_left,
+        CopyRowForCdef(top_border, block_width, unit_width, is_frame_left,
                        is_frame_right, cdef_src);
-        src_buffer += src_stride;
+        top_border += top_border_stride;
         cdef_src += cdef_stride;
+        // We need to increment |src_buffer| and |cdef_border| in this loop to
+        // set them up for the subsequent loops below.
+        src_buffer += src_stride;
+        cdef_border += cdef_border_stride;
       }
     }
 
-    // Copy the body.
+    // Copy the body as follows;
+    // If multi-threaded filtering is off or if is_frame_bottom is true, all the
+    // rows are copied from |src_buffer|.
+    // Otherwise, the first |block_height|-kCdefBorder rows are copied from
+    // |src_buffer| and the last kCdefBorder rows are coped from |cdef_border|.
     int y = block_height;
+    const int y_threshold =
+        (thread_pool_ == nullptr || is_frame_bottom) ? 0 : kCdefBorder;
     do {
       CopyRowForCdef(src_buffer, block_width, unit_width, is_frame_left,
                      is_frame_right, cdef_src);
       cdef_src += cdef_stride;
       src_buffer += src_stride;
-    } while (--y != 0);
+    } while (--y != y_threshold);
 
-    // Copy the bottom 2 rows.
+    if (y > 0) {
+      assert(y == kCdefBorder);
+      // |cdef_border| now points to the top 2 rows of the current block. For
+      // the next loop, we need it to point to the bottom 2 rows of the
+      // current block. So increment it by 2 rows.
+      cdef_border += MultiplyBy2(cdef_border_stride);
+      for (int i = 0; i < kCdefBorder; ++i) {
+        CopyRowForCdef(cdef_border, block_width, unit_width, is_frame_left,
+                       is_frame_right, cdef_src);
+        cdef_src += cdef_stride;
+        cdef_border += cdef_border_stride;
+      }
+    }
+
+    // Copy the bottom 2 rows as follows;
+    // If is_frame_bottom is true, both the rows are set to kCdefLargeValue.
+    // Otherwise:
+    //   If multi-threaded filtering is off, the rows are copied from
+    //   |src_buffer|.
+    //   Otherwise, the rows are copied from |cdef_border|.
+    y = 0;
     if (is_frame_bottom) {
       do {
         Memset(cdef_src - kCdefBorder, kCdefLargeValue,
@@ -163,13 +218,82 @@ void PostFilter::PrepareCdefBlock(int block_width4x4, int block_height4x4,
         cdef_src += cdef_stride;
       } while (++y < kCdefBorder + unit_height - block_height);
     } else {
+      const Pixel* bottom_border =
+          (thread_pool_ == nullptr) ? src_buffer : cdef_border;
+      const int bottom_border_stride =
+          (thread_pool_ == nullptr) ? src_stride : cdef_border_stride;
       do {
-        CopyRowForCdef(src_buffer, block_width, unit_width, is_frame_left,
+        CopyRowForCdef(bottom_border, block_width, unit_width, is_frame_left,
                        is_frame_right, cdef_src);
-        src_buffer += src_stride;
+        bottom_border += bottom_border_stride;
         cdef_src += cdef_stride;
       } while (++y < kCdefBorder + unit_height - block_height);
     }
+  }
+}
+
+void PostFilter::CopyBlockForCdefHelper(Plane plane,
+                                        const uint8_t* src_buffer_row_base,
+                                        uint8_t* cdef_buffer_row_base,
+                                        int block_width4x4, int block_height4x4,
+                                        int row4x4_start, int column4x4_start,
+                                        bool is_frame_bottom) {
+  if (thread_pool_ == nullptr || is_frame_bottom) {
+    CopyPixels(src_buffer_row_base, frame_buffer_.stride(plane),
+               cdef_buffer_row_base, frame_buffer_.stride(plane),
+               MultiplyBy4(block_width4x4) >> subsampling_x_[plane],
+               MultiplyBy4(block_height4x4) >> subsampling_y_[plane],
+               pixel_size_);
+    return;
+  }
+  // Copy everything except the last kCdefBorder rows from
+  // |src_buffer_row_base|.
+  const int copy_height =
+      (MultiplyBy4(block_height4x4) >> subsampling_y_[plane]) - kCdefBorder;
+  CopyPixels(src_buffer_row_base, frame_buffer_.stride(plane),
+             cdef_buffer_row_base, frame_buffer_.stride(plane),
+             MultiplyBy4(block_width4x4) >> subsampling_x_[plane], copy_height,
+             pixel_size_);
+  // Copy the last kCdefBorder rows from |cdef_border_|.
+  const int start_x = MultiplyBy4(column4x4_start) >> subsampling_x_[plane];
+  const int cdef_border_row_offset = DivideBy4(row4x4_start) + 2;
+  const uint8_t* cdef_border_base =
+      cdef_border_.data(plane) +
+      cdef_border_row_offset * cdef_border_.stride(plane) +
+      start_x * pixel_size_;
+  uint8_t* cdef_dst =
+      cdef_buffer_row_base + copy_height * frame_buffer_.stride(plane);
+  CopyPixels(cdef_border_base, cdef_border_.stride(plane), cdef_dst,
+             frame_buffer_.stride(plane),
+             MultiplyBy4(block_width4x4) >> subsampling_x_[plane], kCdefBorder,
+             pixel_size_);
+}
+
+void PostFilter::CopyBlockForCdefHelper(const uint8_t* src_buffer,
+                                        int src_stride, uint8_t* cdef_buffer,
+                                        int cdef_stride,
+                                        const uint16_t* cdef_src,
+                                        int block_width, int block_height) {
+  if (thread_pool_ == nullptr) {
+    CopyPixels(src_buffer, src_stride, cdef_buffer, cdef_stride, block_width,
+               block_height, pixel_size_);
+    return;
+  }
+#if LIBGAV1_MAX_BITDEPTH >= 10
+  if (pixel_size_ == 2) {
+    CopyPixels(reinterpret_cast<const uint8_t*>(cdef_src),
+               kCdefUnitSizeWithBorders * pixel_size_, cdef_buffer, cdef_stride,
+               block_width, block_height, pixel_size_);
+    return;
+  }
+#endif
+  uint8_t* dst = cdef_buffer;
+  for (int y = 0; y < block_height; ++y) {
+    for (int x = 0; x < block_width; ++x) {
+      dst[x] = cdef_src[x];
+    }
+    dst += cdef_stride;
+    cdef_src += kCdefUnitSizeWithBorders;
   }
 }
 
@@ -183,10 +307,7 @@ void PostFilter::ApplyCdefForOneUnit(uint16_t* cdef_block, const int index,
   static constexpr int kStep = 8;
   static constexpr int kStep4x4 = 2;
 
-  const int window_buffer_plane_size =
-      window_buffer_width_ * window_buffer_height_ * sizeof(Pixel);
   int cdef_buffer_row_base_stride[kMaxPlanes];
-  int cdef_buffer_stride[kMaxPlanes];
   uint8_t* cdef_buffer_row_base[kMaxPlanes];
   int src_buffer_row_base_stride[kMaxPlanes];
   const uint8_t* src_buffer_row_base[kMaxPlanes];
@@ -196,16 +317,12 @@ void PostFilter::ApplyCdefForOneUnit(uint16_t* cdef_block, const int index,
   assert(planes_ >= 1);
   int plane = kPlaneY;
   do {
-    const int start_y = MultiplyBy4(row4x4_start) >> subsampling_y_[plane];
-    const int start_x = MultiplyBy4(column4x4_start) >> subsampling_x_[plane];
-    cdef_buffer_row_base[plane] = GetCdefBufferAndStride(
-        start_x, start_y, plane, window_buffer_plane_size,
-        &cdef_buffer_stride[plane]);
+    cdef_buffer_row_base[plane] =
+        GetCdefBuffer(static_cast<Plane>(plane), row4x4_start, column4x4_start);
     cdef_buffer_row_base_stride[plane] =
-        cdef_buffer_stride[plane] * (kStep >> subsampling_y_[plane]);
-    src_buffer_row_base[plane] = source_buffer_[plane] +
-                                 start_y * frame_buffer_.stride(plane) +
-                                 start_x * sizeof(Pixel);
+        frame_buffer_.stride(plane) * (kStep >> subsampling_y_[plane]);
+    src_buffer_row_base[plane] = GetSourceBuffer(static_cast<Plane>(plane),
+                                                 row4x4_start, column4x4_start);
     src_buffer_row_base_stride[plane] =
         frame_buffer_.stride(plane) * (kStep >> subsampling_y_[plane]);
     cdef_src_row_base[plane] =
@@ -217,14 +334,16 @@ void PostFilter::ApplyCdefForOneUnit(uint16_t* cdef_block, const int index,
     column_step[plane] = (kStep >> subsampling_x_[plane]) * sizeof(Pixel);
   } while (++plane < planes_);
 
+  const bool is_frame_bottom =
+      row4x4_start + kStep64x64 >= frame_header_.rows4x4;
+
   if (index == -1) {
     int plane = kPlaneY;
     do {
-      CopyPixels(src_buffer_row_base[plane], frame_buffer_.stride(plane),
-                 cdef_buffer_row_base[plane], cdef_buffer_stride[plane],
-                 MultiplyBy4(block_width4x4) >> subsampling_x_[plane],
-                 MultiplyBy4(block_height4x4) >> subsampling_y_[plane],
-                 sizeof(Pixel));
+      CopyBlockForCdefHelper(
+          static_cast<Plane>(plane), src_buffer_row_base[plane],
+          cdef_buffer_row_base[plane], block_width4x4, block_height4x4,
+          row4x4_start, column4x4_start, is_frame_bottom);
     } while (++plane < planes_);
     return;
   }
@@ -265,7 +384,7 @@ void PostFilter::ApplyCdefForOneUnit(uint16_t* cdef_block, const int index,
     do {
       const int block_width = kStep;
       const int block_height = kStep;
-      const int cdef_stride = cdef_buffer_stride[kPlaneY];
+      const int cdef_stride = frame_buffer_.stride(kPlaneY);
       uint8_t* const cdef_buffer = cdef_buffer_base;
       const uint16_t* const cdef_src = cdef_src_base;
       const int src_stride = frame_buffer_.stride(kPlaneY);
@@ -276,16 +395,38 @@ void PostFilter::ApplyCdefForOneUnit(uint16_t* cdef_block, const int index,
 
       if (skip) {  // No cdef filtering.
         direction_y[y_index] = kCdefSkip;
-        CopyPixels(src_buffer, src_stride, cdef_buffer, cdef_stride,
-                   block_width, block_height, sizeof(Pixel));
+        CopyBlockForCdefHelper(src_buffer, src_stride, cdef_buffer, cdef_stride,
+                               cdef_src, block_width, block_height);
       } else {
         // Zero out residual skip flag.
         direction_y[y_index] = 0;
 
         int variance = 0;
         if (compute_direction_and_variance) {
-          dsp_.cdef_direction(src_buffer, src_stride, &direction_y[y_index],
-                              &variance);
+          if (thread_pool_ == nullptr) {
+            dsp_.cdef_direction(src_buffer, src_stride, &direction_y[y_index],
+                                &variance);
+          } else {
+            if (sizeof(Pixel) == 2) {
+              dsp_.cdef_direction(cdef_src, kCdefUnitSizeWithBorders * 2,
+                                  &direction_y[y_index], &variance);
+            } else {
+              // TODO(vigneshv): This copy can be avoided by finding direction
+              // for the entire frame in a separate loop before beginning to
+              // apply CDEF. This copy seems cheap/performant and so we can
+              // stick with this for now.
+              uint8_t direction_src[8][8];
+              const uint16_t* cdef_src_line = cdef_src;
+              for (auto& direction_src_line : direction_src) {
+                for (int i = 0; i < 8; ++i) {
+                  direction_src_line[i] = cdef_src_line[i];
+                }
+                cdef_src_line += kCdefUnitSizeWithBorders;
+              }
+              dsp_.cdef_direction(direction_src, 8, &direction_y[y_index],
+                                  &variance);
+            }
+          }
         }
         const int direction =
             (y_primary_strength == 0) ? 0 : direction_y[y_index];
@@ -295,10 +436,10 @@ void PostFilter::ApplyCdefForOneUnit(uint16_t* cdef_block, const int index,
             (variance != 0)
                 ? (y_primary_strength * (4 + variance_strength) + 8) >> 4
                 : 0;
-
         if ((primary_strength | y_secondary_strength) == 0) {
-          CopyPixels(src_buffer, src_stride, cdef_buffer, cdef_stride,
-                     block_width, block_height, sizeof(Pixel));
+          CopyBlockForCdefHelper(src_buffer, src_stride, cdef_buffer,
+                                 cdef_stride, cdef_src, block_width,
+                                 block_height);
         } else {
           const int strength_index =
               y_strength_index | (static_cast<int>(primary_strength == 0) << 1);
@@ -337,11 +478,10 @@ void PostFilter::ApplyCdefForOneUnit(uint16_t* cdef_block, const int index,
 
   if ((uv_primary_strength | uv_secondary_strength) == 0) {
     for (int plane = kPlaneU; plane <= kPlaneV; ++plane) {
-      CopyPixels(src_buffer_row_base[plane], frame_buffer_.stride(plane),
-                 cdef_buffer_row_base[plane], cdef_buffer_stride[plane],
-                 MultiplyBy4(block_width4x4) >> subsampling_x_[plane],
-                 MultiplyBy4(block_height4x4) >> subsampling_y_[plane],
-                 sizeof(Pixel));
+      CopyBlockForCdefHelper(
+          static_cast<Plane>(plane), src_buffer_row_base[plane],
+          cdef_buffer_row_base[plane], block_width4x4, block_height4x4,
+          row4x4_start, column4x4_start, is_frame_bottom);
     }
     return;
   }
@@ -369,7 +509,7 @@ void PostFilter::ApplyCdefForOneUnit(uint16_t* cdef_block, const int index,
       const uint16_t* cdef_src_base = cdef_src_row_base[plane];
       int column4x4 = column4x4_start;
       do {
-        const int cdef_stride = cdef_buffer_stride[plane];
+        const int cdef_stride = frame_buffer_.stride(plane);
         uint8_t* const cdef_buffer = cdef_buffer_base;
         const int src_stride = frame_buffer_.stride(plane);
         const uint8_t* const src_buffer = src_buffer_base;
@@ -378,8 +518,9 @@ void PostFilter::ApplyCdefForOneUnit(uint16_t* cdef_block, const int index,
         int dual_cdef = 0;
 
         if (skip) {  // No cdef filtering.
-          CopyPixels(src_buffer, src_stride, cdef_buffer, cdef_stride,
-                     block_width, block_height, sizeof(Pixel));
+          CopyBlockForCdefHelper(src_buffer, src_stride, cdef_buffer,
+                                 cdef_stride, cdef_src, block_width,
+                                 block_height);
         } else {
           // Make sure block pair is not out of bounds.
           if (column4x4 + (kStep4x4 * 2) <= column4x4_start + block_width4x4) {
@@ -483,97 +624,31 @@ void PostFilter::ApplyCdefForOneSuperBlockRow(int row4x4_start, int sb4x4,
   }
 }
 
-template <typename Pixel>
-void PostFilter::ApplyCdefForOneRowInWindow(const int row4x4,
-                                            const int column4x4_start) {
+void PostFilter::ApplyCdefWorker(std::atomic<int>* row4x4_atomic) {
+  int row4x4;
   uint16_t cdef_block[kCdefUnitSizeWithBorders * kCdefUnitSizeWithBorders * 3];
-
-  for (int column4x4_64x64 = 0;
-       column4x4_64x64 < std::min(DivideBy4(window_buffer_width_),
-                                  frame_header_.columns4x4 - column4x4_start);
-       column4x4_64x64 += kStep64x64) {
-    const int column4x4 = column4x4_start + column4x4_64x64;
-    const int index = cdef_index_[DivideBy16(row4x4)][DivideBy16(column4x4)];
-    const int block_width4x4 =
-        std::min(kStep64x64, frame_header_.columns4x4 - column4x4);
+  while ((row4x4 = row4x4_atomic->fetch_add(
+              kStep64x64, std::memory_order_relaxed)) < frame_header_.rows4x4) {
     const int block_height4x4 =
         std::min(kStep64x64, frame_header_.rows4x4 - row4x4);
-
-    ApplyCdefForOneUnit<Pixel>(cdef_block, index, block_width4x4,
-                               block_height4x4, row4x4, column4x4);
+    ApplyCdefForOneSuperBlockRowHelper(cdef_block, row4x4, block_height4x4);
   }
 }
 
-// Each thread processes one row inside the window.
-// Y, U, V planes are processed together inside one thread.
-template <typename Pixel>
 void PostFilter::ApplyCdefThreaded() {
-  assert((window_buffer_height_ & 63) == 0);
+  std::atomic<int> row4x4(0);
   const int num_workers = thread_pool_->num_threads();
-  const int window_buffer_plane_size =
-      window_buffer_width_ * window_buffer_height_;
-  const int window_buffer_height4x4 = DivideBy4(window_buffer_height_);
-  for (int row4x4 = 0; row4x4 < frame_header_.rows4x4;
-       row4x4 += window_buffer_height4x4) {
-    const int actual_window_height4x4 =
-        std::min(window_buffer_height4x4, frame_header_.rows4x4 - row4x4);
-    const int vertical_units_per_window =
-        DivideBy16(actual_window_height4x4 + 15);
-    for (int column4x4 = 0; column4x4 < frame_header_.columns4x4;
-         column4x4 += DivideBy4(window_buffer_width_)) {
-      const int jobs_for_threadpool =
-          vertical_units_per_window * num_workers / (num_workers + 1);
-      BlockingCounter pending_jobs(jobs_for_threadpool);
-      int job_count = 0;
-      for (int row64x64 = 0; row64x64 < actual_window_height4x4;
-           row64x64 += kStep64x64) {
-        if (job_count < jobs_for_threadpool) {
-          thread_pool_->Schedule(
-              [this, row4x4, column4x4, row64x64, &pending_jobs]() {
-                ApplyCdefForOneRowInWindow<Pixel>(row4x4 + row64x64, column4x4);
-                pending_jobs.Decrement();
-              });
-        } else {
-          ApplyCdefForOneRowInWindow<Pixel>(row4x4 + row64x64, column4x4);
-        }
-        ++job_count;
-      }
-      pending_jobs.Wait();
-
-      // Copy |threaded_window_buffer_| to |cdef_buffer_|.
-      int plane = kPlaneY;
-      do {
-        const ptrdiff_t src_stride =
-            frame_buffer_.stride(plane) / sizeof(Pixel);
-        const int plane_row = MultiplyBy4(row4x4) >> subsampling_y_[plane];
-        const int plane_column =
-            MultiplyBy4(column4x4) >> subsampling_x_[plane];
-        int copy_width = std::min(frame_header_.columns4x4 - column4x4,
-                                  DivideBy4(window_buffer_width_));
-        copy_width = MultiplyBy4(copy_width) >> subsampling_x_[plane];
-        int copy_height =
-            std::min(frame_header_.rows4x4 - row4x4, window_buffer_height4x4);
-        copy_height = MultiplyBy4(copy_height) >> subsampling_y_[plane];
-        CopyPlane<Pixel>(
-            reinterpret_cast<const Pixel*>(threaded_window_buffer_) +
-                plane * window_buffer_plane_size,
-            window_buffer_width_, copy_width, copy_height,
-            reinterpret_cast<Pixel*>(cdef_buffer_[plane]) +
-                plane_row * src_stride + plane_column,
-            src_stride);
-      } while (++plane < planes_);
-    }
+  BlockingCounter pending_workers(num_workers);
+  for (int i = 0; i < num_workers; ++i) {
+    thread_pool_->Schedule([this, &row4x4, &pending_workers]() {
+      ApplyCdefWorker(&row4x4);
+      pending_workers.Decrement();
+    });
   }
-}
-
-void PostFilter::ApplyCdef() {
-#if LIBGAV1_MAX_BITDEPTH >= 10
-  if (bitdepth_ >= 10) {
-    ApplyCdefThreaded<uint16_t>();
-    return;
-  }
-#endif
-  ApplyCdefThreaded<uint8_t>();
+  // Have the current thread partake in applying CDEF.
+  ApplyCdefWorker(&row4x4);
+  // Wait for the threadpool jobs to finish.
+  pending_workers.Wait();
 }
 
 }  // namespace libgav1

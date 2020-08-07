@@ -1315,29 +1315,20 @@ StatusCode DecoderImpl::DecodeTiles(
     }
   }
 
-  if (threading_strategy.post_filter_thread_pool() != nullptr &&
-      (do_cdef || do_restoration)) {
-    const int window_buffer_width = PostFilter::GetWindowBufferWidth(
-        threading_strategy.post_filter_thread_pool(), frame_header);
-    size_t threaded_window_buffer_size =
-        window_buffer_width *
-        PostFilter::GetWindowBufferHeight(
-            threading_strategy.post_filter_thread_pool(), frame_header) *
-        (sequence_header.color_config.bitdepth == 8 ? sizeof(uint8_t)
-                                                    : sizeof(uint16_t));
-    if (do_cdef) {
-      // TODO(chengchen): for cdef U, V planes, if there's subsampling, we can
-      // use smaller buffer.
-      threaded_window_buffer_size *= num_planes;
-    }
-    // To avoid false sharing, PostFilter's window width in bytes should be a
-    // multiple of the cache line size. For simplicity, we check the window
-    // width in pixels.
-    assert(window_buffer_width % kCacheLineSize == 0);
-    if (!frame_scratch_buffer->threaded_window_buffer.Resize(
-            threaded_window_buffer_size)) {
-      LIBGAV1_DLOG(ERROR,
-                   "Failed to resize threaded loop restoration buffer.\n");
+  if (threading_strategy.post_filter_thread_pool() != nullptr && do_cdef) {
+    // We need to store 4 rows per 64x64 unit.
+    const int num_units =
+        MultiplyBy4(RightShiftWithCeiling(frame_header.rows4x4, 4));
+    // subsampling_y is set to zero irrespective of the actual frame's
+    // subsampling since we need to store exactly |num_units| rows of the loop
+    // restoration border pixels.
+    if (!frame_scratch_buffer->cdef_border.Realloc(
+            sequence_header.color_config.bitdepth,
+            sequence_header.color_config.is_monochrome,
+            MultiplyBy4(frame_header.columns4x4), num_units,
+            sequence_header.color_config.subsampling_x,
+            /*subsampling_y=*/0, kBorderPixels, kBorderPixels, kBorderPixels,
+            kBorderPixels, nullptr, nullptr, nullptr)) {
       return kStatusOutOfMemory;
     }
   }
