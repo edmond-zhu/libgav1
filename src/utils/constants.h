@@ -125,11 +125,12 @@ enum {
   kSuperResScaleBits = 14,
   kSuperResExtraBits = kSuperResScaleBits - kSuperResFilterBits,
   kSuperResScaleMask = (1 << 14) - 1,
-  kSuperResHorizontalBorder = 8,
+  kSuperResHorizontalBorder = 4,
   kSuperResVerticalBorder = 1,
-  // The SIMD implementations of superres calculate up to 4 extra upscaled
-  // pixels which will over-read 2 downscaled pixels in the end of each row.
-  kSuperResHorizontalPadding = 2,
+  // The SIMD implementations of superres calculate up to 7 extra upscaled
+  // pixels which will over-read 5 downscaled pixels in the end of each row.
+  // Set the padding to 8 for alignment purposes.
+  kSuperResHorizontalPadding = 8,
   // TODO(chengchen): consider merging these constants:
   // kFilterBits, kWienerFilterBits, and kSgrProjPrecisionBits, which are all 7,
   // They are designed to match AV1 convolution, which increases coeff
