@@ -665,8 +665,8 @@ bool DaalaBitReader::ReadSymbolWithoutCdfUpdate(uint16_t* cdf) {
 template <int symbol_count>
 int DaalaBitReader::ReadSymbol(uint16_t* const cdf) {
   static_assert(symbol_count >= 3 && symbol_count <= 16, "");
-  if (symbol_count == 4) {
-    return ReadSymbol4(cdf);
+  if (symbol_count == 3 || symbol_count == 4) {
+    return ReadSymbol3Or4(cdf, symbol_count);
   }
   int symbol;
   if (symbol_count == 8) {
@@ -779,14 +779,15 @@ int DaalaBitReader::ReadSymbolImpl(const uint16_t* const cdf) {
   return symbol;
 }
 
-// Equivalent to ReadSymbol(cdf, 4), with the ReadSymbolImpl and UpdateCdf
+// Equivalent to ReadSymbol(cdf, [3,4]), with the ReadSymbolImpl and UpdateCdf
 // calls inlined.
-int DaalaBitReader::ReadSymbol4(uint16_t* const cdf) {
-  assert(cdf[3] == 0);
+int DaalaBitReader::ReadSymbol3Or4(uint16_t* const cdf,
+                                   const int symbol_count) {
+  assert(cdf[symbol_count - 1] == 0);
   uint32_t curr = values_in_range_;
   uint32_t prev;
   const auto symbol_value = static_cast<uint16_t>(window_diff_ >> bits_);
-  uint32_t delta = kMinimumProbabilityPerSymbol * 3;
+  uint32_t delta = kMinimumProbabilityPerSymbol * (symbol_count - 1);
   const uint32_t values_in_range_shifted = values_in_range_ >> 8;
 
   // Search through the |cdf| array to determine where the scaled cdf value and
@@ -804,11 +805,11 @@ int DaalaBitReader::ReadSymbol4(uint16_t* const cdf) {
   //    delta -= kMinimumProbabilityPerSymbol;
   //  } while (symbol_value < curr);
   //  if (allow_update_cdf_) {
-  //    UpdateCdf(cdf, 4, symbol);
+  //    UpdateCdf(cdf, [3,4], symbol);
   //  }
   //
-  // The do-while loop is unrolled with four iterations, and the UpdateCdf call
-  // is inlined and merged into the four iterations.
+  // The do-while loop is unrolled with three or four iterations, and the
+  // UpdateCdf call is inlined and merged into the iterations.
   int symbol = 0;
   // Iteration 0.
   prev = curr;
@@ -817,31 +818,36 @@ int DaalaBitReader::ReadSymbol4(uint16_t* const cdf) {
   if (symbol_value >= curr) {
     // symbol == 0.
     if (allow_update_cdf_) {
-      // Inlined version of UpdateCdf(cdf, 4, /*symbol=*/0).
-      const uint16_t count = cdf[4];
-      cdf[4] += static_cast<uint16_t>(count < 32);
-      const int rate = (4 | (count >> 4)) + 1;
+      // Inlined version of UpdateCdf(cdf, [3,4], /*symbol=*/0).
+      const uint16_t count = cdf[symbol_count];
+      cdf[symbol_count] += static_cast<uint16_t>(count < 32);
+      const int rate = (4 | (count >> 4)) + static_cast<int>(symbol_count == 4);
+      if (symbol_count == 4) {
 #if LIBGAV1_ENTROPY_DECODER_ENABLE_NEON
-      // 1. On Motorola Moto G5 Plus (running 32-bit Android 8.1.0), the ARM
-      // NEON code is slower. Consider using the C version if __arm__ is
-      // defined.
-      // 2. The ARM NEON code (compiled for arm64) is slightly slower on
-      // Samsung Galaxy S8+ (SM-G955FD).
-      uint16x4_t cdf_vec = vld1_u16(cdf);
-      const int16x4_t negative_rate = vdup_n_s16(-rate);
-      const uint16x4_t delta = vshl_u16(cdf_vec, negative_rate);
-      cdf_vec = vsub_u16(cdf_vec, delta);
-      vst1_u16(cdf, cdf_vec);
+        // 1. On Motorola Moto G5 Plus (running 32-bit Android 8.1.0), the ARM
+        // NEON code is slower. Consider using the C version if __arm__ is
+        // defined.
+        // 2. The ARM NEON code (compiled for arm64) is slightly slower on
+        // Samsung Galaxy S8+ (SM-G955FD).
+        uint16x4_t cdf_vec = vld1_u16(cdf);
+        const int16x4_t negative_rate = vdup_n_s16(-rate);
+        const uint16x4_t delta = vshl_u16(cdf_vec, negative_rate);
+        cdf_vec = vsub_u16(cdf_vec, delta);
+        vst1_u16(cdf, cdf_vec);
 #elif LIBGAV1_ENTROPY_DECODER_ENABLE_SSE4
-      __m128i cdf_vec = LoadLo8(cdf);
-      const __m128i delta = _mm_sra_epi16(cdf_vec, _mm_cvtsi32_si128(rate));
-      cdf_vec = _mm_sub_epi16(cdf_vec, delta);
-      StoreLo8(cdf, cdf_vec);
+        __m128i cdf_vec = LoadLo8(cdf);
+        const __m128i delta = _mm_sra_epi16(cdf_vec, _mm_cvtsi32_si128(rate));
+        cdf_vec = _mm_sub_epi16(cdf_vec, delta);
+        StoreLo8(cdf, cdf_vec);
 #else  // !LIBGAV1_ENTROPY_DECODER_ENABLE_SSE4
-      cdf[0] -= cdf[0] >> rate;
-      cdf[1] -= cdf[1] >> rate;
-      cdf[2] -= cdf[2] >> rate;
+        cdf[0] -= cdf[0] >> rate;
+        cdf[1] -= cdf[1] >> rate;
+        cdf[2] -= cdf[2] >> rate;
 #endif
+      } else {  // symbol_count == 3.
+        cdf[0] -= cdf[0] >> rate;
+        cdf[1] -= cdf[1] >> rate;
+      }
     }
     goto found;
   }
@@ -854,75 +860,82 @@ int DaalaBitReader::ReadSymbol4(uint16_t* const cdf) {
   if (symbol_value >= curr) {
     // symbol == 1.
     if (allow_update_cdf_) {
-      // Inlined version of UpdateCdf(cdf, 4, /*symbol=*/1).
-      const uint16_t count = cdf[4];
-      cdf[4] += static_cast<uint16_t>(count < 32);
-      const int rate = (4 | (count >> 4)) + 1;
+      // Inlined version of UpdateCdf(cdf, [3,4], /*symbol=*/1).
+      const uint16_t count = cdf[symbol_count];
+      cdf[symbol_count] += static_cast<uint16_t>(count < 32);
+      const int rate = (4 | (count >> 4)) + static_cast<int>(symbol_count == 4);
       cdf[0] += (kCdfMaxProbability - cdf[0]) >> rate;
       cdf[1] -= cdf[1] >> rate;
-      cdf[2] -= cdf[2] >> rate;
+      if (symbol_count == 4) cdf[2] -= cdf[2] >> rate;
     }
     goto found;
   }
   ++symbol;
-  delta -= kMinimumProbabilityPerSymbol;
-  // Iteration 2.
+  if (symbol_count == 4) {
+    delta -= kMinimumProbabilityPerSymbol;
+    // Iteration 2.
+    prev = curr;
+    curr = ((values_in_range_shifted * (cdf[symbol] >> kCdfPrecision)) >> 1) +
+           delta;
+    if (symbol_value >= curr) {
+      // symbol == 2.
+      if (allow_update_cdf_) {
+        // Inlined version of UpdateCdf(cdf, 4, /*symbol=*/2).
+        const uint16_t count = cdf[4];
+        cdf[4] += static_cast<uint16_t>(count < 32);
+        const int rate = (4 | (count >> 4)) + 1;
+        cdf[0] += (kCdfMaxProbability - cdf[0]) >> rate;
+        cdf[1] += (kCdfMaxProbability - cdf[1]) >> rate;
+        cdf[2] -= cdf[2] >> rate;
+      }
+      goto found;
+    }
+    ++symbol;
+  }
+  // |delta| is 0 for the last iteration.
+  // Iteration 2 (symbol_count == 3) or 3 (symbol_count == 4).
   prev = curr;
-  curr =
-      ((values_in_range_shifted * (cdf[symbol] >> kCdfPrecision)) >> 1) + delta;
-  if (symbol_value >= curr) {
-    // symbol == 2.
-    if (allow_update_cdf_) {
-      // Inlined version of UpdateCdf(cdf, 4, /*symbol=*/2).
-      const uint16_t count = cdf[4];
-      cdf[4] += static_cast<uint16_t>(count < 32);
-      const int rate = (4 | (count >> 4)) + 1;
+  // Since cdf[symbol_count - 1] is 0 and |delta| is 0, |curr| is also 0.
+  curr = 0;
+  // symbol == [2,3].
+  if (allow_update_cdf_) {
+    // Inlined version of UpdateCdf(cdf, [3,4], /*symbol=*/[2,3]).
+    const uint16_t count = cdf[symbol_count];
+    cdf[symbol_count] += static_cast<uint16_t>(count < 32);
+    const int rate = (4 | (count >> 4)) + static_cast<int>(symbol_count == 4);
+    if (symbol_count == 4) {
+#if LIBGAV1_ENTROPY_DECODER_ENABLE_NEON
+      // On Motorola Moto G5 Plus (running 32-bit Android 8.1.0), the ARM NEON
+      // code is a tiny bit slower. Consider using the C version if __arm__ is
+      // defined.
+      uint16x4_t cdf_vec = vld1_u16(cdf);
+      const uint16x4_t cdf_max_probability = vdup_n_u16(kCdfMaxProbability);
+      const int16x4_t diff =
+          vreinterpret_s16_u16(vsub_u16(cdf_max_probability, cdf_vec));
+      const int16x4_t negative_rate = vdup_n_s16(-rate);
+      const uint16x4_t delta =
+          vreinterpret_u16_s16(vshl_s16(diff, negative_rate));
+      cdf_vec = vadd_u16(cdf_vec, delta);
+      vst1_u16(cdf, cdf_vec);
+      cdf[3] = 0;
+#elif LIBGAV1_ENTROPY_DECODER_ENABLE_SSE4
+      __m128i cdf_vec = LoadLo8(cdf);
+      const __m128i cdf_max_probability =
+          _mm_shufflelo_epi16(_mm_cvtsi32_si128(kCdfMaxProbability), 0);
+      const __m128i diff = _mm_sub_epi16(cdf_max_probability, cdf_vec);
+      const __m128i delta = _mm_sra_epi16(diff, _mm_cvtsi32_si128(rate));
+      cdf_vec = _mm_add_epi16(cdf_vec, delta);
+      StoreLo8(cdf, cdf_vec);
+      cdf[3] = 0;
+#else  // !LIBGAV1_ENTROPY_DECODER_ENABLE_SSE4
       cdf[0] += (kCdfMaxProbability - cdf[0]) >> rate;
       cdf[1] += (kCdfMaxProbability - cdf[1]) >> rate;
-      cdf[2] -= cdf[2] >> rate;
-    }
-    goto found;
-  }
-  ++symbol;
-  // |delta| is 0 for the last iteration.
-  // Iteration 3.
-  prev = curr;
-  // Since cdf[3] is 0 and |delta| is 0, |curr| is also 0.
-  curr = 0;
-  // symbol == 3.
-  if (allow_update_cdf_) {
-    // Inlined version of UpdateCdf(cdf, 4, /*symbol=*/3).
-    const uint16_t count = cdf[4];
-    cdf[4] += static_cast<uint16_t>(count < 32);
-    const int rate = (4 | (count >> 4)) + 1;
-#if LIBGAV1_ENTROPY_DECODER_ENABLE_NEON
-    // On Motorola Moto G5 Plus (running 32-bit Android 8.1.0), the ARM NEON
-    // code is a tiny bit slower. Consider using the C version if __arm__ is
-    // defined.
-    uint16x4_t cdf_vec = vld1_u16(cdf);
-    const uint16x4_t cdf_max_probability = vdup_n_u16(kCdfMaxProbability);
-    const int16x4_t diff =
-        vreinterpret_s16_u16(vsub_u16(cdf_max_probability, cdf_vec));
-    const int16x4_t negative_rate = vdup_n_s16(-rate);
-    const uint16x4_t delta =
-        vreinterpret_u16_s16(vshl_s16(diff, negative_rate));
-    cdf_vec = vadd_u16(cdf_vec, delta);
-    vst1_u16(cdf, cdf_vec);
-    cdf[3] = 0;
-#elif LIBGAV1_ENTROPY_DECODER_ENABLE_SSE4
-    __m128i cdf_vec = LoadLo8(cdf);
-    const __m128i cdf_max_probability =
-        _mm_shufflelo_epi16(_mm_cvtsi32_si128(kCdfMaxProbability), 0);
-    const __m128i diff = _mm_sub_epi16(cdf_max_probability, cdf_vec);
-    const __m128i delta = _mm_sra_epi16(diff, _mm_cvtsi32_si128(rate));
-    cdf_vec = _mm_add_epi16(cdf_vec, delta);
-    StoreLo8(cdf, cdf_vec);
-    cdf[3] = 0;
-#else  // !LIBGAV1_ENTROPY_DECODER_ENABLE_SSE4
-    cdf[0] += (kCdfMaxProbability - cdf[0]) >> rate;
-    cdf[1] += (kCdfMaxProbability - cdf[1]) >> rate;
-    cdf[2] += (kCdfMaxProbability - cdf[2]) >> rate;
+      cdf[2] += (kCdfMaxProbability - cdf[2]) >> rate;
 #endif
+    } else {  // symbol_count == 3.
+      cdf[0] += (kCdfMaxProbability - cdf[0]) >> rate;
+      cdf[1] += (kCdfMaxProbability - cdf[1]) >> rate;
+    }
   }
 found:
   // End of unrolled do-while loop.
