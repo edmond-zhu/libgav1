@@ -305,6 +305,13 @@ class PostFilter {
     } while (--height != 0);
   }
 
+  // Worker function used for multi-threaded implementation of Deblocking, CDEF
+  // and Loop Restoration.
+  using WorkerFunction = void (PostFilter::*)(std::atomic<int>* row4x4_atomic);
+  // Schedules |worker| jobs to the |thread_pool_|, runs them in the calling
+  // thread and returns once all the jobs are completed.
+  void RunJobs(WorkerFunction worker);
+
   // Functions for the Deblocking filter.
 
   static int GetIndex(int row4x4) { return DivideBy4(row4x4); }
@@ -342,10 +349,19 @@ class PostFilter {
   // Applies deblock filtering for the superblock row starting at |row4x4| with
   // a height of 4*|sb4x4|.
   void ApplyDeblockFilterForOneSuperBlockRow(int row4x4, int sb4x4);
-  void DeblockFilterWorker(int jobs_per_plane, const Plane* planes,
-                           int num_planes, std::atomic<int>* job_counter,
-                           DeblockFilter deblock_filter);
-  void ApplyDeblockFilterThreaded();
+  // Worker function used for multi-threaded deblocking.
+  template <LoopFilterType loop_filter_type>
+  void DeblockFilterWorker(std::atomic<int>* row4x4_atomic);
+  static_assert(
+      std::is_same<
+          decltype(&PostFilter::DeblockFilterWorker<kLoopFilterTypeVertical>),
+          WorkerFunction>::value,
+      "");
+  static_assert(
+      std::is_same<
+          decltype(&PostFilter::DeblockFilterWorker<kLoopFilterTypeHorizontal>),
+          WorkerFunction>::value,
+      "");
 
   // Functions for the cdef filter.
 
@@ -400,8 +416,9 @@ class PostFilter {
   void ApplyCdefForOneSuperBlockRow(int row4x4, int sb4x4, bool is_last_row);
   // Worker function used for multi-threaded CDEF.
   void ApplyCdefWorker(std::atomic<int>* row4x4_atomic);
-  // Applies CDEF filtering for the entire frame using multiple threads.
-  void ApplyCdefThreaded();
+  static_assert(std::is_same<decltype(&PostFilter::ApplyCdefWorker),
+                             WorkerFunction>::value,
+                "");
 
   // Functions for the SuperRes filter.
 
@@ -464,10 +481,11 @@ class PostFilter {
   // Helper function that calls the right variant of
   // ApplyLoopRestorationForOneSuperBlockRow based on the bitdepth.
   void ApplyLoopRestoration(int row4x4_start, int sb4x4);
-  // Worker function used to facilitate multithreaded Loop Restoration.
+  // Worker function used for multithreaded Loop Restoration.
   void ApplyLoopRestorationWorker(std::atomic<int>* row4x4_atomic);
-  // Applies Loop Restoration to the entire frame using multiple-threads.
-  void ApplyLoopRestorationThreaded();
+  static_assert(std::is_same<decltype(&PostFilter::ApplyLoopRestorationWorker),
+                             WorkerFunction>::value,
+                "");
 
   const ObuFrameHeader& frame_header_;
   const LoopRestoration& loop_restoration_;

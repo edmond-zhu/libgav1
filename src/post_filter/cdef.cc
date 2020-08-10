@@ -636,20 +636,4 @@ void PostFilter::ApplyCdefWorker(std::atomic<int>* row4x4_atomic) {
   }
 }
 
-void PostFilter::ApplyCdefThreaded() {
-  std::atomic<int> row4x4(0);
-  const int num_workers = thread_pool_->num_threads();
-  BlockingCounter pending_workers(num_workers);
-  for (int i = 0; i < num_workers; ++i) {
-    thread_pool_->Schedule([this, &row4x4, &pending_workers]() {
-      ApplyCdefWorker(&row4x4);
-      pending_workers.Decrement();
-    });
-  }
-  // Have the current thread partake in applying CDEF.
-  ApplyCdefWorker(&row4x4);
-  // Wait for the threadpool jobs to finish.
-  pending_workers.Wait();
-}
-
 }  // namespace libgav1

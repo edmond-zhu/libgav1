@@ -24,6 +24,7 @@
 #include "src/dsp/constants.h"
 #include "src/dsp/dsp.h"
 #include "src/utils/array_2d.h"
+#include "src/utils/blocking_counter.h"
 #include "src/utils/common.h"
 #include "src/utils/constants.h"
 #include "src/utils/memory.h"
@@ -484,8 +485,27 @@ void PostFilter::SetupLoopRestorationBorder(int row4x4_start, int sb4x4) {
   }
 }
 
+void PostFilter::RunJobs(WorkerFunction worker) {
+  std::atomic<int> row4x4(0);
+  const int num_workers = thread_pool_->num_threads();
+  BlockingCounter pending_workers(num_workers);
+  for (int i = 0; i < num_workers; ++i) {
+    thread_pool_->Schedule([this, &row4x4, &pending_workers, worker]() {
+      (this->*worker)(&row4x4);
+      pending_workers.Decrement();
+    });
+  }
+  // Run the jobs on the current thread.
+  (this->*worker)(&row4x4);
+  // Wait for the threadpool jobs to finish.
+  pending_workers.Wait();
+}
+
 void PostFilter::ApplyFilteringThreaded() {
-  if (DoDeblock()) ApplyDeblockFilterThreaded();
+  if (DoDeblock()) {
+    RunJobs(&PostFilter::DeblockFilterWorker<kLoopFilterTypeVertical>);
+    RunJobs(&PostFilter::DeblockFilterWorker<kLoopFilterTypeHorizontal>);
+  }
   if (DoCdef() && DoRestoration()) {
     for (int row4x4 = 0; row4x4 < frame_header_.rows4x4;
          row4x4 += kNum4x4InLoopFilterUnit) {
@@ -497,7 +517,7 @@ void PostFilter::ApplyFilteringThreaded() {
          row4x4 += kNum4x4InLoopFilterUnit) {
       SetupCdefBorder(row4x4);
     }
-    ApplyCdefThreaded();
+    RunJobs(&PostFilter::ApplyCdefWorker);
   }
   if (DoSuperRes()) ApplySuperResThreaded();
   if (DoRestoration()) {
@@ -508,7 +528,7 @@ void PostFilter::ApplyFilteringThreaded() {
         row4x4 += kNum4x4InLoopFilterUnit;
       } while (row4x4 < frame_header_.rows4x4);
     }
-    ApplyLoopRestorationThreaded();
+    RunJobs(&PostFilter::ApplyLoopRestorationWorker);
   }
   ExtendBordersForReferenceFrame();
 }
