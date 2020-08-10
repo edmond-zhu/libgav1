@@ -188,6 +188,16 @@ bool ObuParser::ParseColorConfig(ObuSequenceHeader* sequence_header) {
       color_config->color_range = kColorRangeFull;
       color_config->subsampling_x = 0;
       color_config->subsampling_y = 0;
+      // YUV 4:4:4 is only allowed in profile 1, or profile 2 with bit depth 12.
+      // See the table at the beginning of Section 6.4.1.
+      if (sequence_header->profile != kProfile1 &&
+          (sequence_header->profile != kProfile2 ||
+           color_config->bitdepth != 12)) {
+        LIBGAV1_DLOG(ERROR,
+                     "YUV 4:4:4 is not allowed in profile %d for bitdepth %d.",
+                     sequence_header->profile, color_config->bitdepth);
+        return false;
+      }
     } else {
       OBU_READ_BIT_OR_FAIL;
       color_config->color_range = static_cast<ColorRange>(scratch);
