@@ -41,7 +41,7 @@ void PostFilter::ApplySuperRes(const std::array<uint8_t*, kMaxPlanes>& src,
       }
       // In the multi-threaded case, the |superres_line_buffer_| holds the last
       // input row. Apply SuperRes for that row.
-      if (thread_pool_ != nullptr && rows[plane] >= 0) {
+      if (line_buffer_row >= 0 && rows[plane] >= 0) {
         uint8_t* const line_buffer_start =
             superres_line_buffer_.data(plane) +
             line_buffer_row * superres_line_buffer_.stride(plane) +
@@ -67,7 +67,7 @@ void PostFilter::ApplySuperRes(const std::array<uint8_t*, kMaxPlanes>& src,
     }
     // In the multi-threaded case, the |superres_line_buffer_| holds the last
     // input row. Apply SuperRes for that row.
-    if (thread_pool_ != nullptr && rows[plane] >= 0) {
+    if (line_buffer_row >= 0 && rows[plane] >= 0) {
       uint8_t* const line_buffer_start =
           superres_line_buffer_.data(plane) +
           line_buffer_row * superres_line_buffer_.stride(plane) +
@@ -131,7 +131,7 @@ void PostFilter::ApplySuperResForOneSuperBlockRow(int row4x4_start, int sb4x4,
                     (is_last_row ? 0 : num_rows_extra);
     } while (++plane < planes_);
   }
-  ApplySuperRes(src, rows, /*line_buffer_row=*/0, dst);
+  ApplySuperRes(src, rows, /*line_buffer_row=*/-1, dst);
 }
 
 void PostFilter::ApplySuperResThreaded() {

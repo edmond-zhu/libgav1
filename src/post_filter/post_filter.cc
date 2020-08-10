@@ -436,7 +436,7 @@ void PostFilter::SetupLoopRestorationBorder(int row4x4_start, int sb4x4) {
                      row * frame_buffer_.stride(plane);
         rows[plane] = Clip3(plane_height - absolute_row, 0, 4);
       } while (++plane < planes_);
-      ApplySuperRes(src, rows, /*line_buffer_row=*/0, dst);
+      ApplySuperRes(src, rows, /*line_buffer_row=*/-1, dst);
       // If we run out of rows, copy the last valid row (mimics the bottom
       // border extension).
       plane = kPlaneY;

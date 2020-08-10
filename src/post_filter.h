@@ -423,8 +423,9 @@ class PostFilter {
   // Functions for the SuperRes filter.
 
   // Applies super resolution for the |src| for |rows[plane]| rows of each
-  // plane. If |thread_pool_| is not nullptr, one more row will be processed,
-  // the line buffer indicated by |line_buffer_row| will be used as the source.
+  // plane. If |line_buffer_row| is larger than or equal to 0, one more row will
+  // be processed, the line buffer indicated by |line_buffer_row| will be used
+  // as the source.
   void ApplySuperRes(
       const std::array<uint8_t*, kMaxPlanes>& src,
       const std::array<int, kMaxPlanes>& rows, int line_buffer_row,
