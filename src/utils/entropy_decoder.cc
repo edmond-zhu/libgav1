@@ -144,8 +144,9 @@ void UpdateCdf(uint16_t* const cdf, const int symbol_count, const int symbol) {
 //     cdf[i] -= static_cast<int16_t>(cdf[i] - a) >> rate;
 //   }
 //
-// The following ARM NEON implementations use the second form, which seems
-// slightly faster.
+// The following ARM NEON implementations use a modified version of the first
+// form, using the comparison mask and unsigned rollover to avoid the need to
+// calculate rounding.
 //
 // The cdf array has symbol_count + 1 elements. The first symbol_count elements
 // are the CDF. The last element is a count that is initialized to 0 and may
@@ -168,41 +169,46 @@ void UpdateCdf5(uint16_t* const cdf, const int symbol) {
   uint16x4_t cdf_vec = vld1_u16(cdf);
   const uint16_t count = cdf[5];
   const int rate = (4 | (count >> 4)) + 1;
-  const uint16x4_t zero = vdup_n_u16(0);
-  const uint16x4_t cdf_max_probability =
-      vdup_n_u16(kCdfMaxProbability + 1 - (1 << rate));
+  const uint16x4_t cdf_max_probability = vdup_n_u16(kCdfMaxProbability);
   const uint16x4_t index = vcreate_u16(0x0003000200010000);
   const uint16x4_t symbol_vec = vdup_n_u16(symbol);
-  const uint16x4_t mask = vclt_u16(index, symbol_vec);
-  const uint16x4_t a = vbsl_u16(mask, cdf_max_probability, zero);
-  const int16x4_t diff = vreinterpret_s16_u16(vsub_u16(cdf_vec, a));
+  const uint16x4_t mask = vcge_u16(index, symbol_vec);
+  // i < symbol: 32768, i >= symbol: 65535.
+  const uint16x4_t a = vorr_u16(mask, cdf_max_probability);
+  // i < symbol: 32768 - cdf, i >= symbol: 65535 - cdf.
+  const int16x4_t diff = vreinterpret_s16_u16(vsub_u16(a, cdf_vec));
+  // i < symbol: cdf - 0, i >= symbol: cdf - 65535.
+  const uint16x4_t cdf_offset = vsub_u16(cdf_vec, mask);
   const int16x4_t negative_rate = vdup_n_s16(-rate);
+  // i < symbol: (32768 - cdf) >> rate, i >= symbol: (65535 (-1) - cdf) >> rate.
   const uint16x4_t delta = vreinterpret_u16_s16(vshl_s16(diff, negative_rate));
-  cdf_vec = vsub_u16(cdf_vec, delta);
+  // i < symbol: (cdf - 0) + ((32768 - cdf) >> rate).
+  // i >= symbol: (cdf - 65535) + ((65535 - cdf) >> rate).
+  cdf_vec = vadd_u16(cdf_offset, delta);
   vst1_u16(cdf, cdf_vec);
   cdf[5] = count + static_cast<uint16_t>(count < 32);
 }
 
 // This version works for |symbol_count| = 7, 8, or 9.
+// See UpdateCdf5 for implementation details.
 template <int symbol_count>
 void UpdateCdf7To9(uint16_t* const cdf, const int symbol) {
   static_assert(symbol_count >= 7 && symbol_count <= 9, "");
   uint16x8_t cdf_vec = vld1q_u16(cdf);
   const uint16_t count = cdf[symbol_count];
   const int rate = (4 | (count >> 4)) + 1;
-  const uint16x8_t zero = vdupq_n_u16(0);
-  const uint16x8_t cdf_max_probability =
-      vdupq_n_u16(kCdfMaxProbability + 1 - (1 << rate));
+  const uint16x8_t cdf_max_probability = vdupq_n_u16(kCdfMaxProbability);
   const uint16x8_t index = vcombine_u16(vcreate_u16(0x0003000200010000),
                                         vcreate_u16(0x0007000600050004));
   const uint16x8_t symbol_vec = vdupq_n_u16(symbol);
-  const uint16x8_t mask = vcltq_u16(index, symbol_vec);
-  const uint16x8_t a = vbslq_u16(mask, cdf_max_probability, zero);
-  const int16x8_t diff = vreinterpretq_s16_u16(vsubq_u16(cdf_vec, a));
+  const uint16x8_t mask = vcgeq_u16(index, symbol_vec);
+  const uint16x8_t a = vorrq_u16(mask, cdf_max_probability);
+  const int16x8_t diff = vreinterpretq_s16_u16(vsubq_u16(a, cdf_vec));
+  const uint16x8_t cdf_offset = vsubq_u16(cdf_vec, mask);
   const int16x8_t negative_rate = vdupq_n_s16(-rate);
   const uint16x8_t delta =
       vreinterpretq_u16_s16(vshlq_s16(diff, negative_rate));
-  cdf_vec = vsubq_u16(cdf_vec, delta);
+  cdf_vec = vaddq_u16(cdf_offset, delta);
   vst1q_u16(cdf, cdf_vec);
   cdf[symbol_count] = count + static_cast<uint16_t>(count < 32);
 }
@@ -219,6 +225,7 @@ void UpdateCdf9(uint16_t* const cdf, const int symbol) {
   UpdateCdf7To9<9>(cdf, symbol);
 }
 
+// See UpdateCdf5 for implementation details.
 void UpdateCdf11(uint16_t* const cdf, const int symbol) {
   uint16x8_t cdf_vec = vld1q_u16(cdf + 2);
   const uint16_t count = cdf[11];
@@ -227,19 +234,18 @@ void UpdateCdf11(uint16_t* const cdf, const int symbol) {
   if (symbol > 1) {
     cdf[0] += (kCdfMaxProbability - cdf[0]) >> rate;
     cdf[1] += (kCdfMaxProbability - cdf[1]) >> rate;
-    const uint16x8_t zero = vdupq_n_u16(0);
-    const uint16x8_t cdf_max_probability =
-        vdupq_n_u16(kCdfMaxProbability + 1 - (1 << rate));
+    const uint16x8_t cdf_max_probability = vdupq_n_u16(kCdfMaxProbability);
     const uint16x8_t symbol_vec = vdupq_n_u16(symbol);
     const int16x8_t negative_rate = vdupq_n_s16(-rate);
     const uint16x8_t index = vcombine_u16(vcreate_u16(0x0005000400030002),
                                           vcreate_u16(0x0009000800070006));
-    const uint16x8_t mask = vcltq_u16(index, symbol_vec);
-    const uint16x8_t a = vbslq_u16(mask, cdf_max_probability, zero);
-    const int16x8_t diff = vreinterpretq_s16_u16(vsubq_u16(cdf_vec, a));
+    const uint16x8_t mask = vcgeq_u16(index, symbol_vec);
+    const uint16x8_t a = vorrq_u16(mask, cdf_max_probability);
+    const int16x8_t diff = vreinterpretq_s16_u16(vsubq_u16(a, cdf_vec));
+    const uint16x8_t cdf_offset = vsubq_u16(cdf_vec, mask);
     const uint16x8_t delta =
         vreinterpretq_u16_s16(vshlq_s16(diff, negative_rate));
-    cdf_vec = vsubq_u16(cdf_vec, delta);
+    cdf_vec = vaddq_u16(cdf_offset, delta);
     vst1q_u16(cdf + 2, cdf_vec);
   } else {
     if (symbol != 0) {
@@ -256,65 +262,67 @@ void UpdateCdf11(uint16_t* const cdf, const int symbol) {
   }
 }
 
+// See UpdateCdf5 for implementation details.
 void UpdateCdf13(uint16_t* const cdf, const int symbol) {
   uint16x8_t cdf_vec0 = vld1q_u16(cdf);
   uint16x8_t cdf_vec1 = vld1q_u16(cdf + 4);
   const uint16_t count = cdf[13];
   const int rate = (4 | (count >> 4)) + 1;
-  const uint16x8_t zero = vdupq_n_u16(0);
-  const uint16x8_t cdf_max_probability =
-      vdupq_n_u16(kCdfMaxProbability + 1 - (1 << rate));
+  const uint16x8_t cdf_max_probability = vdupq_n_u16(kCdfMaxProbability);
   const uint16x8_t symbol_vec = vdupq_n_u16(symbol);
   const int16x8_t negative_rate = vdupq_n_s16(-rate);
 
   uint16x8_t index = vcombine_u16(vcreate_u16(0x0003000200010000),
                                   vcreate_u16(0x0007000600050004));
-  uint16x8_t mask = vcltq_u16(index, symbol_vec);
-  uint16x8_t a = vbslq_u16(mask, cdf_max_probability, zero);
-  int16x8_t diff = vreinterpretq_s16_u16(vsubq_u16(cdf_vec0, a));
+  uint16x8_t mask = vcgeq_u16(index, symbol_vec);
+  uint16x8_t a = vorrq_u16(mask, cdf_max_probability);
+  int16x8_t diff = vreinterpretq_s16_u16(vsubq_u16(a, cdf_vec0));
+  uint16x8_t cdf_offset = vsubq_u16(cdf_vec0, mask);
   uint16x8_t delta = vreinterpretq_u16_s16(vshlq_s16(diff, negative_rate));
-  cdf_vec0 = vsubq_u16(cdf_vec0, delta);
+  cdf_vec0 = vaddq_u16(cdf_offset, delta);
   vst1q_u16(cdf, cdf_vec0);
 
   index = vcombine_u16(vcreate_u16(0x0007000600050004),
                        vcreate_u16(0x000b000a00090008));
-  mask = vcltq_u16(index, symbol_vec);
-  a = vbslq_u16(mask, cdf_max_probability, zero);
-  diff = vreinterpretq_s16_u16(vsubq_u16(cdf_vec1, a));
+  mask = vcgeq_u16(index, symbol_vec);
+  a = vorrq_u16(mask, cdf_max_probability);
+  diff = vreinterpretq_s16_u16(vsubq_u16(a, cdf_vec1));
+  cdf_offset = vsubq_u16(cdf_vec1, mask);
   delta = vreinterpretq_u16_s16(vshlq_s16(diff, negative_rate));
-  cdf_vec1 = vsubq_u16(cdf_vec1, delta);
+  cdf_vec1 = vaddq_u16(cdf_offset, delta);
   vst1q_u16(cdf + 4, cdf_vec1);
 
   cdf[13] = count + static_cast<uint16_t>(count < 32);
 }
 
+// See UpdateCdf5 for implementation details.
 void UpdateCdf16(uint16_t* const cdf, const int symbol) {
   uint16x8_t cdf_vec = vld1q_u16(cdf);
   const uint16_t count = cdf[16];
   const int rate = (4 | (count >> 4)) + 1;
-  const uint16x8_t zero = vdupq_n_u16(0);
-  const uint16x8_t cdf_max_probability =
-      vdupq_n_u16(kCdfMaxProbability + 1 - (1 << rate));
+  const uint16x8_t cdf_max_probability = vdupq_n_u16(kCdfMaxProbability);
   const uint16x8_t symbol_vec = vdupq_n_u16(symbol);
   const int16x8_t negative_rate = vdupq_n_s16(-rate);
 
   uint16x8_t index = vcombine_u16(vcreate_u16(0x0003000200010000),
                                   vcreate_u16(0x0007000600050004));
-  uint16x8_t mask = vcltq_u16(index, symbol_vec);
-  uint16x8_t a = vbslq_u16(mask, cdf_max_probability, zero);
-  int16x8_t diff = vreinterpretq_s16_u16(vsubq_u16(cdf_vec, a));
+  uint16x8_t mask = vcgeq_u16(index, symbol_vec);
+  uint16x8_t a = vorrq_u16(mask, cdf_max_probability);
+  int16x8_t diff = vreinterpretq_s16_u16(vsubq_u16(a, cdf_vec));
+  uint16x8_t cdf_offset = vsubq_u16(cdf_vec, mask);
   uint16x8_t delta = vreinterpretq_u16_s16(vshlq_s16(diff, negative_rate));
-  cdf_vec = vsubq_u16(cdf_vec, delta);
+  cdf_vec = vaddq_u16(cdf_offset, delta);
   vst1q_u16(cdf, cdf_vec);
 
   cdf_vec = vld1q_u16(cdf + 8);
   index = vcombine_u16(vcreate_u16(0x000b000a00090008),
                        vcreate_u16(0x000f000e000d000c));
-  mask = vcltq_u16(index, symbol_vec);
-  a = vbslq_u16(mask, cdf_max_probability, zero);
-  diff = vreinterpretq_s16_u16(vsubq_u16(cdf_vec, a));
+  mask = vcgeq_u16(index, symbol_vec);
+  a = vorrq_u16(mask, cdf_max_probability);
+  diff = vreinterpretq_s16_u16(vsubq_u16(a, cdf_vec));
+  cdf_offset = vsubq_u16(cdf_vec, mask);
   delta = vreinterpretq_u16_s16(vshlq_s16(diff, negative_rate));
-  cdf_vec = vsubq_u16(cdf_vec, delta);
+  cdf_vec = vaddq_u16(cdf_offset, delta);
   vst1q_u16(cdf + 8, cdf_vec);
 
   cdf[16] = count + static_cast<uint16_t>(count < 32);
