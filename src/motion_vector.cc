@@ -123,18 +123,19 @@ void SearchStack(const Tile::Block& block, const BlockParameters& mv_bp,
   *found_new_mv |= kPredictionModeNewMvMask.Contains(mv_bp.y_mode);
   *found_match = true;
   MotionVector* const ref_mv_stack = prediction_parameters.ref_mv_stack;
-  const auto result = std::find_if(ref_mv_stack, ref_mv_stack + *num_mv_found,
+  const int num_found = *num_mv_found;
+  const auto result = std::find_if(ref_mv_stack, ref_mv_stack + num_found,
                                    [&candidate_mv](const MotionVector& ref_mv) {
                                      return ref_mv == candidate_mv;
                                    });
-  if (result != ref_mv_stack + *num_mv_found) {
+  if (result != ref_mv_stack + num_found) {
     prediction_parameters.IncreaseWeight(std::distance(ref_mv_stack, result),
                                          weight);
     return;
   }
-  if (*num_mv_found >= kMaxRefMvStackSize) return;
-  ref_mv_stack[*num_mv_found] = candidate_mv;
-  prediction_parameters.SetWeightIndexStackEntry(*num_mv_found, weight);
+  if (num_found >= kMaxRefMvStackSize) return;
+  ref_mv_stack[num_found] = candidate_mv;
+  prediction_parameters.SetWeightIndexStackEntry(num_found, weight);
   ++*num_mv_found;
 }
 
@@ -159,19 +160,20 @@ void CompoundSearchStack(const Tile::Block& block, const BlockParameters& mv_bp,
   *found_match = true;
   CompoundMotionVector* const compound_ref_mv_stack =
       prediction_parameters.compound_ref_mv_stack;
+  const int num_found = *num_mv_found;
   const auto result =
-      std::find_if(compound_ref_mv_stack, compound_ref_mv_stack + *num_mv_found,
+      std::find_if(compound_ref_mv_stack, compound_ref_mv_stack + num_found,
                    [&candidate_mv](const CompoundMotionVector& ref_mv) {
                      return ref_mv == candidate_mv;
                    });
-  if (result != compound_ref_mv_stack + *num_mv_found) {
+  if (result != compound_ref_mv_stack + num_found) {
     prediction_parameters.IncreaseWeight(
         std::distance(compound_ref_mv_stack, result), weight);
     return;
   }
-  if (*num_mv_found >= kMaxRefMvStackSize) return;
-  compound_ref_mv_stack[*num_mv_found] = candidate_mv;
-  prediction_parameters.SetWeightIndexStackEntry(*num_mv_found, weight);
+  if (num_found >= kMaxRefMvStackSize) return;
+  compound_ref_mv_stack[num_found] = candidate_mv;
+  prediction_parameters.SetWeightIndexStackEntry(num_found, weight);
   ++*num_mv_found;
 }
 
