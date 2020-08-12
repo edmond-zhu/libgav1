@@ -63,16 +63,12 @@ void SetupGlobalMv(const Tile::Block& block, int index,
   const ObuFrameHeader& frame_header = block.tile.frame_header();
   ReferenceFrameType reference_type = bp.reference_frame[index];
   const auto& gm = frame_header.global_motion[reference_type];
-  GlobalMotionTransformationType global_motion_type =
-      (reference_type != kReferenceFrameIntra)
-          ? gm.type
-          : kNumGlobalMotionTransformationTypes;
   if (reference_type == kReferenceFrameIntra ||
-      global_motion_type == kGlobalMotionTransformationTypeIdentity) {
+      gm.type == kGlobalMotionTransformationTypeIdentity) {
     mv->mv32 = 0;
     return;
   }
-  if (global_motion_type == kGlobalMotionTransformationTypeTranslation) {
+  if (gm.type == kGlobalMotionTransformationTypeTranslation) {
     for (int i = 0; i < 2; ++i) {
       mv->mv[i] = gm.params[i] >> (kWarpedModelPrecisionBits - 3);
     }
