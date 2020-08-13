@@ -225,7 +225,7 @@ PostFilter::PostFilter(const ObuFrameHeader& frame_header,
       }
       cdef_buffer_[plane] += vertical_shift * frame_buffer_.stride(plane) +
                              horizontal_shift * pixel_size_;
-      if (DoCdef()) {
+      if (DoCdef() && thread_pool_ == nullptr) {
         horizontal_shift += frame_buffer_.alignment();
         vertical_shift += kCdefBorder;
       }

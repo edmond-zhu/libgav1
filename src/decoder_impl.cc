@@ -1188,6 +1188,12 @@ StatusCode DecoderImpl::DecodeTiles(
                  "Failed to allocate memory for loop restoration info units.");
     return kStatusOutOfMemory;
   }
+  ThreadingStrategy& threading_strategy =
+      frame_scratch_buffer->threading_strategy;
+  if (!is_frame_parallel_ &&
+      !threading_strategy.Reset(frame_header, settings_.threads)) {
+    return kStatusOutOfMemory;
+  }
   const bool do_cdef =
       PostFilter::DoCdef(frame_header, settings_.post_filter_mask);
   const int num_planes = sequence_header.color_config.is_monochrome
@@ -1198,12 +1204,11 @@ StatusCode DecoderImpl::DecodeTiles(
   const bool do_superres =
       PostFilter::DoSuperRes(frame_header, settings_.post_filter_mask);
   // Use kBorderPixels for the left, right, and top borders. Only the bottom
-  // border may need to be bigger. SuperRes border is needed only if we are
-  // applying SuperRes in-place which is being done only in single threaded
-  // mode.
-  const int bottom_border =
-      GetBottomBorderPixels(do_cdef, do_restoration, do_superres,
-                            sequence_header.color_config.subsampling_y);
+  // border may need to be bigger. Cdef border is needed only if we apply Cdef
+  // without multithreading.
+  const int bottom_border = GetBottomBorderPixels(
+      do_cdef && threading_strategy.post_filter_thread_pool() == nullptr,
+      do_restoration, do_superres, sequence_header.color_config.subsampling_y);
   current_frame->set_chroma_sample_position(
       sequence_header.color_config.chroma_sample_position);
   if (!current_frame->Realloc(sequence_header.color_config.bitdepth,
@@ -1283,12 +1288,6 @@ StatusCode DecoderImpl::DecodeTiles(
   Vector<std::unique_ptr<Tile>> tiles;
   if (!tiles.reserve(tile_count)) {
     LIBGAV1_DLOG(ERROR, "tiles.reserve(%d) failed.\n", tile_count);
-    return kStatusOutOfMemory;
-  }
-  ThreadingStrategy& threading_strategy =
-      frame_scratch_buffer->threading_strategy;
-  if (!is_frame_parallel_ &&
-      !threading_strategy.Reset(frame_header, settings_.threads)) {
     return kStatusOutOfMemory;
   }
 

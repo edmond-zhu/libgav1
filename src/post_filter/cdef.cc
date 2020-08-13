@@ -31,13 +31,15 @@ constexpr int kCdefBorderRows[2][4] = {{0, 1, 62, 63}, {0, 1, 30, 31}};
 template <typename Pixel>
 void CopyRowForCdef(const Pixel* src, int block_width, int unit_width,
                     bool is_frame_left, bool is_frame_right,
-                    uint16_t* const dst) {
+                    uint16_t* const dst, const Pixel* left_border = nullptr) {
   if (sizeof(src[0]) == sizeof(dst[0])) {
     if (is_frame_left) {
       Memset(dst - kCdefBorder, kCdefLargeValue, kCdefBorder);
-    } else {
+    } else if (left_border == nullptr) {
       memcpy(dst - kCdefBorder, src - kCdefBorder,
              kCdefBorder * sizeof(dst[0]));
+    } else {
+      memcpy(dst - kCdefBorder, left_border, kCdefBorder * sizeof(dst[0]));
     }
     memcpy(dst, src, block_width * sizeof(dst[0]));
     if (is_frame_right) {
@@ -49,8 +51,18 @@ void CopyRowForCdef(const Pixel* src, int block_width, int unit_width,
     }
     return;
   }
-  for (int x = -kCdefBorder; x < 0; ++x) {
-    dst[x] = is_frame_left ? static_cast<uint16_t>(kCdefLargeValue) : src[x];
+  if (is_frame_left) {
+    for (int x = -kCdefBorder; x < 0; ++x) {
+      dst[x] = static_cast<uint16_t>(kCdefLargeValue);
+    }
+  } else if (left_border == nullptr) {
+    for (int x = -kCdefBorder; x < 0; ++x) {
+      dst[x] = src[x];
+    }
+  } else {
+    for (int x = -kCdefBorder; x < 0; ++x) {
+      dst[x] = left_border[x + kCdefBorder];
+    }
   }
   for (int x = 0; x < block_width; ++x) {
     dst[x] = src[x];
@@ -104,7 +116,9 @@ template <typename Pixel>
 void PostFilter::PrepareCdefBlock(int block_width4x4, int block_height4x4,
                                   int row4x4, int column4x4,
                                   uint16_t* cdef_source, ptrdiff_t cdef_stride,
-                                  const bool y_plane) {
+                                  const bool y_plane,
+                                  const uint8_t border_columns[kMaxPlanes][256],
+                                  bool use_border_columns) {
   assert(y_plane || planes_ == kMaxPlanes);
   const int max_planes = y_plane ? 1 : kMaxPlanes;
   const int8_t subsampling_x = y_plane ? 0 : subsampling_x_[kPlaneU];
@@ -184,11 +198,16 @@ void PostFilter::PrepareCdefBlock(int block_width4x4, int block_height4x4,
     int y = block_height;
     const int y_threshold =
         (thread_pool_ == nullptr || is_frame_bottom) ? 0 : kCdefBorder;
+    const Pixel* left_border =
+        (thread_pool_ == nullptr || !use_border_columns)
+            ? nullptr
+            : reinterpret_cast<const Pixel*>(border_columns[plane]);
     do {
       CopyRowForCdef(src_buffer, block_width, unit_width, is_frame_left,
-                     is_frame_right, cdef_src);
+                     is_frame_right, cdef_src, left_border);
       cdef_src += cdef_stride;
       src_buffer += src_stride;
+      if (left_border != nullptr) left_border += kCdefBorder;
     } while (--y != y_threshold);
 
     if (y > 0) {
@@ -233,77 +252,14 @@ void PostFilter::PrepareCdefBlock(int block_width4x4, int block_height4x4,
   }
 }
 
-void PostFilter::CopyBlockForCdefHelper(Plane plane,
-                                        const uint8_t* src_buffer_row_base,
-                                        uint8_t* cdef_buffer_row_base,
-                                        int block_width4x4, int block_height4x4,
-                                        int row4x4_start, int column4x4_start,
-                                        bool is_frame_bottom) {
-  if (thread_pool_ == nullptr || is_frame_bottom) {
-    CopyPixels(src_buffer_row_base, frame_buffer_.stride(plane),
-               cdef_buffer_row_base, frame_buffer_.stride(plane),
-               MultiplyBy4(block_width4x4) >> subsampling_x_[plane],
-               MultiplyBy4(block_height4x4) >> subsampling_y_[plane],
-               pixel_size_);
-    return;
-  }
-  // Copy everything except the last kCdefBorder rows from
-  // |src_buffer_row_base|.
-  const int copy_height =
-      (MultiplyBy4(block_height4x4) >> subsampling_y_[plane]) - kCdefBorder;
-  CopyPixels(src_buffer_row_base, frame_buffer_.stride(plane),
-             cdef_buffer_row_base, frame_buffer_.stride(plane),
-             MultiplyBy4(block_width4x4) >> subsampling_x_[plane], copy_height,
-             pixel_size_);
-  // Copy the last kCdefBorder rows from |cdef_border_|.
-  const int start_x = MultiplyBy4(column4x4_start) >> subsampling_x_[plane];
-  const int cdef_border_row_offset = DivideBy4(row4x4_start) + 2;
-  const uint8_t* cdef_border_base =
-      cdef_border_.data(plane) +
-      cdef_border_row_offset * cdef_border_.stride(plane) +
-      start_x * pixel_size_;
-  uint8_t* cdef_dst =
-      cdef_buffer_row_base + copy_height * frame_buffer_.stride(plane);
-  CopyPixels(cdef_border_base, cdef_border_.stride(plane), cdef_dst,
-             frame_buffer_.stride(plane),
-             MultiplyBy4(block_width4x4) >> subsampling_x_[plane], kCdefBorder,
-             pixel_size_);
-}
-
-void PostFilter::CopyBlockForCdefHelper(const uint8_t* src_buffer,
-                                        int src_stride, uint8_t* cdef_buffer,
-                                        int cdef_stride,
-                                        const uint16_t* cdef_src,
-                                        int block_width, int block_height) {
-  if (thread_pool_ == nullptr) {
-    CopyPixels(src_buffer, src_stride, cdef_buffer, cdef_stride, block_width,
-               block_height, pixel_size_);
-    return;
-  }
-#if LIBGAV1_MAX_BITDEPTH >= 10
-  if (pixel_size_ == 2) {
-    CopyPixels(reinterpret_cast<const uint8_t*>(cdef_src),
-               kCdefUnitSizeWithBorders * pixel_size_, cdef_buffer, cdef_stride,
-               block_width, block_height, pixel_size_);
-    return;
-  }
-#endif
-  uint8_t* dst = cdef_buffer;
-  for (int y = 0; y < block_height; ++y) {
-    for (int x = 0; x < block_width; ++x) {
-      dst[x] = cdef_src[x];
-    }
-    dst += cdef_stride;
-    cdef_src += kCdefUnitSizeWithBorders;
-  }
-}
-
 template <typename Pixel>
 void PostFilter::ApplyCdefForOneUnit(uint16_t* cdef_block, const int index,
                                      const int block_width4x4,
                                      const int block_height4x4,
                                      const int row4x4_start,
-                                     const int column4x4_start) {
+                                     const int column4x4_start,
+                                     uint8_t border_columns[2][kMaxPlanes][256],
+                                     bool use_border_columns[2][2]) {
   // Cdef operates in 8x8 blocks (4x4 for chroma with subsampling).
   static constexpr int kStep = 8;
   static constexpr int kStep4x4 = 2;
@@ -336,23 +292,52 @@ void PostFilter::ApplyCdefForOneUnit(uint16_t* cdef_block, const int index,
     column_step[plane] = (kStep >> subsampling_x_[plane]) * sizeof(Pixel);
   } while (++plane < planes_);
 
-  const bool is_frame_bottom =
-      row4x4_start + kStep64x64 >= frame_header_.rows4x4;
+  // |border_columns| contains two buffers. In each call to this function, we
+  // will use one of them as the "destination" for the current call. And the
+  // other one as the "source" for the current call (which would have been the
+  // "destination" of the previous call). We will use the src_index to populate
+  // the borders which were backed up in the previous call. We will use the
+  // dst_index to populate the borders to be used in the next call.
+  const int border_columns_src_index = DivideBy16(column4x4_start) & 1;
+  const int border_columns_dst_index = border_columns_src_index ^ 1;
 
   if (index == -1) {
-    int plane = kPlaneY;
-    do {
-      CopyBlockForCdefHelper(
-          static_cast<Plane>(plane), src_buffer_row_base[plane],
-          cdef_buffer_row_base[plane], block_width4x4, block_height4x4,
-          row4x4_start, column4x4_start, is_frame_bottom);
-    } while (++plane < planes_);
+    if (thread_pool_ == nullptr) {
+      int plane = kPlaneY;
+      do {
+        CopyPixels(src_buffer_row_base[plane], frame_buffer_.stride(plane),
+                   cdef_buffer_row_base[plane], frame_buffer_.stride(plane),
+                   MultiplyBy4(block_width4x4) >> subsampling_x_[plane],
+                   MultiplyBy4(block_height4x4) >> subsampling_y_[plane],
+                   sizeof(Pixel));
+      } while (++plane < planes_);
+    }
+    use_border_columns[border_columns_dst_index][0] = false;
+    use_border_columns[border_columns_dst_index][1] = false;
     return;
   }
 
-  PrepareCdefBlock<Pixel>(block_width4x4, block_height4x4, row4x4_start,
-                          column4x4_start, cdef_block, kCdefUnitSizeWithBorders,
-                          true);
+  const bool is_frame_right =
+      MultiplyBy4(column4x4_start) + MultiplyBy4(block_width4x4) >= width_;
+  if (!is_frame_right && thread_pool_ != nullptr) {
+    // Backup the last 2 columns for use in the next iteration.
+    use_border_columns[border_columns_dst_index][0] = true;
+    const uint8_t* src_line =
+        GetSourceBuffer(kPlaneY, row4x4_start,
+                        column4x4_start + block_width4x4) -
+        kCdefBorder * sizeof(Pixel);
+    CopyPixels(src_line, frame_buffer_.stride(kPlaneY),
+               border_columns[border_columns_dst_index][kPlaneY],
+               kCdefBorder * sizeof(Pixel), kCdefBorder,
+               MultiplyBy4(block_height4x4), sizeof(Pixel));
+  }
+
+  PrepareCdefBlock<Pixel>(
+      block_width4x4, block_height4x4, row4x4_start, column4x4_start,
+      cdef_block, kCdefUnitSizeWithBorders, true,
+      (border_columns != nullptr) ? border_columns[border_columns_src_index]
+                                  : nullptr,
+      use_border_columns[border_columns_src_index][0]);
 
   // Stored direction used during the u/v pass.  If bit 3 is set, then block is
   // a skip.
@@ -397,8 +382,10 @@ void PostFilter::ApplyCdefForOneUnit(uint16_t* cdef_block, const int index,
 
       if (skip) {  // No cdef filtering.
         direction_y[y_index] = kCdefSkip;
-        CopyBlockForCdefHelper(src_buffer, src_stride, cdef_buffer, cdef_stride,
-                               cdef_src, block_width, block_height);
+        if (thread_pool_ == nullptr) {
+          CopyPixels(src_buffer, src_stride, cdef_buffer, cdef_stride,
+                     block_width, block_height, sizeof(Pixel));
+        }
       } else {
         // Zero out residual skip flag.
         direction_y[y_index] = 0;
@@ -438,9 +425,10 @@ void PostFilter::ApplyCdefForOneUnit(uint16_t* cdef_block, const int index,
                 ? (y_primary_strength * (4 + variance_strength) + 8) >> 4
                 : 0;
         if ((primary_strength | y_secondary_strength) == 0) {
-          CopyBlockForCdefHelper(src_buffer, src_stride, cdef_buffer,
-                                 cdef_stride, cdef_src, block_width,
-                                 block_height);
+          if (thread_pool_ == nullptr) {
+            CopyPixels(src_buffer, src_stride, cdef_buffer, cdef_stride,
+                       block_width, block_height, sizeof(Pixel));
+          }
         } else {
           const int strength_index =
               y_strength_index | (static_cast<int>(primary_strength == 0) << 1);
@@ -478,18 +466,41 @@ void PostFilter::ApplyCdefForOneUnit(uint16_t* cdef_block, const int index,
       frame_header_.cdef.uv_secondary_strength[index];
 
   if ((uv_primary_strength | uv_secondary_strength) == 0) {
-    for (int plane = kPlaneU; plane <= kPlaneV; ++plane) {
-      CopyBlockForCdefHelper(
-          static_cast<Plane>(plane), src_buffer_row_base[plane],
-          cdef_buffer_row_base[plane], block_width4x4, block_height4x4,
-          row4x4_start, column4x4_start, is_frame_bottom);
+    if (thread_pool_ == nullptr) {
+      for (int plane = kPlaneU; plane <= kPlaneV; ++plane) {
+        CopyPixels(src_buffer_row_base[plane], frame_buffer_.stride(plane),
+                   cdef_buffer_row_base[plane], frame_buffer_.stride(plane),
+                   MultiplyBy4(block_width4x4) >> subsampling_x_[plane],
+                   MultiplyBy4(block_height4x4) >> subsampling_y_[plane],
+                   sizeof(Pixel));
+      }
     }
+    use_border_columns[border_columns_dst_index][1] = false;
     return;
   }
 
-  PrepareCdefBlock<Pixel>(block_width4x4, block_height4x4, row4x4_start,
-                          column4x4_start, cdef_block, kCdefUnitSizeWithBorders,
-                          false);
+  if (!is_frame_right && thread_pool_ != nullptr) {
+    use_border_columns[border_columns_dst_index][1] = true;
+    for (int plane = kPlaneU; plane <= kPlaneV; ++plane) {
+      // Backup the last 2 columns for use in the next iteration.
+      const uint8_t* src_line =
+          GetSourceBuffer(static_cast<Plane>(plane), row4x4_start,
+                          column4x4_start + block_width4x4) -
+          kCdefBorder * sizeof(Pixel);
+      CopyPixels(src_line, frame_buffer_.stride(plane),
+                 border_columns[border_columns_dst_index][plane],
+                 kCdefBorder * sizeof(Pixel), kCdefBorder,
+                 MultiplyBy4(block_height4x4) >> subsampling_y_[plane],
+                 sizeof(Pixel));
+    }
+  }
+
+  PrepareCdefBlock<Pixel>(
+      block_width4x4, block_height4x4, row4x4_start, column4x4_start,
+      cdef_block, kCdefUnitSizeWithBorders, false,
+      (border_columns != nullptr) ? border_columns[border_columns_src_index]
+                                  : nullptr,
+      use_border_columns[border_columns_src_index][1]);
 
   // uv_strength_index is 0 for both primary and secondary strengths being
   // non-zero, 1 for primary only, 2 for secondary only.
@@ -519,9 +530,10 @@ void PostFilter::ApplyCdefForOneUnit(uint16_t* cdef_block, const int index,
         int dual_cdef = 0;
 
         if (skip) {  // No cdef filtering.
-          CopyBlockForCdefHelper(src_buffer, src_stride, cdef_buffer,
-                                 cdef_stride, cdef_src, block_width,
-                                 block_height);
+          if (thread_pool_ == nullptr) {
+            CopyPixels(src_buffer, src_stride, cdef_buffer, cdef_stride,
+                       block_width, block_height, sizeof(Pixel));
+          }
         } else {
           // Make sure block pair is not out of bounds.
           if (column4x4 + (kStep4x4 * 2) <= column4x4_start + block_width4x4) {
@@ -574,9 +586,10 @@ void PostFilter::ApplyCdefForOneUnit(uint16_t* cdef_block, const int index,
   }
 }
 
-void PostFilter::ApplyCdefForOneSuperBlockRowHelper(uint16_t* cdef_block,
-                                                    int row4x4,
-                                                    int block_height4x4) {
+void PostFilter::ApplyCdefForOneSuperBlockRowHelper(
+    uint16_t* cdef_block, uint8_t border_columns[2][kMaxPlanes][256],
+    int row4x4, int block_height4x4) {
+  bool use_border_columns[2][2] = {};
   for (int column4x4 = 0; column4x4 < frame_header_.columns4x4;
        column4x4 += kStep64x64) {
     const int index = cdef_index_[DivideBy16(row4x4)][DivideBy16(column4x4)];
@@ -586,12 +599,14 @@ void PostFilter::ApplyCdefForOneSuperBlockRowHelper(uint16_t* cdef_block,
 #if LIBGAV1_MAX_BITDEPTH >= 10
     if (bitdepth_ >= 10) {
       ApplyCdefForOneUnit<uint16_t>(cdef_block, index, block_width4x4,
-                                    block_height4x4, row4x4, column4x4);
+                                    block_height4x4, row4x4, column4x4,
+                                    border_columns, use_border_columns);
       continue;
     }
 #endif  // LIBGAV1_MAX_BITDEPTH >= 10
     ApplyCdefForOneUnit<uint8_t>(cdef_block, index, block_width4x4,
-                                 block_height4x4, row4x4, column4x4);
+                                 block_height4x4, row4x4, column4x4,
+                                 border_columns, use_border_columns);
   }
 }
 
@@ -610,7 +625,7 @@ void PostFilter::ApplyCdefForOneSuperBlockRow(int row4x4_start, int sb4x4,
     // first iteration (y == 0).
     if (row4x4 > 0 && (!is_last_row || y == 0)) {
       assert(row4x4 >= 16);
-      ApplyCdefForOneSuperBlockRowHelper(cdef_block_, row4x4 - 2, 2);
+      ApplyCdefForOneSuperBlockRowHelper(cdef_block_, nullptr, row4x4 - 2, 2);
     }
 
     // Apply cdef for the current superblock row. If this is the last superblock
@@ -620,7 +635,8 @@ void PostFilter::ApplyCdefForOneSuperBlockRow(int row4x4_start, int sb4x4,
         std::min(kStep64x64, frame_header_.rows4x4 - row4x4);
     const int height4x4 = block_height4x4 - (is_last_row ? 0 : 2);
     if (height4x4 > 0) {
-      ApplyCdefForOneSuperBlockRowHelper(cdef_block_, row4x4, height4x4);
+      ApplyCdefForOneSuperBlockRowHelper(cdef_block_, nullptr, row4x4,
+                                         height4x4);
     }
   }
 }
@@ -628,11 +644,15 @@ void PostFilter::ApplyCdefForOneSuperBlockRow(int row4x4_start, int sb4x4,
 void PostFilter::ApplyCdefWorker(std::atomic<int>* row4x4_atomic) {
   int row4x4;
   uint16_t cdef_block[kCdefUnitSizeWithBorders * kCdefUnitSizeWithBorders * 2];
+  // Each border_column buffer has to store 64 rows and 2 columns for each
+  // plane. For 10bit, that is 64*2*2 = 256 bytes.
+  alignas(kMaxAlignment) uint8_t border_columns[2][kMaxPlanes][256];
   while ((row4x4 = row4x4_atomic->fetch_add(
               kStep64x64, std::memory_order_relaxed)) < frame_header_.rows4x4) {
     const int block_height4x4 =
         std::min(kStep64x64, frame_header_.rows4x4 - row4x4);
-    ApplyCdefForOneSuperBlockRowHelper(cdef_block, row4x4, block_height4x4);
+    ApplyCdefForOneSuperBlockRowHelper(cdef_block, border_columns, row4x4,
+                                       block_height4x4);
   }
 }
 

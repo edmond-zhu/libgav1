@@ -104,10 +104,9 @@ class PostFilter {
   //            If cdef and loop restoration are both on, then 4 rows (as
   //            specified by |kLoopRestorationBorderRows|) in every 64x64 block
   //            is copied into |loop_restoration_border_|.
-  // * Cdef: Near in-place filtering. Uses the |source_buffer_| and
-  //         |cdef_border_| as the input and the output is written into
-  //         |cdef_buffer_| (which is just |source_buffer_| with a shift to the
-  //         top-left).
+  // * Cdef: In-place filtering. Uses the |source_buffer_| and |cdef_border_| as
+  //         the input and the output is written into |cdef_buffer_| (which is
+  //         the same as |source_buffer_|).
   // * SuperRes: Near in-place filtering. Uses the |cdef_buffer_| and
   //             |superres_line_buffer_| as the input and the output is written
   //             into |superres_buffer_| (which is just |cdef_buffer_| with a
@@ -376,41 +375,21 @@ class PostFilter {
   template <typename Pixel>
   void PrepareCdefBlock(int block_width4x4, int block_height4x4, int row4x4,
                         int column4x4, uint16_t* cdef_source,
-                        ptrdiff_t cdef_stride, bool y_plane);
-  // Helper function used by ApplyCdefForOneUnit. Copies the superblock at
-  // |row4x4_start| and |column4x4_start| of height |block_height4x4| and width
-  // |block_width4x4| as follows:
-  //   * If |thread_pool_| is nullptr or if |is_frame_bottom| is true, then all
-  //     the rows are copied from |src_row_buffer_base|.
-  //   * Otherwise:
-  //       - First 62 (30 for chrome with subsampling) rows are copied from
-  //         |src_buffer_row_base|.
-  //       - Last 2 rows are copied from |cdef_border_|.
-  // This helper function is used to copy the pixels in cases where
-  // PrepareCdefBlock is not invoked.
-  void CopyBlockForCdefHelper(Plane plane, const uint8_t* src_buffer_row_base,
-                              uint8_t* cdef_buffer_row_base, int block_width4x4,
-                              int block_height4x4, int row4x4_start,
-                              int column4x4_start, bool is_frame_bottom);
-  // Helper function used by ApplyCdefForOneUnit. Copies
-  // |block_width|x|block_height| pixels into |cdef_buffer| as follows:
-  //   * If |thread_pool_| is nullptr, the pixels are copied from |src_buffer|.
-  //   * Otherwise, the pixels are copied from |cdef_src|.
-  //  This helper function is used to copy the pixels in cases where
-  //  PrepareCdefBlock has been invoked.
-  void CopyBlockForCdefHelper(const uint8_t* src_buffer, int src_stride,
-                              uint8_t* cdef_buffer, int cdef_stride,
-                              const uint16_t* cdef_src, int block_width,
-                              int block_height);
+                        ptrdiff_t cdef_stride, bool y_plane,
+                        const uint8_t border_columns[kMaxPlanes][256],
+                        bool use_border_columns);
   // Applies cdef for one 64x64 block.
   template <typename Pixel>
   void ApplyCdefForOneUnit(uint16_t* cdef_block, int index, int block_width4x4,
                            int block_height4x4, int row4x4_start,
-                           int column4x4_start);
+                           int column4x4_start,
+                           uint8_t border_columns[2][kMaxPlanes][256],
+                           bool use_border_columns[2][2]);
   // Helper function used by ApplyCdefForOneSuperBlockRow to avoid some code
   // duplication.
-  void ApplyCdefForOneSuperBlockRowHelper(uint16_t* cdef_block, int row4x4,
-                                          int block_height4x4);
+  void ApplyCdefForOneSuperBlockRowHelper(
+      uint16_t* cdef_block, uint8_t border_columns[2][kMaxPlanes][256],
+      int row4x4, int block_height4x4);
   // Applies CDEF filtering for the superblock row starting at |row4x4| with a
   // height of 4*|sb4x4|.
   void ApplyCdefForOneSuperBlockRow(int row4x4, int sb4x4, bool is_last_row);
