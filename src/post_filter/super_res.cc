@@ -41,7 +41,7 @@ void PostFilter::ApplySuperRes(const std::array<uint8_t*, kMaxPlanes>& src,
       }
       // In the multi-threaded case, the |superres_line_buffer_| holds the last
       // input row. Apply SuperRes for that row.
-      if (line_buffer_row >= 0 && rows[plane] >= 0) {
+      if (line_buffer_row >= 0) {
         uint8_t* const line_buffer_start =
             superres_line_buffer_.data(plane) +
             line_buffer_row * superres_line_buffer_.stride(plane) +
@@ -67,7 +67,7 @@ void PostFilter::ApplySuperRes(const std::array<uint8_t*, kMaxPlanes>& src,
     }
     // In the multi-threaded case, the |superres_line_buffer_| holds the last
     // input row. Apply SuperRes for that row.
-    if (line_buffer_row >= 0 && rows[plane] >= 0) {
+    if (line_buffer_row >= 0) {
       uint8_t* const line_buffer_start =
           superres_line_buffer_.data(plane) +
           line_buffer_row * superres_line_buffer_.stride(plane) +
@@ -135,17 +135,27 @@ void PostFilter::ApplySuperResForOneSuperBlockRow(int row4x4_start, int sb4x4,
 }
 
 void PostFilter::ApplySuperResThreaded() {
-  const int num_threads = thread_pool_->num_threads() + 1;
-  // The number of rows4x4 that will be processed by each thread in the thread
-  // pool (other than the current thread).
-  const int thread_pool_rows4x4 = frame_header_.rows4x4 / num_threads;
-  // For the current thread, we round up to process all the remaining rows so
-  // that the current thread's job will potentially run the longest.
-  const int current_thread_rows4x4 =
-      frame_header_.rows4x4 - (thread_pool_rows4x4 * (num_threads - 1));
+  int num_threads = thread_pool_->num_threads() + 1;
+  // The number of rows that will be processed by each thread in the thread pool
+  // (other than the current thread).
+  int thread_pool_rows = height_ / num_threads;
+  thread_pool_rows = std::max(thread_pool_rows, 1);
+  // Make rows of Y plane even when there is subsampling for the other planes.
+  if ((thread_pool_rows & 1) != 0 && subsampling_y_[kPlaneU] != 0) {
+    ++thread_pool_rows;
+  }
+  // Adjust the number of threads to what we really need.
+  num_threads = std::min(num_threads, height_ / thread_pool_rows);
+  // For the current thread, we round up to process all the remaining rows.
+  int current_thread_rows = height_ - thread_pool_rows * (num_threads - 1);
+  // Make rows of Y plane even when there is subsampling for the other planes.
+  if ((current_thread_rows & 1) != 0 && subsampling_y_[kPlaneU] != 0) {
+    ++current_thread_rows;
+  }
+  assert(current_thread_rows > 0);
   BlockingCounter pending_workers(num_threads - 1);
-  for (int line_buffer_row = 0, row4x4_start = 0; line_buffer_row < num_threads;
-       ++line_buffer_row, row4x4_start += thread_pool_rows4x4) {
+  for (int line_buffer_row = 0, row_start = 0; line_buffer_row < num_threads;
+       ++line_buffer_row, row_start += thread_pool_rows) {
     std::array<uint8_t*, kMaxPlanes> src;
     std::array<uint8_t*, kMaxPlanes> dst;
     std::array<int, kMaxPlanes> rows;
@@ -153,28 +163,25 @@ void PostFilter::ApplySuperResThreaded() {
     do {
       src[plane] =
           GetBufferOffset(cdef_buffer_[plane], frame_buffer_.stride(plane),
-                          static_cast<Plane>(plane), row4x4_start, 0);
+                          static_cast<Plane>(plane), row_start, 0);
       dst[plane] =
-          GetSuperResBuffer(static_cast<Plane>(plane), row4x4_start, 0);
-      if (line_buffer_row < num_threads - 1) {
-        rows[plane] = MultiplyBy4(thread_pool_rows4x4) >> subsampling_y_[plane];
-      } else {
-        rows[plane] =
-            MultiplyBy4(current_thread_rows4x4) >> subsampling_y_[plane];
-      }
-      --rows[plane];
-      if (rows[plane] >= 0) {
-        const int8_t subsampling_x = subsampling_x_[plane];
-        const int plane_width =
-            MultiplyBy4(frame_header_.columns4x4) >> subsampling_x;
-        uint8_t* const input =
-            src[plane] + rows[plane] * frame_buffer_.stride(plane);
-        uint8_t* const line_buffer_start =
-            superres_line_buffer_.data(plane) +
-            line_buffer_row * superres_line_buffer_.stride(plane) +
-            kSuperResHorizontalBorder * pixel_size_;
-        memcpy(line_buffer_start, input, plane_width * pixel_size_);
-      }
+          GetBufferOffset(superres_buffer_[plane], frame_buffer_.stride(plane),
+                          static_cast<Plane>(plane), row_start, 0);
+      rows[plane] =
+          (((line_buffer_row < num_threads - 1) ? thread_pool_rows
+                                                : current_thread_rows) >>
+           subsampling_y_[plane]) -
+          1;
+      const int8_t subsampling_x = subsampling_x_[plane];
+      const int plane_width =
+          MultiplyBy4(frame_header_.columns4x4) >> subsampling_x;
+      uint8_t* const input =
+          src[plane] + rows[plane] * frame_buffer_.stride(plane);
+      uint8_t* const line_buffer_start =
+          superres_line_buffer_.data(plane) +
+          line_buffer_row * superres_line_buffer_.stride(plane) +
+          kSuperResHorizontalBorder * pixel_size_;
+      memcpy(line_buffer_start, input, plane_width * pixel_size_);
     } while (++plane < planes_);
     if (line_buffer_row < num_threads - 1) {
       thread_pool_->Schedule(

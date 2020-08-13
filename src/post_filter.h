@@ -219,24 +219,21 @@ class PostFilter {
   }
   LoopRestorationInfo* restoration_info() const { return restoration_info_; }
   uint8_t* GetBufferOffset(uint8_t* base_buffer, int stride, Plane plane,
-                           int row4x4, int column4x4) const {
-    return base_buffer +
-           RowOrColumn4x4ToPixel(row4x4, plane, subsampling_y_[plane]) *
-               stride +
-           RowOrColumn4x4ToPixel(column4x4, plane, subsampling_x_[plane]) *
-               pixel_size_;
+                           int row, int column) const {
+    return base_buffer + (row >> subsampling_y_[plane]) * stride +
+           (column >> subsampling_x_[plane]) * pixel_size_;
   }
   uint8_t* GetSourceBuffer(Plane plane, int row4x4, int column4x4) const {
     return GetBufferOffset(source_buffer_[plane], frame_buffer_.stride(plane),
-                           plane, row4x4, column4x4);
+                           plane, MultiplyBy4(row4x4), MultiplyBy4(column4x4));
   }
   uint8_t* GetCdefBuffer(Plane plane, int row4x4, int column4x4) const {
     return GetBufferOffset(cdef_buffer_[plane], frame_buffer_.stride(plane),
-                           plane, row4x4, column4x4);
+                           plane, MultiplyBy4(row4x4), MultiplyBy4(column4x4));
   }
   uint8_t* GetSuperResBuffer(Plane plane, int row4x4, int column4x4) const {
     return GetBufferOffset(superres_buffer_[plane], frame_buffer_.stride(plane),
-                           plane, row4x4, column4x4);
+                           plane, MultiplyBy4(row4x4), MultiplyBy4(column4x4));
   }
 
   template <typename Pixel>
