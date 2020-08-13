@@ -1184,12 +1184,6 @@ bool Tile::BlockInterPrediction(
                                    kConvolveBorderLeftTop * pixel_size);
   }
 
-  const int has_horizontal_filter = static_cast<int>(
-      ((mv.mv[MotionVector::kColumn] * (1 << (1 - subsampling_x))) &
-       kSubPixelMask) != 0);
-  const int has_vertical_filter = static_cast<int>(
-      ((mv.mv[MotionVector::kRow] * (1 << (1 - subsampling_y))) &
-       kSubPixelMask) != 0);
   void* const output =
       (is_compound || is_inter_intra) ? prediction : static_cast<void*>(dest);
   ptrdiff_t output_stride = (is_compound || is_inter_intra)
@@ -1214,14 +1208,17 @@ bool Tile::BlockInterPrediction(
                   vertical_filter_index, start_x, start_y, step_x, step_y,
                   width, height, output, output_stride);
   } else {
+    const int horizontal_filter_id = (start_x >> 6) & kSubPixelMask;
+    const int vertical_filter_id = (start_y >> 6) & kSubPixelMask;
+
     dsp::ConvolveFunc convolve_func =
         dsp_.convolve[reference_frame_index == -1][is_compound]
-                     [has_vertical_filter][has_horizontal_filter];
+                     [vertical_filter_id != 0][horizontal_filter_id != 0];
     assert(convolve_func != nullptr);
 
     convolve_func(block_start, convolve_buffer_stride, horizontal_filter_index,
-                  vertical_filter_index, start_x, start_y, width, height,
-                  output, output_stride);
+                  vertical_filter_index, horizontal_filter_id,
+                  vertical_filter_id, width, height, output, output_stride);
   }
   return true;
 }

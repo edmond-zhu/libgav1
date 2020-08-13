@@ -385,7 +385,7 @@ using LoopRestorationFuncs = LoopRestorationFunc[2];
 // |vertical_filter_index|/|horizontal_filter_index| is the index to
 // retrieve the type of filter to be applied for vertical/horizontal direction
 // from the filter lookup table 'kSubPixelFilters'.
-// |subpixel_x| and |subpixel_y| are starting positions in units of 1/1024.
+// |horizontal_filter_id| and |vertical_filter_id| are the filter ids.
 // |width| and |height| are width and height of the block to be filtered.
 // |ref_last_x| and |ref_last_y| are the last pixel of the reference frame in
 // x/y direction.
@@ -397,9 +397,10 @@ using LoopRestorationFuncs = LoopRestorationFunc[2];
 // be used.
 using ConvolveFunc = void (*)(const void* reference, ptrdiff_t reference_stride,
                               int horizontal_filter_index,
-                              int vertical_filter_index, int subpixel_x,
-                              int subpixel_y, int width, int height,
-                              void* prediction, ptrdiff_t pred_stride);
+                              int vertical_filter_index,
+                              int horizontal_filter_id, int vertical_filter_id,
+                              int width, int height, void* prediction,
+                              ptrdiff_t pred_stride);
 
 // Convolve functions signature. Each points to one convolve function with
 // a specific setting:
