@@ -638,7 +638,8 @@ int DaalaBitReader::ReadSymbol(uint16_t* const cdf, int symbol_count) {
 }
 
 bool DaalaBitReader::ReadSymbol(uint16_t* cdf) {
-  const bool symbol = ReadSymbolImpl(cdf) != 0;
+  assert(cdf[1] == 0);
+  const bool symbol = ReadSymbolImpl(cdf[0]) != 0;
   if (allow_update_cdf_) {
     const uint16_t count = cdf[2];
     // rate is computed in the spec as:
@@ -666,7 +667,7 @@ bool DaalaBitReader::ReadSymbol(uint16_t* cdf) {
   return symbol;
 }
 
-bool DaalaBitReader::ReadSymbolWithoutCdfUpdate(uint16_t* cdf) {
+bool DaalaBitReader::ReadSymbolWithoutCdfUpdate(uint16_t cdf) {
   return ReadSymbolImpl(cdf) != 0;
 }
 
@@ -772,10 +773,11 @@ int DaalaBitReader::ReadSymbolImplBinarySearch(const uint16_t* const cdf,
   return low;
 }
 
-int DaalaBitReader::ReadSymbolImpl(const uint16_t* const cdf) {
-  assert(cdf[1] == 0);
+int DaalaBitReader::ReadSymbolImpl(uint16_t cdf) {
   const auto symbol_value = static_cast<uint16_t>(window_diff_ >> bits_);
-  const uint32_t curr = ScaleCdf(values_in_range_ >> 8, cdf, 0, 1);
+  const uint32_t curr =
+      (((values_in_range_ >> 8) * (cdf >> kCdfPrecision)) >> 1) +
+      kMinimumProbabilityPerSymbol;
   const int symbol = static_cast<int>(symbol_value < curr);
   if (symbol == 1) {
     values_in_range_ = curr;

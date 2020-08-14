@@ -46,7 +46,7 @@ class DaalaBitReader : public BitReader {
   // ReadSymbol() calls for which the |symbol_count| is equal to 2 (boolean
   // symbols) will use this variant.
   bool ReadSymbol(uint16_t* cdf);
-  bool ReadSymbolWithoutCdfUpdate(uint16_t* cdf);
+  bool ReadSymbolWithoutCdfUpdate(uint16_t cdf);
   // Use either linear search or binary search for decoding the symbol depending
   // on |symbol_count|. ReadSymbol calls for which the |symbol_count| is known
   // at compile time will use this variant.
@@ -72,7 +72,7 @@ class DaalaBitReader : public BitReader {
   inline int ReadSymbolImplBinarySearch(const uint16_t* cdf, int symbol_count);
   // Specialized implementation of ReadSymbolImpl based on the fact that
   // symbol_count == 2.
-  inline int ReadSymbolImpl(const uint16_t* cdf);
+  inline int ReadSymbolImpl(uint16_t cdf);
   // ReadSymbolN is a specialization of ReadSymbol for symbol_count == N.
   LIBGAV1_ALWAYS_INLINE int ReadSymbol3Or4(uint16_t* cdf, int symbol_count);
   // ReadSymbolImplN is a specialization of ReadSymbolImpl for
