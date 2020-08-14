@@ -97,7 +97,7 @@ void PostFilter::ExtendFrame(Pixel* const frame_start, const int width,
   // **YYY|YZabcdef|fff
   // **YYY|YZabcdef|fff <-- bottom right border pixel
   assert(src == frame_start + height * stride);
-  Pixel* dst = src + width + right - stride;
+  Pixel* dst = src - left;
   src = dst - stride;
   for (int y = 0; y < bottom; ++y) {
     memcpy(dst, src, sizeof(Pixel) * stride);
