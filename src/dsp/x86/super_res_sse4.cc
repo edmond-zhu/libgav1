@@ -90,52 +90,60 @@ void SuperResCoefficients_SSE4_1(const int upscaled_width,
   } while (--x != 0);
 }
 
-void ComputeSuperRes_SSE4_1(const void* const coefficients,
-                            const void* const source, const int upscaled_width,
-                            const int initial_subpixel_x, const int step,
-                            void* const dest) {
-  const auto* const src =
-      static_cast<const uint8_t*>(source) - DivideBy2(kSuperResFilterTaps);
-  const auto* filter = static_cast<const uint8_t*>(coefficients);
+void SuperRes_SSE4_1(const void* const coefficients, void* const source,
+                     const ptrdiff_t stride, const int height,
+                     const int downscaled_width, const int upscaled_width,
+                     const int initial_subpixel_x, const int step,
+                     void* const dest) {
+  auto* src = static_cast<uint8_t*>(source) - DivideBy2(kSuperResFilterTaps);
   auto* dst = static_cast<uint8_t*>(dest);
-  int subpixel_x = initial_subpixel_x;
-  // The below code calculates up to 15 extra upscaled
-  // pixels which will over-read up to 15 downscaled pixels in the end of each
-  // row. kSuperResHorizontalBorder accounts for this.
-  int x = RightShiftWithCeiling(upscaled_width, 4);
+  int y = height;
   do {
-    __m128i weighted_src[8];
-    for (int i = 0; i < 8; ++i, filter += 16) {
-      __m128i s = LoadLo8(&src[subpixel_x >> kSuperResScaleBits]);
-      subpixel_x += step;
-      s = LoadHi8(s, &src[subpixel_x >> kSuperResScaleBits]);
-      subpixel_x += step;
-      const __m128i f = LoadAligned16(filter);
-      weighted_src[i] = _mm_maddubs_epi16(s, f);
-    }
+    const auto* filter = static_cast<const uint8_t*>(coefficients);
+    uint8_t* dst_ptr = dst;
+    ExtendLine<uint8_t>(src + DivideBy2(kSuperResFilterTaps), downscaled_width,
+                        kSuperResHorizontalBorder, kSuperResHorizontalBorder);
+    int subpixel_x = initial_subpixel_x;
+    // The below code calculates up to 15 extra upscaled
+    // pixels which will over-read up to 15 downscaled pixels in the end of each
+    // row. kSuperResHorizontalBorder accounts for this.
+    int x = RightShiftWithCeiling(upscaled_width, 4);
+    do {
+      __m128i weighted_src[8];
+      for (int i = 0; i < 8; ++i, filter += 16) {
+        __m128i s = LoadLo8(&src[subpixel_x >> kSuperResScaleBits]);
+        subpixel_x += step;
+        s = LoadHi8(s, &src[subpixel_x >> kSuperResScaleBits]);
+        subpixel_x += step;
+        const __m128i f = LoadAligned16(filter);
+        weighted_src[i] = _mm_maddubs_epi16(s, f);
+      }
 
-    __m128i a[4];
-    a[0] = _mm_hadd_epi16(weighted_src[0], weighted_src[1]);
-    a[1] = _mm_hadd_epi16(weighted_src[2], weighted_src[3]);
-    a[2] = _mm_hadd_epi16(weighted_src[4], weighted_src[5]);
-    a[3] = _mm_hadd_epi16(weighted_src[6], weighted_src[7]);
-    Transpose2x16_U16(a, a);
-    a[0] = _mm_adds_epi16(a[0], a[1]);
-    a[1] = _mm_adds_epi16(a[2], a[3]);
-    const __m128i rounding = _mm_set1_epi16(1 << (kFilterBits - 1));
-    a[0] = _mm_subs_epi16(rounding, a[0]);
-    a[1] = _mm_subs_epi16(rounding, a[1]);
-    a[0] = _mm_srai_epi16(a[0], kFilterBits);
-    a[1] = _mm_srai_epi16(a[1], kFilterBits);
-    StoreAligned16(dst, _mm_packus_epi16(a[0], a[1]));
-    dst += 16;
-  } while (--x != 0);
+      __m128i a[4];
+      a[0] = _mm_hadd_epi16(weighted_src[0], weighted_src[1]);
+      a[1] = _mm_hadd_epi16(weighted_src[2], weighted_src[3]);
+      a[2] = _mm_hadd_epi16(weighted_src[4], weighted_src[5]);
+      a[3] = _mm_hadd_epi16(weighted_src[6], weighted_src[7]);
+      Transpose2x16_U16(a, a);
+      a[0] = _mm_adds_epi16(a[0], a[1]);
+      a[1] = _mm_adds_epi16(a[2], a[3]);
+      const __m128i rounding = _mm_set1_epi16(1 << (kFilterBits - 1));
+      a[0] = _mm_subs_epi16(rounding, a[0]);
+      a[1] = _mm_subs_epi16(rounding, a[1]);
+      a[0] = _mm_srai_epi16(a[0], kFilterBits);
+      a[1] = _mm_srai_epi16(a[1], kFilterBits);
+      StoreAligned16(dst_ptr, _mm_packus_epi16(a[0], a[1]));
+      dst_ptr += 16;
+    } while (--x != 0);
+    src += stride;
+    dst += stride;
+  } while (--y != 0);
 }
 
 void Init8bpp() {
   Dsp* dsp = dsp_internal::GetWritableDspTable(kBitdepth8);
   dsp->super_res_coefficients = SuperResCoefficients_SSE4_1;
-  dsp->super_res_row = ComputeSuperRes_SSE4_1;
+  dsp->super_res = SuperRes_SSE4_1;
 }
 
 }  // namespace

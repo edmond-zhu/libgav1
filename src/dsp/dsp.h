@@ -349,7 +349,7 @@ using CdefFilteringFuncs = CdefFilteringFunc[2][3];
 // Upscaling coefficients function signature. Section 7.16.
 // This is an auxiliary function for SIMD optimizations and has no corresponding
 // C function. Different SIMD versions may have different outputs. So it must
-// pair with the corresponding version of SuperResRowFunc.
+// pair with the corresponding version of SuperResFunc.
 // |upscaled_width| is the width of the output frame.
 // |step| is the number of subpixels to move the kernel for the next destination
 // pixel.
@@ -360,18 +360,21 @@ using SuperResCoefficientsFunc = void (*)(int upscaled_width,
                                           void* coefficients);
 
 // Upscaling process function signature. Section 7.16.
-// Operates on a single row.
 // |coefficients| is the upscale filter used by each pixel in a row. It is not
 // used by the C function.
-// |source| is the input frame buffer at the given row.
-// |dest| is the output row.
+// |source| is the input frame buffer. It will be line extended.
+// |dest| is the output buffer.
+// |stride| is given in pixels, and shared by |source| and |dest|.
+// |height| is the height of the block to be processed.
+// |downscaled_width| is the width of the input frame.
 // |upscaled_width| is the width of the output frame.
 // |step| is the number of subpixels to move the kernel for the next destination
 // pixel.
 // |initial_subpixel_x| is a base offset from which |step| increments.
-using SuperResRowFunc = void (*)(const void* coefficients, const void* source,
-                                 int upscaled_width, int initial_subpixel_x,
-                                 int step, void* dest);
+using SuperResFunc = void (*)(const void* coefficients, void* source,
+                              ptrdiff_t stride, int height,
+                              int downscaled_width, int upscaled_width,
+                              int initial_subpixel_x, int step, void* dest);
 
 // Loop restoration function signature. Sections 7.16, 7.17.
 // |restoration_info| contains loop restoration information, such as filter
@@ -834,7 +837,7 @@ struct Dsp {
   MvProjectionSingleFunc mv_projection_single[3];
   ObmcBlendFuncs obmc_blend;
   SuperResCoefficientsFunc super_res_coefficients;
-  SuperResRowFunc super_res_row;
+  SuperResFunc super_res;
   WarpCompoundFunc warp_compound;
   WarpFunc warp;
   WeightMaskFuncs weight_mask;

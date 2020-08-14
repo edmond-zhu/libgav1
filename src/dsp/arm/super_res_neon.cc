@@ -81,61 +81,69 @@ inline uint8x8_t SuperRes(const uint8x8_t src[kSuperResFilterTaps],
   return vqrshrn_n_u16(res, kFilterBits);
 }
 
-void ComputeSuperRes_NEON(const void* const coefficients,
-                          const void* const source, const int upscaled_width,
-                          const int initial_subpixel_x, const int step,
-                          void* const dest) {
-  const auto* src =
-      static_cast<const uint8_t*>(source) - DivideBy2(kSuperResFilterTaps);
-  const auto* filter = static_cast<const uint8_t*>(coefficients);
+void SuperRes_NEON(const void* const coefficients, void* const source,
+                   const ptrdiff_t stride, const int height,
+                   const int downscaled_width, const int upscaled_width,
+                   const int initial_subpixel_x, const int step,
+                   void* const dest) {
+  auto* src = static_cast<uint8_t*>(source) - DivideBy2(kSuperResFilterTaps);
   auto* dst = static_cast<uint8_t*>(dest);
-  int subpixel_x = initial_subpixel_x;
-  uint8x8_t sr[8];
-  uint8x16_t s[8];
-  int x = RightShiftWithCeiling(upscaled_width, 4);
-  // The below code calculates up to 15 extra upscaled
-  // pixels which will over-read up to 15 downscaled pixels in the end of each
-  // row. kSuperResHorizontalBorder accounts for this.
+  int y = height;
   do {
-    for (int i = 0; i < 8; ++i, subpixel_x += step) {
-      sr[i] = vld1_u8(&src[subpixel_x >> kSuperResScaleBits]);
-    }
-    for (int i = 0; i < 8; ++i, subpixel_x += step) {
-      const uint8x8_t s_hi = vld1_u8(&src[subpixel_x >> kSuperResScaleBits]);
-      s[i] = vcombine_u8(sr[i], s_hi);
-    }
-    Transpose8x16(s);
-    // Do not use loop for the following 8 instructions, since the compiler will
-    // generate redundant code.
-    sr[0] = vget_low_u8(s[0]);
-    sr[1] = vget_low_u8(s[1]);
-    sr[2] = vget_low_u8(s[2]);
-    sr[3] = vget_low_u8(s[3]);
-    sr[4] = vget_low_u8(s[4]);
-    sr[5] = vget_low_u8(s[5]);
-    sr[6] = vget_low_u8(s[6]);
-    sr[7] = vget_low_u8(s[7]);
-    const uint8x8_t d0 = SuperRes(sr, &filter);
-    // Do not use loop for the following 8 instructions, since the compiler will
-    // generate redundant code.
-    sr[0] = vget_high_u8(s[0]);
-    sr[1] = vget_high_u8(s[1]);
-    sr[2] = vget_high_u8(s[2]);
-    sr[3] = vget_high_u8(s[3]);
-    sr[4] = vget_high_u8(s[4]);
-    sr[5] = vget_high_u8(s[5]);
-    sr[6] = vget_high_u8(s[6]);
-    sr[7] = vget_high_u8(s[7]);
-    const uint8x8_t d1 = SuperRes(sr, &filter);
-    vst1q_u8(dst, vcombine_u8(d0, d1));
-    dst += 16;
-  } while (--x != 0);
+    const auto* filter = static_cast<const uint8_t*>(coefficients);
+    uint8_t* dst_ptr = dst;
+    ExtendLine<uint8_t>(src + DivideBy2(kSuperResFilterTaps), downscaled_width,
+                        kSuperResHorizontalBorder, kSuperResHorizontalBorder);
+    int subpixel_x = initial_subpixel_x;
+    uint8x8_t sr[8];
+    uint8x16_t s[8];
+    int x = RightShiftWithCeiling(upscaled_width, 4);
+    // The below code calculates up to 15 extra upscaled
+    // pixels which will over-read up to 15 downscaled pixels in the end of each
+    // row. kSuperResHorizontalBorder accounts for this.
+    do {
+      for (int i = 0; i < 8; ++i, subpixel_x += step) {
+        sr[i] = vld1_u8(&src[subpixel_x >> kSuperResScaleBits]);
+      }
+      for (int i = 0; i < 8; ++i, subpixel_x += step) {
+        const uint8x8_t s_hi = vld1_u8(&src[subpixel_x >> kSuperResScaleBits]);
+        s[i] = vcombine_u8(sr[i], s_hi);
+      }
+      Transpose8x16(s);
+      // Do not use loop for the following 8 instructions, since the compiler
+      // will generate redundant code.
+      sr[0] = vget_low_u8(s[0]);
+      sr[1] = vget_low_u8(s[1]);
+      sr[2] = vget_low_u8(s[2]);
+      sr[3] = vget_low_u8(s[3]);
+      sr[4] = vget_low_u8(s[4]);
+      sr[5] = vget_low_u8(s[5]);
+      sr[6] = vget_low_u8(s[6]);
+      sr[7] = vget_low_u8(s[7]);
+      const uint8x8_t d0 = SuperRes(sr, &filter);
+      // Do not use loop for the following 8 instructions, since the compiler
+      // will generate redundant code.
+      sr[0] = vget_high_u8(s[0]);
+      sr[1] = vget_high_u8(s[1]);
+      sr[2] = vget_high_u8(s[2]);
+      sr[3] = vget_high_u8(s[3]);
+      sr[4] = vget_high_u8(s[4]);
+      sr[5] = vget_high_u8(s[5]);
+      sr[6] = vget_high_u8(s[6]);
+      sr[7] = vget_high_u8(s[7]);
+      const uint8x8_t d1 = SuperRes(sr, &filter);
+      vst1q_u8(dst_ptr, vcombine_u8(d0, d1));
+      dst_ptr += 16;
+    } while (--x != 0);
+    src += stride;
+    dst += stride;
+  } while (--y != 0);
 }
 
 void Init8bpp() {
   Dsp* dsp = dsp_internal::GetWritableDspTable(kBitdepth8);
   dsp->super_res_coefficients = SuperResCoefficients_NEON;
-  dsp->super_res_row = ComputeSuperRes_NEON;
+  dsp->super_res = SuperRes_NEON;
 }
 
 }  // namespace
