@@ -23,9 +23,8 @@ void PostFilter::ApplySuperRes(const std::array<uint8_t*, kMaxPlanes>& src,
                                const std::array<uint8_t*, kMaxPlanes>& dst) {
   int plane = kPlaneY;
   do {
-    const int8_t subsampling_x = subsampling_x_[plane];
     const int plane_width =
-        MultiplyBy4(frame_header_.columns4x4) >> subsampling_x;
+        MultiplyBy4(frame_header_.columns4x4) >> subsampling_x_[plane];
     uint8_t* input = src[plane];
     uint8_t* output = dst[plane];
 #if LIBGAV1_MAX_BITDEPTH >= 10
@@ -35,7 +34,8 @@ void PostFilter::ApplySuperRes(const std::array<uint8_t*, kMaxPlanes>& src,
                output += frame_buffer_.stride(plane)) {
         ExtendLine<uint16_t>(input, plane_width, kSuperResHorizontalBorder,
                              kSuperResHorizontalBorder);
-        dsp_.super_res_row(input, super_res_info_[plane].upscaled_width,
+        dsp_.super_res_row(superres_coefficients_[static_cast<int>(plane != 0)],
+                           input, super_res_info_[plane].upscaled_width,
                            super_res_info_[plane].initial_subpixel_x,
                            super_res_info_[plane].step, output);
       }
@@ -49,7 +49,8 @@ void PostFilter::ApplySuperRes(const std::array<uint8_t*, kMaxPlanes>& src,
         ExtendLine<uint16_t>(line_buffer_start, plane_width,
                              kSuperResHorizontalBorder,
                              kSuperResHorizontalBorder);
-        dsp_.super_res_row(line_buffer_start,
+        dsp_.super_res_row(superres_coefficients_[static_cast<int>(plane != 0)],
+                           line_buffer_start,
                            super_res_info_[plane].upscaled_width,
                            super_res_info_[plane].initial_subpixel_x,
                            super_res_info_[plane].step, output);
@@ -61,7 +62,8 @@ void PostFilter::ApplySuperRes(const std::array<uint8_t*, kMaxPlanes>& src,
              output += frame_buffer_.stride(plane)) {
       ExtendLine<uint8_t>(input, plane_width, kSuperResHorizontalBorder,
                           kSuperResHorizontalBorder);
-      dsp_.super_res_row(input, super_res_info_[plane].upscaled_width,
+      dsp_.super_res_row(superres_coefficients_[static_cast<int>(plane != 0)],
+                         input, super_res_info_[plane].upscaled_width,
                          super_res_info_[plane].initial_subpixel_x,
                          super_res_info_[plane].step, output);
     }
@@ -74,7 +76,8 @@ void PostFilter::ApplySuperRes(const std::array<uint8_t*, kMaxPlanes>& src,
           kSuperResHorizontalBorder;
       ExtendLine<uint8_t>(line_buffer_start, plane_width,
                           kSuperResHorizontalBorder, kSuperResHorizontalBorder);
-      dsp_.super_res_row(line_buffer_start,
+      dsp_.super_res_row(superres_coefficients_[static_cast<int>(plane != 0)],
+                         line_buffer_start,
                          super_res_info_[plane].upscaled_width,
                          super_res_info_[plane].initial_subpixel_x,
                          super_res_info_[plane].step, output);
@@ -172,9 +175,8 @@ void PostFilter::ApplySuperResThreaded() {
                                                 : current_thread_rows) >>
            subsampling_y_[plane]) -
           1;
-      const int8_t subsampling_x = subsampling_x_[plane];
       const int plane_width =
-          MultiplyBy4(frame_header_.columns4x4) >> subsampling_x;
+          MultiplyBy4(frame_header_.columns4x4) >> subsampling_x_[plane];
       uint8_t* const input =
           src[plane] + rows[plane] * frame_buffer_.stride(plane);
       uint8_t* const line_buffer_start =

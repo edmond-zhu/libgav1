@@ -167,6 +167,15 @@ PostFilter::PostFilter(const ObuFrameHeader& frame_header,
       cdef_index_(frame_scratch_buffer->cdef_index),
       inter_transform_sizes_(frame_scratch_buffer->inter_transform_sizes),
       restoration_info_(&frame_scratch_buffer->loop_restoration_info),
+      superres_coefficients_{
+          frame_scratch_buffer->superres_coefficients[kPlaneTypeY].get(),
+          frame_scratch_buffer
+              ->superres_coefficients
+                  [(sequence_header.color_config.is_monochrome ||
+                    sequence_header.color_config.subsampling_x == 0)
+                       ? kPlaneTypeY
+                       : kPlaneTypeUV]
+              .get()},
       superres_line_buffer_(frame_scratch_buffer->superres_line_buffer),
       block_parameters_(frame_scratch_buffer->block_parameters_holder),
       frame_buffer_(*frame_buffer),
@@ -197,6 +206,19 @@ PostFilter::PostFilter(const ObuFrameHeader& frame_header,
           kSuperResScaleMask;
       super_res_info_[plane].upscaled_width = upscaled_width;
     } while (++plane < planes_);
+    if (dsp->super_res_coefficients != nullptr) {
+      int plane = kPlaneY;
+      const int number_loops = (superres_coefficients_[kPlaneTypeY] ==
+                                superres_coefficients_[kPlaneTypeUV])
+                                   ? kMaxPlanesMonochrome
+                                   : static_cast<int>(kNumPlaneTypes);
+      do {
+        dsp->super_res_coefficients(
+            SubsampledValue(upscaled_width_, subsampling_x_[plane]),
+            super_res_info_[plane].initial_subpixel_x,
+            super_res_info_[plane].step, superres_coefficients_[plane]);
+      } while (++plane < number_loops);
+    }
   }
   int plane = kPlaneY;
   do {

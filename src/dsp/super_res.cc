@@ -25,17 +25,17 @@ namespace dsp {
 namespace {
 
 template <int bitdepth, typename Pixel>
-void ComputeSuperRes(const void* source, const int upscaled_width,
-                     const int initial_subpixel_x, const int step,
-                     void* const dest) {
+void ComputeSuperRes(const void* /*coefficients*/, const void* const source,
+                     const int upscaled_width, const int initial_subpixel_x,
+                     const int step, void* const dest) {
   // If (original) upscaled_width is <= 9, the downscaled_width may be
   // upscaled_width - 1 (i.e. 8, 9), and become the same (i.e. 4) when
   // subsampled via RightShiftWithRounding. This leads to an edge case where
   // |step| == 1 << 14.
   assert(step <= kSuperResScaleMask || upscaled_width <= 4);
-  const auto* src = static_cast<const Pixel*>(source);
-  auto* dst = static_cast<Pixel*>(dest);
-  src -= DivideBy2(kSuperResFilterTaps);
+  const auto* const src =
+      static_cast<const Pixel*>(source) - DivideBy2(kSuperResFilterTaps);
+  auto* const dst = static_cast<Pixel*>(dest);
   int subpixel_x = initial_subpixel_x;
   for (int x = 0; x < upscaled_width; ++x) {
     int sum = 0;
@@ -60,6 +60,7 @@ void ComputeSuperRes(const void* source, const int upscaled_width,
 void Init8bpp() {
   Dsp* dsp = dsp_internal::GetWritableDspTable(8);
   assert(dsp != nullptr);
+  dsp->super_res_coefficients = nullptr;
 #if LIBGAV1_ENABLE_ALL_DSP_FUNCTIONS
   dsp->super_res_row = ComputeSuperRes<8, uint8_t>;
 #else  // !LIBGAV1_ENABLE_ALL_DSP_FUNCTIONS
@@ -74,6 +75,7 @@ void Init8bpp() {
 void Init10bpp() {
   Dsp* dsp = dsp_internal::GetWritableDspTable(10);
   assert(dsp != nullptr);
+  dsp->super_res_coefficients = nullptr;
 #if LIBGAV1_ENABLE_ALL_DSP_FUNCTIONS
   dsp->super_res_row = ComputeSuperRes<10, uint16_t>;
 #else  // !LIBGAV1_ENABLE_ALL_DSP_FUNCTIONS

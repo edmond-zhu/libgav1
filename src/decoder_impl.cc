@@ -1351,6 +1351,29 @@ StatusCode DecoderImpl::DecodeTiles(
     }
   }
 
+  if (do_superres) {
+    const int pixel_size = sequence_header.color_config.bitdepth == 8
+                               ? sizeof(uint8_t)
+                               : sizeof(uint16_t);
+    if (!frame_scratch_buffer->superres_coefficients[kPlaneTypeY].Resize(
+            kSuperResFilterTaps * Align(frame_header.upscaled_width, 16) *
+            pixel_size)) {
+      LIBGAV1_DLOG(ERROR,
+                   "Failed to Resize superres_coefficients[kPlaneTypeY].");
+      return kStatusOutOfMemory;
+    }
+    if (!sequence_header.color_config.is_monochrome &&
+        sequence_header.color_config.subsampling_x != 0 &&
+        !frame_scratch_buffer->superres_coefficients[kPlaneTypeUV].Resize(
+            kSuperResFilterTaps *
+            Align(SubsampledValue(frame_header.upscaled_width, 1), 16) *
+            pixel_size)) {
+      LIBGAV1_DLOG(ERROR,
+                   "Failed to Resize superres_coefficients[kPlaneTypeUV].");
+      return kStatusOutOfMemory;
+    }
+  }
+
   if (do_superres && threading_strategy.post_filter_thread_pool() != nullptr) {
     const int num_threads =
         threading_strategy.post_filter_thread_pool()->num_threads() + 1;

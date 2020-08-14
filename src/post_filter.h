@@ -494,6 +494,7 @@ class PostFilter {
   const Array2D<int16_t>& cdef_index_;
   const Array2D<TransformSize>& inter_transform_sizes_;
   LoopRestorationInfo* const restoration_info_;
+  uint8_t* const superres_coefficients_[kNumPlaneTypes];
   // Line buffer used by multi-threaded ApplySuperRes().
   // In the multi-threaded case, this buffer will store the last downscaled row
   // input of each thread to avoid overwrites by the first upscaled row output

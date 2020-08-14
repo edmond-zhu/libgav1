@@ -58,6 +58,7 @@ struct FrameScratchBuffer {
   // every 64x64 block (4 rows for every 32x32 for chroma with subsampling). The
   // indices of the rows that are stored are specified in |kCdefBorderRows|.
   YuvBuffer cdef_border;
+  AlignedDynamicBuffer<uint8_t, 16> superres_coefficients[kNumPlaneTypes];
   // Buffer used to temporarily store the input row for applying SuperRes.
   YuvBuffer superres_line_buffer;
   // Buffer used to store the loop restoration borders. This buffer will store 4
