@@ -144,7 +144,7 @@ void PostFilter::ApplySuperResThreaded() {
     ++thread_pool_rows;
   }
   // Adjust the number of threads to what we really need.
-  num_threads = std::min(num_threads, height_ / thread_pool_rows);
+  num_threads = Clip3(height_ / thread_pool_rows, 1, num_threads);
   // For the current thread, we round up to process all the remaining rows.
   int current_thread_rows = height_ - thread_pool_rows * (num_threads - 1);
   // Make rows of Y plane even when there is subsampling for the other planes.
