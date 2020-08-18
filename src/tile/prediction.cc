@@ -1007,12 +1007,9 @@ void Tile::BuildConvolveBlock(
                     kScaleSubPixelBits) +
                    kSubPixelTaps;
   }
-  const int copy_start_x =
-      std::min(std::max(ref_block_start_x, ref_start_x), ref_last_x);
-  const int copy_end_x =
-      std::max(std::min(ref_block_end_x, ref_last_x), copy_start_x);
-  const int copy_start_y =
-      std::min(std::max(ref_block_start_y, ref_start_y), ref_last_y);
+  const int copy_start_x = Clip3(ref_block_start_x, ref_start_x, ref_last_x);
+  const int copy_start_y = Clip3(ref_block_start_y, ref_start_y, ref_last_y);
+  const int copy_end_x = Clip3(ref_block_end_x, copy_start_x, ref_last_x);
   const int block_width = copy_end_x - copy_start_x + 1;
   const bool extend_left = ref_block_start_x < ref_start_x;
   const bool extend_right = ref_block_end_x > ref_last_x;
