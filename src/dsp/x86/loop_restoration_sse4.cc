@@ -139,19 +139,17 @@ inline void WienerHorizontalTap7(const uint8_t* src, const ptrdiff_t src_stride,
   filter[2] = _mm_shuffle_epi8(coefficients, _mm_set1_epi16(0x0204));
   filter[3] = _mm_shuffle_epi8(coefficients, _mm_set1_epi16(0x8000));
   for (int y = height; y != 0; --y) {
-    const __m128i s0 = LoadUnaligned16(src);
-    __m128i ss[4];
-    ss[0] = _mm_unpacklo_epi8(s0, s0);
-    ss[1] = _mm_unpackhi_epi8(s0, s0);
+    __m128i s = LoadUnaligned16(src);
+    __m128i ss[3];
+    ss[0] = _mm_unpacklo_epi8(s, s);
     ptrdiff_t x = 0;
     do {
-      const __m128i s1 = LoadUnaligned16(src + x + 16);
-      ss[2] = _mm_unpacklo_epi8(s1, s1);
-      ss[3] = _mm_unpackhi_epi8(s1, s1);
+      ss[1] = _mm_unpackhi_epi8(s, s);
+      s = LoadUnaligned16(src + x + 16);
+      ss[2] = _mm_unpacklo_epi8(s, s);
       WienerHorizontalTap7Kernel(ss + 0, filter, *wiener_buffer + x + 0);
       WienerHorizontalTap7Kernel(ss + 1, filter, *wiener_buffer + x + 8);
       ss[0] = ss[2];
-      ss[1] = ss[3];
       x += 16;
     } while (x < width);
     src += src_stride;
@@ -168,19 +166,17 @@ inline void WienerHorizontalTap5(const uint8_t* src, const ptrdiff_t src_stride,
   filter[1] = _mm_shuffle_epi8(coefficients, _mm_set1_epi16(0x0406));
   filter[2] = _mm_shuffle_epi8(coefficients, _mm_set1_epi16(0x8002));
   for (int y = height; y != 0; --y) {
-    const __m128i s0 = LoadUnaligned16(src);
-    __m128i ss[4];
-    ss[0] = _mm_unpacklo_epi8(s0, s0);
-    ss[1] = _mm_unpackhi_epi8(s0, s0);
+    __m128i s = LoadUnaligned16(src);
+    __m128i ss[3];
+    ss[0] = _mm_unpacklo_epi8(s, s);
     ptrdiff_t x = 0;
     do {
-      const __m128i s1 = LoadUnaligned16(src + x + 16);
-      ss[2] = _mm_unpacklo_epi8(s1, s1);
-      ss[3] = _mm_unpackhi_epi8(s1, s1);
+      ss[1] = _mm_unpackhi_epi8(s, s);
+      s = LoadUnaligned16(src + x + 16);
+      ss[2] = _mm_unpacklo_epi8(s, s);
       WienerHorizontalTap5Kernel(ss + 0, filter, *wiener_buffer + x + 0);
       WienerHorizontalTap5Kernel(ss + 1, filter, *wiener_buffer + x + 8);
       ss[0] = ss[2];
-      ss[1] = ss[3];
       x += 16;
     } while (x < width);
     src += src_stride;
@@ -196,19 +192,17 @@ inline void WienerHorizontalTap3(const uint8_t* src, const ptrdiff_t src_stride,
   filter[0] = _mm_shuffle_epi8(coefficients, _mm_set1_epi16(0x0604));
   filter[1] = _mm_shuffle_epi8(coefficients, _mm_set1_epi16(0x8004));
   for (int y = height; y != 0; --y) {
-    const __m128i s0 = LoadUnaligned16(src);
-    __m128i ss[4];
-    ss[0] = _mm_unpacklo_epi8(s0, s0);
-    ss[1] = _mm_unpackhi_epi8(s0, s0);
+    __m128i s = LoadUnaligned16(src);
+    __m128i ss[3];
+    ss[0] = _mm_unpacklo_epi8(s, s);
     ptrdiff_t x = 0;
     do {
-      const __m128i s1 = LoadUnaligned16(src + x + 16);
-      ss[2] = _mm_unpacklo_epi8(s1, s1);
-      ss[3] = _mm_unpackhi_epi8(s1, s1);
+      ss[1] = _mm_unpackhi_epi8(s, s);
+      s = LoadUnaligned16(src + x + 16);
+      ss[2] = _mm_unpacklo_epi8(s, s);
       WienerHorizontalTap3Kernel(ss + 0, filter, *wiener_buffer + x + 0);
       WienerHorizontalTap3Kernel(ss + 1, filter, *wiener_buffer + x + 8);
       ss[0] = ss[2];
-      ss[1] = ss[3];
       x += 16;
     } while (x < width);
     src += src_stride;
