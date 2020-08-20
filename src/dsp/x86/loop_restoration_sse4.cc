@@ -36,97 +36,72 @@ namespace dsp {
 namespace low_bitdepth {
 namespace {
 
-inline void WienerHorizontalTap7Kernel(const __m128i s[2],
-                                       const __m128i filter[4],
-                                       int16_t* const wiener_buffer) {
-  const int limit =
-      (1 << (8 + 1 + kWienerFilterBits - kInterRoundBitsHorizontal)) - 1;
-  const int offset =
+inline void WienerHorizontalClip(const __m128i s[2], const __m128i s_3x128,
+                                 int16_t* const wiener_buffer) {
+  constexpr int offset =
       1 << (8 + kWienerFilterBits - kInterRoundBitsHorizontal - 1);
+  constexpr int limit =
+      (1 << (8 + 1 + kWienerFilterBits - kInterRoundBitsHorizontal)) - 1;
   const __m128i offsets = _mm_set1_epi16(-offset);
   const __m128i limits = _mm_set1_epi16(limit - offset);
   const __m128i round = _mm_set1_epi16(1 << (kInterRoundBitsHorizontal - 1));
-  const auto s01 = _mm_alignr_epi8(s[1], s[0], 1);
-  const auto s23 = _mm_alignr_epi8(s[1], s[0], 5);
-  const auto s45 = _mm_alignr_epi8(s[1], s[0], 9);
-  const auto s67 = _mm_alignr_epi8(s[1], s[0], 13);
-  const __m128i madd01 = _mm_maddubs_epi16(s01, filter[0]);
-  const __m128i madd23 = _mm_maddubs_epi16(s23, filter[1]);
-  const __m128i madd45 = _mm_maddubs_epi16(s45, filter[2]);
-  const __m128i madd67 = _mm_maddubs_epi16(s67, filter[3]);
-  const __m128i madd0123 = _mm_add_epi16(madd01, madd23);
-  const __m128i madd4567 = _mm_add_epi16(madd45, madd67);
   // The sum range here is [-128 * 255, 90 * 255].
-  const __m128i madd = _mm_add_epi16(madd0123, madd4567);
+  const __m128i madd = _mm_add_epi16(s[0], s[1]);
   const __m128i sum = _mm_add_epi16(madd, round);
   const __m128i rounded_sum0 = _mm_srai_epi16(sum, kInterRoundBitsHorizontal);
-  // Calculate scaled down offset correction, and add to sum here to prevent
-  // signed 16 bit outranging.
-  const __m128i s_3x128 =
-      _mm_slli_epi16(_mm_srli_epi16(s23, 8), 7 - kInterRoundBitsHorizontal);
+  // Add back scaled down offset correction.
   const __m128i rounded_sum1 = _mm_add_epi16(rounded_sum0, s_3x128);
   const __m128i d0 = _mm_max_epi16(rounded_sum1, offsets);
   const __m128i d1 = _mm_min_epi16(d0, limits);
   StoreAligned16(wiener_buffer, d1);
+}
+
+inline void WienerHorizontalTap7Kernel(const __m128i s[2],
+                                       const __m128i filter[4],
+                                       int16_t* const wiener_buffer) {
+  const auto s01 = _mm_alignr_epi8(s[1], s[0], 1);
+  const auto s23 = _mm_alignr_epi8(s[1], s[0], 5);
+  const auto s45 = _mm_alignr_epi8(s[1], s[0], 9);
+  const auto s67 = _mm_alignr_epi8(s[1], s[0], 13);
+  __m128i madds[4];
+  madds[0] = _mm_maddubs_epi16(s01, filter[0]);
+  madds[1] = _mm_maddubs_epi16(s23, filter[1]);
+  madds[2] = _mm_maddubs_epi16(s45, filter[2]);
+  madds[3] = _mm_maddubs_epi16(s67, filter[3]);
+  madds[0] = _mm_add_epi16(madds[0], madds[2]);
+  madds[1] = _mm_add_epi16(madds[1], madds[3]);
+  const __m128i s_3x128 =
+      _mm_slli_epi16(_mm_srli_epi16(s23, 8), 7 - kInterRoundBitsHorizontal);
+  WienerHorizontalClip(madds, s_3x128, wiener_buffer);
 }
 
 inline void WienerHorizontalTap5Kernel(const __m128i s[2],
                                        const __m128i filter[3],
                                        int16_t* const wiener_buffer) {
-  const int limit =
-      (1 << (8 + 1 + kWienerFilterBits - kInterRoundBitsHorizontal)) - 1;
-  const int offset =
-      1 << (8 + kWienerFilterBits - kInterRoundBitsHorizontal - 1);
-  const __m128i offsets = _mm_set1_epi16(-offset);
-  const __m128i limits = _mm_set1_epi16(limit - offset);
-  const __m128i round = _mm_set1_epi16(1 << (kInterRoundBitsHorizontal - 1));
   const auto s01 = _mm_alignr_epi8(s[1], s[0], 1);
   const auto s23 = _mm_alignr_epi8(s[1], s[0], 5);
   const auto s45 = _mm_alignr_epi8(s[1], s[0], 9);
-  const __m128i madd01 = _mm_maddubs_epi16(s01, filter[0]);
-  const __m128i madd23 = _mm_maddubs_epi16(s23, filter[1]);
-  const __m128i madd45 = _mm_maddubs_epi16(s45, filter[2]);
-  const __m128i madd0123 = _mm_add_epi16(madd01, madd23);
-  // The sum range here is [-128 * 255, 90 * 255].
-  const __m128i madd = _mm_add_epi16(madd0123, madd45);
-  const __m128i sum = _mm_add_epi16(madd, round);
-  const __m128i rounded_sum0 = _mm_srai_epi16(sum, kInterRoundBitsHorizontal);
-  // Calculate scaled down offset correction, and add to sum here to prevent
-  // signed 16 bit outranging.
+  __m128i madds[3];
+  madds[0] = _mm_maddubs_epi16(s01, filter[0]);
+  madds[1] = _mm_maddubs_epi16(s23, filter[1]);
+  madds[2] = _mm_maddubs_epi16(s45, filter[2]);
+  madds[0] = _mm_add_epi16(madds[0], madds[2]);
   const __m128i s_3x128 =
       _mm_srli_epi16(_mm_slli_epi16(s23, 8), kInterRoundBitsHorizontal + 1);
-  const __m128i rounded_sum1 = _mm_add_epi16(rounded_sum0, s_3x128);
-  const __m128i d0 = _mm_max_epi16(rounded_sum1, offsets);
-  const __m128i d1 = _mm_min_epi16(d0, limits);
-  StoreAligned16(wiener_buffer, d1);
+  WienerHorizontalClip(madds, s_3x128, wiener_buffer);
 }
 
 inline void WienerHorizontalTap3Kernel(const __m128i s[2],
                                        const __m128i filter[2],
                                        int16_t* const wiener_buffer) {
-  const int limit =
-      (1 << (8 + 1 + kWienerFilterBits - kInterRoundBitsHorizontal)) - 1;
-  const int offset =
-      1 << (8 + kWienerFilterBits - kInterRoundBitsHorizontal - 1);
-  const __m128i offsets = _mm_set1_epi16(-offset);
-  const __m128i limits = _mm_set1_epi16(limit - offset);
-  const __m128i round = _mm_set1_epi16(1 << (kInterRoundBitsHorizontal - 1));
   const auto s01 = _mm_alignr_epi8(s[1], s[0], 1);
   const auto s23 = _mm_alignr_epi8(s[1], s[0], 5);
-  const __m128i madd01 = _mm_maddubs_epi16(s01, filter[0]);
-  const __m128i madd23 = _mm_maddubs_epi16(s23, filter[1]);
-  // The sum range here is [-128 * 255, 90 * 255].
-  const __m128i madd = _mm_add_epi16(madd01, madd23);
-  const __m128i sum = _mm_add_epi16(madd, round);
-  const __m128i rounded_sum0 = _mm_srai_epi16(sum, kInterRoundBitsHorizontal);
-  // Calculate scaled down offset correction, and add to sum here to prevent
-  // signed 16 bit outranging.
+  __m128i madds[2];
+  madds[0] = _mm_maddubs_epi16(s01, filter[0]);
+  madds[1] = _mm_maddubs_epi16(s23, filter[1]);
   const __m128i s_3x128 =
       _mm_slli_epi16(_mm_srli_epi16(s01, 8), 7 - kInterRoundBitsHorizontal);
-  const __m128i rounded_sum1 = _mm_add_epi16(rounded_sum0, s_3x128);
-  const __m128i d0 = _mm_max_epi16(rounded_sum1, offsets);
-  const __m128i d1 = _mm_min_epi16(d0, limits);
-  StoreAligned16(wiener_buffer, d1);
+  WienerHorizontalClip(madds, s_3x128, wiener_buffer);
 }
 
 inline void WienerHorizontalTap7(const uint8_t* src, const ptrdiff_t src_stride,
