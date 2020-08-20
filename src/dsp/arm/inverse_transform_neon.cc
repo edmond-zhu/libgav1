@@ -392,8 +392,8 @@ LIBGAV1_ALWAYS_INLINE void ButterflyRotation_FirstIsZero(int16x8_t* a,
   // inside 12 bits.  This leaves room for the sign bit and the 3 left shifted
   // bits.
   assert(sin128 <= 0xfff);
-  const int16x8_t x = vqrdmulhq_s16(*b, vdupq_n_s16(-sin128 << 3));
-  const int16x8_t y = vqrdmulhq_s16(*b, vdupq_n_s16(cos128 << 3));
+  const int16x8_t x = vqrdmulhq_n_s16(*b, -sin128 << 3);
+  const int16x8_t y = vqrdmulhq_n_s16(*b, cos128 << 3);
   if (flip) {
     *a = y;
     *b = x;
@@ -409,8 +409,8 @@ LIBGAV1_ALWAYS_INLINE void ButterflyRotation_SecondIsZero(int16x8_t* a,
                                                           const bool flip) {
   const int16_t cos128 = Cos128(angle);
   const int16_t sin128 = Sin128(angle);
-  const int16x8_t x = vqrdmulhq_s16(*a, vdupq_n_s16(cos128 << 3));
-  const int16x8_t y = vqrdmulhq_s16(*a, vdupq_n_s16(sin128 << 3));
+  const int16x8_t x = vqrdmulhq_n_s16(*a, cos128 << 3);
+  const int16x8_t y = vqrdmulhq_n_s16(*a, sin128 << 3);
   if (flip) {
     *a = y;
     *b = x;
@@ -457,7 +457,7 @@ LIBGAV1_ALWAYS_INLINE bool DctDcOnly(void* dest, const void* source,
       vqrdmulhq_n_s16(v_src, kTransformRowMultiplier << 3);
   const int16x8_t s0 = vbslq_s16(v_mask, v_src_round, v_src);
   const int16_t cos128 = Cos128(32);
-  const int16x8_t xy = vqrdmulhq_s16(s0, vdupq_n_s16(cos128 << 3));
+  const int16x8_t xy = vqrdmulhq_n_s16(s0, cos128 << 3);
   // vqrshlq_s16 will shift right if shift value is negative.
   const int16x8_t xy_shifted = vqrshlq_s16(xy, vdupq_n_s16(-row_shift));
 
@@ -487,13 +487,13 @@ LIBGAV1_ALWAYS_INLINE bool DctDcOnlyColumn(void* dest, const void* source,
   // Calculate dc values for first row.
   if (width == 4) {
     const int16x4_t v_src = vld1_s16(src);
-    const int16x4_t xy = vqrdmulh_s16(v_src, vdup_n_s16(cos128 << 3));
+    const int16x4_t xy = vqrdmulh_n_s16(v_src, cos128 << 3);
     vst1_s16(dst, xy);
   } else {
     int i = 0;
     do {
       const int16x8_t v_src = vld1q_s16(&src[i]);
-      const int16x8_t xy = vqrdmulhq_s16(v_src, vdupq_n_s16(cos128 << 3));
+      const int16x8_t xy = vqrdmulhq_n_s16(v_src, cos128 << 3);
       vst1q_s16(&dst[i], xy);
       i += 8;
     } while (i < width);
