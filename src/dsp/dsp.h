@@ -870,6 +870,12 @@ namespace dsp_internal {
 //  NEON support is the only extension available for ARM and it is always
 //  required. Because of this restriction DSP_ENABLED_8BPP_NEON(func) is always
 //  true and can be omitted.
+#define DSP_ENABLED_8BPP_AVX2(func)    \
+  (LIBGAV1_ENABLE_ALL_DSP_FUNCTIONS || \
+   LIBGAV1_Dsp8bpp_##func == LIBGAV1_CPU_AVX2)
+#define DSP_ENABLED_10BPP_AVX2(func)   \
+  (LIBGAV1_ENABLE_ALL_DSP_FUNCTIONS || \
+   LIBGAV1_Dsp10bpp_##func == LIBGAV1_CPU_AVX2)
 #define DSP_ENABLED_8BPP_SSE4_1(func)  \
   (LIBGAV1_ENABLE_ALL_DSP_FUNCTIONS || \
    LIBGAV1_Dsp8bpp_##func == LIBGAV1_CPU_SSE4_1)

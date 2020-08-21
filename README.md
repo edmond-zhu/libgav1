@@ -39,6 +39,8 @@ Configuration options:
     [symbol reduction](#symbol-reduction) in an optimized build to keep all
     versions of dsp functions available. Automatically defined in
     `src/dsp/dsp.h` if unset.
+*   `LIBGAV1_ENABLE_AVX2`: define to a non-zero value to enable avx2
+    optimizations. Automatically defined in `src/dsp/dsp.h` if unset.
 *   `LIBGAV1_ENABLE_NEON`: define to a non-zero value to enable NEON
     optimizations. Automatically defined in `src/dsp/dsp.h` if unset.
 *   `LIBGAV1_ENABLE_SSE4_1`: define to a non-zero value to enable sse4.1

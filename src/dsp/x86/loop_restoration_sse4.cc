@@ -1948,8 +1948,11 @@ void SelfGuidedFilter_SSE4_1(
 void Init8bpp() {
   Dsp* const dsp = dsp_internal::GetWritableDspTable(kBitdepth8);
   assert(dsp != nullptr);
+  static_cast<void>(dsp);
 #if DSP_ENABLED_8BPP_SSE4_1(WienerFilter)
   dsp->loop_restorations[0] = WienerFilter_SSE4_1;
+#else
+  static_cast<void>(WienerFilter_SSE4_1);
 #endif
 #if DSP_ENABLED_8BPP_SSE4_1(SelfGuidedFilter)
   dsp->loop_restorations[1] = SelfGuidedFilter_SSE4_1;

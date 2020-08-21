@@ -25,6 +25,14 @@ namespace libgav1 {
 #define LIBGAV1_X86_MSVC
 #endif
 
+#if !defined(LIBGAV1_ENABLE_AVX2)
+#ifdef __AVX2__
+#define LIBGAV1_ENABLE_AVX2 1
+#else
+#define LIBGAV1_ENABLE_AVX2 0
+#endif
+#endif  // !defined(LIBGAV1_ENABLE_AVX2)
+
 #if !defined(LIBGAV1_ENABLE_SSE4_1)
 #if defined(__SSE4_1__) || defined(LIBGAV1_X86_MSVC)
 #define LIBGAV1_ENABLE_SSE4_1 1
