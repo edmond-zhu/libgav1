@@ -442,9 +442,9 @@ using ButterflyRotationFunc = void (*)(int16x8_t* a, int16x8_t* b, int angle,
 
 template <int width>
 LIBGAV1_ALWAYS_INLINE bool DctDcOnly(void* dest, const void* source,
-                                     int non_zero_coeff_count,
-                                     bool should_round, int row_shift) {
-  if (non_zero_coeff_count > 1) {
+                                     int adjusted_tx_height, bool should_round,
+                                     int row_shift) {
+  if (adjusted_tx_height > 1) {
     return false;
   }
 
@@ -474,9 +474,8 @@ LIBGAV1_ALWAYS_INLINE bool DctDcOnly(void* dest, const void* source,
 
 template <int height>
 LIBGAV1_ALWAYS_INLINE bool DctDcOnlyColumn(void* dest, const void* source,
-                                           int non_zero_coeff_count,
-                                           int width) {
-  if (non_zero_coeff_count > 1) {
+                                           int adjusted_tx_height, int width) {
+  if (adjusted_tx_height > 1) {
     return false;
   }
 
@@ -1251,9 +1250,9 @@ alignas(8) constexpr int16_t kAdst4DcOnlyMultiplier[4] = {1321, 2482, 3344,
                                                           2482};
 
 LIBGAV1_ALWAYS_INLINE bool Adst4DcOnly(void* dest, const void* source,
-                                       int non_zero_coeff_count,
+                                       int adjusted_tx_height,
                                        bool should_round, int row_shift) {
-  if (non_zero_coeff_count > 1) {
+  if (adjusted_tx_height > 1) {
     return false;
   }
 
@@ -1284,9 +1283,9 @@ LIBGAV1_ALWAYS_INLINE bool Adst4DcOnly(void* dest, const void* source,
 }
 
 LIBGAV1_ALWAYS_INLINE bool Adst4DcOnlyColumn(void* dest, const void* source,
-                                             int non_zero_coeff_count,
+                                             int adjusted_tx_height,
                                              int width) {
-  if (non_zero_coeff_count > 1) {
+  if (adjusted_tx_height > 1) {
     return false;
   }
 
@@ -1414,9 +1413,9 @@ LIBGAV1_ALWAYS_INLINE void Adst8_NEON(void* dest, const void* source,
 }
 
 LIBGAV1_ALWAYS_INLINE bool Adst8DcOnly(void* dest, const void* source,
-                                       int non_zero_coeff_count,
+                                       int adjusted_tx_height,
                                        bool should_round, int row_shift) {
-  if (non_zero_coeff_count > 1) {
+  if (adjusted_tx_height > 1) {
     return false;
   }
 
@@ -1472,9 +1471,9 @@ LIBGAV1_ALWAYS_INLINE bool Adst8DcOnly(void* dest, const void* source,
 }
 
 LIBGAV1_ALWAYS_INLINE bool Adst8DcOnlyColumn(void* dest, const void* source,
-                                             int non_zero_coeff_count,
+                                             int adjusted_tx_height,
                                              int width) {
-  if (non_zero_coeff_count > 1) {
+  if (adjusted_tx_height > 1) {
     return false;
   }
 
@@ -1744,9 +1743,9 @@ LIBGAV1_ALWAYS_INLINE void Adst16DcOnlyInternal(int16x8_t* s, int16x8_t* x) {
 }
 
 LIBGAV1_ALWAYS_INLINE bool Adst16DcOnly(void* dest, const void* source,
-                                        int non_zero_coeff_count,
+                                        int adjusted_tx_height,
                                         bool should_round, int row_shift) {
-  if (non_zero_coeff_count > 1) {
+  if (adjusted_tx_height > 1) {
     return false;
   }
 
@@ -1774,9 +1773,9 @@ LIBGAV1_ALWAYS_INLINE bool Adst16DcOnly(void* dest, const void* source,
 }
 
 LIBGAV1_ALWAYS_INLINE bool Adst16DcOnlyColumn(void* dest, const void* source,
-                                              int non_zero_coeff_count,
+                                              int adjusted_tx_height,
                                               int width) {
-  if (non_zero_coeff_count > 1) {
+  if (adjusted_tx_height > 1) {
     return false;
   }
 
@@ -1840,9 +1839,9 @@ LIBGAV1_ALWAYS_INLINE void Identity4_NEON(void* dest, const void* source,
 }
 
 LIBGAV1_ALWAYS_INLINE bool Identity4DcOnly(void* dest, const void* source,
-                                           int non_zero_coeff_count,
+                                           int adjusted_tx_height,
                                            bool should_round, int tx_height) {
-  if (non_zero_coeff_count > 1) {
+  if (adjusted_tx_height > 1) {
     return false;
   }
 
@@ -2031,9 +2030,9 @@ LIBGAV1_ALWAYS_INLINE void Identity8Row4_NEON(void* dest, const void* source,
 }
 
 LIBGAV1_ALWAYS_INLINE bool Identity8DcOnly(void* dest, const void* source,
-                                           int non_zero_coeff_count,
+                                           int adjusted_tx_height,
                                            bool should_round, int row_shift) {
-  if (non_zero_coeff_count > 1) {
+  if (adjusted_tx_height > 1) {
     return false;
   }
 
@@ -2073,9 +2072,9 @@ LIBGAV1_ALWAYS_INLINE void Identity16Row_NEON(void* dest, const void* source,
 }
 
 LIBGAV1_ALWAYS_INLINE bool Identity16DcOnly(void* dest, const void* source,
-                                            int non_zero_coeff_count,
+                                            int adjusted_tx_height,
                                             bool should_round, int shift) {
-  if (non_zero_coeff_count > 1) {
+  if (adjusted_tx_height > 1) {
     return false;
   }
 
@@ -2117,8 +2116,8 @@ LIBGAV1_ALWAYS_INLINE void Identity32Row16_NEON(void* dest, const void* source,
 }
 
 LIBGAV1_ALWAYS_INLINE bool Identity32DcOnly(void* dest, const void* source,
-                                            int non_zero_coeff_count) {
-  if (non_zero_coeff_count > 1) {
+                                            int adjusted_tx_height) {
+  if (adjusted_tx_height > 1) {
     return false;
   }
 
@@ -2188,11 +2187,11 @@ LIBGAV1_ALWAYS_INLINE void TransposeAndPermute4x4WideInput(
 // Process 4 wht4 rows and columns.
 LIBGAV1_ALWAYS_INLINE void Wht4_NEON(uint8_t* dst, const int dst_stride,
                                      const void* source,
-                                     const int non_zero_coeff_count) {
+                                     const int adjusted_tx_height) {
   const auto* const src = static_cast<const int16_t*>(source);
   int16x4_t s[4];
 
-  if (non_zero_coeff_count == 1) {
+  if (adjusted_tx_height == 1) {
     // Special case: only src[0] is nonzero.
     //   src[0]  0   0   0
     //       0   0   0   0
@@ -2412,9 +2411,9 @@ LIBGAV1_ALWAYS_INLINE void StoreToFrameWithRound(
 }
 
 void Dct4TransformLoop_NEON(TransformType tx_type, TransformSize tx_size,
-                            void* src_buffer, int start_x, int start_y,
-                            void* dst_frame, bool is_row,
-                            int non_zero_coeff_count) {
+                            int adjusted_tx_height, void* src_buffer,
+                            int start_x, int start_y, void* dst_frame,
+                            bool is_row) {
   auto& frame = *static_cast<Array2DView<uint8_t>*>(dst_frame);
   auto* src = static_cast<int16_t*>(src_buffer);
   const int tx_width = kTransformWidth[tx_size];
@@ -2424,18 +2423,16 @@ void Dct4TransformLoop_NEON(TransformType tx_type, TransformSize tx_size,
     const bool should_round = (tx_height == 8);
     const int row_shift = (tx_height == 16);
 
-    if (DctDcOnly<4>(&src[0], &src[0], non_zero_coeff_count, should_round,
+    if (DctDcOnly<4>(&src[0], &src[0], adjusted_tx_height, should_round,
                      row_shift)) {
       return;
     }
 
-    const int num_rows =
-        GetNumRows<4>(tx_type, tx_height, non_zero_coeff_count);
     if (should_round) {
-      ApplyRounding<4>(src, num_rows);
+      ApplyRounding<4>(src, adjusted_tx_height);
     }
 
-    if (num_rows <= 4) {
+    if (adjusted_tx_height == 4) {
       // Process 4 1d dct4 rows in parallel.
       Dct4_NEON<ButterflyRotation_4, false>(&src[0], &src[0], /*step=*/4,
                                             /*transpose=*/true);
@@ -2446,10 +2443,10 @@ void Dct4TransformLoop_NEON(TransformType tx_type, TransformSize tx_size,
         Dct4_NEON<ButterflyRotation_8, true>(&src[i * 4], &src[i * 4],
                                              /*step=*/4, /*transpose=*/true);
         i += 8;
-      } while (i < num_rows);
+      } while (i < adjusted_tx_height);
     }
     if (tx_height == 16) {
-      RowShift<4>(src, num_rows, 1);
+      RowShift<4>(src, adjusted_tx_height, 1);
     }
     return;
   }
@@ -2459,7 +2456,7 @@ void Dct4TransformLoop_NEON(TransformType tx_type, TransformSize tx_size,
     FlipColumns<4>(src, tx_width);
   }
 
-  if (!DctDcOnlyColumn<4>(&src[0], &src[0], non_zero_coeff_count, tx_width)) {
+  if (!DctDcOnlyColumn<4>(&src[0], &src[0], adjusted_tx_height, tx_width)) {
     if (tx_width == 4) {
       // Process 4 1d dct4 columns in parallel.
       Dct4_NEON<ButterflyRotation_4, false>(&src[0], &src[0], tx_width,
@@ -2478,30 +2475,27 @@ void Dct4TransformLoop_NEON(TransformType tx_type, TransformSize tx_size,
 }
 
 void Dct8TransformLoop_NEON(TransformType tx_type, TransformSize tx_size,
-                            void* src_buffer, int start_x, int start_y,
-                            void* dst_frame, bool is_row,
-                            int non_zero_coeff_count) {
+                            int adjusted_tx_height, void* src_buffer,
+                            int start_x, int start_y, void* dst_frame,
+                            bool is_row) {
   auto& frame = *static_cast<Array2DView<uint8_t>*>(dst_frame);
   auto* src = static_cast<int16_t*>(src_buffer);
   const int tx_width = kTransformWidth[tx_size];
-  const int tx_height = kTransformHeight[tx_size];
 
   if (is_row) {
     const bool should_round = kShouldRound[tx_size];
     const uint8_t row_shift = kTransformRowShift[tx_size];
 
-    if (DctDcOnly<8>(&src[0], &src[0], non_zero_coeff_count, should_round,
+    if (DctDcOnly<8>(&src[0], &src[0], adjusted_tx_height, should_round,
                      row_shift)) {
       return;
     }
 
-    const int num_rows =
-        GetNumRows<8>(tx_type, tx_height, non_zero_coeff_count);
     if (should_round) {
-      ApplyRounding<8>(src, num_rows);
+      ApplyRounding<8>(src, adjusted_tx_height);
     }
 
-    if (num_rows <= 4) {
+    if (adjusted_tx_height == 4) {
       // Process 4 1d dct8 rows in parallel.
       Dct8_NEON<ButterflyRotation_4, true>(&src[0], &src[0], /*step=*/8,
                                            /*transpose=*/true);
@@ -2512,10 +2506,10 @@ void Dct8TransformLoop_NEON(TransformType tx_type, TransformSize tx_size,
         Dct8_NEON<ButterflyRotation_8, false>(&src[i * 8], &src[i * 8],
                                               /*step=*/8, /*transpose=*/true);
         i += 8;
-      } while (i < num_rows);
+      } while (i < adjusted_tx_height);
     }
     if (row_shift > 0) {
-      RowShift<8>(src, num_rows, row_shift);
+      RowShift<8>(src, adjusted_tx_height, row_shift);
     }
     return;
   }
@@ -2525,7 +2519,7 @@ void Dct8TransformLoop_NEON(TransformType tx_type, TransformSize tx_size,
     FlipColumns<8>(src, tx_width);
   }
 
-  if (!DctDcOnlyColumn<8>(&src[0], &src[0], non_zero_coeff_count, tx_width)) {
+  if (!DctDcOnlyColumn<8>(&src[0], &src[0], adjusted_tx_height, tx_width)) {
     if (tx_width == 4) {
       // Process 4 1d dct8 columns in parallel.
       Dct8_NEON<ButterflyRotation_4, true>(&src[0], &src[0], 4,
@@ -2544,30 +2538,27 @@ void Dct8TransformLoop_NEON(TransformType tx_type, TransformSize tx_size,
 }
 
 void Dct16TransformLoop_NEON(TransformType tx_type, TransformSize tx_size,
-                             void* src_buffer, int start_x, int start_y,
-                             void* dst_frame, bool is_row,
-                             int non_zero_coeff_count) {
+                             int adjusted_tx_height, void* src_buffer,
+                             int start_x, int start_y, void* dst_frame,
+                             bool is_row) {
   auto& frame = *static_cast<Array2DView<uint8_t>*>(dst_frame);
   auto* src = static_cast<int16_t*>(src_buffer);
   const int tx_width = kTransformWidth[tx_size];
-  const int tx_height = kTransformHeight[tx_size];
 
   if (is_row) {
     const bool should_round = kShouldRound[tx_size];
     const uint8_t row_shift = kTransformRowShift[tx_size];
 
-    if (DctDcOnly<16>(&src[0], &src[0], non_zero_coeff_count, should_round,
+    if (DctDcOnly<16>(&src[0], &src[0], adjusted_tx_height, should_round,
                       row_shift)) {
       return;
     }
 
-    const int num_rows =
-        GetNumRows<16>(tx_type, std::min(tx_height, 32), non_zero_coeff_count);
     if (should_round) {
-      ApplyRounding<16>(src, num_rows);
+      ApplyRounding<16>(src, adjusted_tx_height);
     }
 
-    if (num_rows <= 4) {
+    if (adjusted_tx_height == 4) {
       // Process 4 1d dct16 rows in parallel.
       Dct16_NEON<ButterflyRotation_4, true>(&src[0], &src[0], 16,
                                             /*is_row=*/true, row_shift);
@@ -2578,7 +2569,7 @@ void Dct16TransformLoop_NEON(TransformType tx_type, TransformSize tx_size,
         Dct16_NEON<ButterflyRotation_8, false>(&src[i * 16], &src[i * 16], 16,
                                                /*is_row=*/true, row_shift);
         i += 8;
-      } while (i < num_rows);
+      } while (i < adjusted_tx_height);
     }
 
     return;
@@ -2589,7 +2580,7 @@ void Dct16TransformLoop_NEON(TransformType tx_type, TransformSize tx_size,
     FlipColumns<16>(src, tx_width);
   }
 
-  if (!DctDcOnlyColumn<16>(&src[0], &src[0], non_zero_coeff_count, tx_width)) {
+  if (!DctDcOnlyColumn<16>(&src[0], &src[0], adjusted_tx_height, tx_width)) {
     if (tx_width == 4) {
       // Process 4 1d dct16 columns in parallel.
       Dct16_NEON<ButterflyRotation_4, true>(&src[0], &src[0], 4,
@@ -2609,40 +2600,37 @@ void Dct16TransformLoop_NEON(TransformType tx_type, TransformSize tx_size,
 }
 
 void Dct32TransformLoop_NEON(TransformType tx_type, TransformSize tx_size,
-                             void* src_buffer, int start_x, int start_y,
-                             void* dst_frame, bool is_row,
-                             int non_zero_coeff_count) {
+                             int adjusted_tx_height, void* src_buffer,
+                             int start_x, int start_y, void* dst_frame,
+                             bool is_row) {
   auto& frame = *static_cast<Array2DView<uint8_t>*>(dst_frame);
   auto* src = static_cast<int16_t*>(src_buffer);
   const int tx_width = kTransformWidth[tx_size];
-  const int tx_height = kTransformHeight[tx_size];
 
   if (is_row) {
     const bool should_round = kShouldRound[tx_size];
     const uint8_t row_shift = kTransformRowShift[tx_size];
 
-    if (DctDcOnly<32>(&src[0], &src[0], non_zero_coeff_count, should_round,
+    if (DctDcOnly<32>(&src[0], &src[0], adjusted_tx_height, should_round,
                       row_shift)) {
       return;
     }
 
-    const int num_rows =
-        GetNumRows<32>(tx_type, std::min(tx_height, 32), non_zero_coeff_count);
     if (should_round) {
-      ApplyRounding<32>(src, num_rows);
+      ApplyRounding<32>(src, adjusted_tx_height);
     }
     // Process 8 1d dct32 rows in parallel per iteration.
     int i = 0;
     do {
       Dct32_NEON(&src[i * 32], &src[i * 32], 32, /*is_row=*/true, row_shift);
       i += 8;
-    } while (i < num_rows);
+    } while (i < adjusted_tx_height);
 
     return;
   }
 
   assert(!is_row);
-  if (!DctDcOnlyColumn<32>(&src[0], &src[0], non_zero_coeff_count, tx_width)) {
+  if (!DctDcOnlyColumn<32>(&src[0], &src[0], adjusted_tx_height, tx_width)) {
     // Process 8 1d dct32 columns in parallel per iteration.
     int i = 0;
     do {
@@ -2654,40 +2642,37 @@ void Dct32TransformLoop_NEON(TransformType tx_type, TransformSize tx_size,
 }
 
 void Dct64TransformLoop_NEON(TransformType tx_type, TransformSize tx_size,
-                             void* src_buffer, int start_x, int start_y,
-                             void* dst_frame, bool is_row,
-                             int non_zero_coeff_count) {
+                             int adjusted_tx_height, void* src_buffer,
+                             int start_x, int start_y, void* dst_frame,
+                             bool is_row) {
   auto& frame = *static_cast<Array2DView<uint8_t>*>(dst_frame);
   auto* src = static_cast<int16_t*>(src_buffer);
   const int tx_width = kTransformWidth[tx_size];
-  const int tx_height = kTransformHeight[tx_size];
 
   if (is_row) {
     const bool should_round = kShouldRound[tx_size];
     const uint8_t row_shift = kTransformRowShift[tx_size];
 
-    if (DctDcOnly<64>(&src[0], &src[0], non_zero_coeff_count, should_round,
+    if (DctDcOnly<64>(&src[0], &src[0], adjusted_tx_height, should_round,
                       row_shift)) {
       return;
     }
 
-    const int num_rows =
-        GetNumRows<32>(tx_type, std::min(tx_height, 32), non_zero_coeff_count);
     if (should_round) {
-      ApplyRounding<64>(src, num_rows);
+      ApplyRounding<64>(src, adjusted_tx_height);
     }
     // Process 8 1d dct64 rows in parallel per iteration.
     int i = 0;
     do {
       Dct64_NEON(&src[i * 64], &src[i * 64], 64, /*is_row=*/true, row_shift);
       i += 8;
-    } while (i < num_rows);
+    } while (i < adjusted_tx_height);
 
     return;
   }
 
   assert(!is_row);
-  if (!DctDcOnlyColumn<64>(&src[0], &src[0], non_zero_coeff_count, tx_width)) {
+  if (!DctDcOnlyColumn<64>(&src[0], &src[0], adjusted_tx_height, tx_width)) {
     // Process 8 1d dct64 columns in parallel per iteration.
     int i = 0;
     do {
@@ -2699,9 +2684,9 @@ void Dct64TransformLoop_NEON(TransformType tx_type, TransformSize tx_size,
 }
 
 void Adst4TransformLoop_NEON(TransformType tx_type, TransformSize tx_size,
-                             void* src_buffer, int start_x, int start_y,
-                             void* dst_frame, bool is_row,
-                             int non_zero_coeff_count) {
+                             int adjusted_tx_height, void* src_buffer,
+                             int start_x, int start_y, void* dst_frame,
+                             bool is_row) {
   auto& frame = *static_cast<Array2DView<uint8_t>*>(dst_frame);
   auto* src = static_cast<int16_t*>(src_buffer);
   const int tx_width = kTransformWidth[tx_size];
@@ -2711,15 +2696,13 @@ void Adst4TransformLoop_NEON(TransformType tx_type, TransformSize tx_size,
     const uint8_t row_shift = static_cast<uint8_t>(tx_height == 16);
     const bool should_round = (tx_height == 8);
 
-    if (Adst4DcOnly(&src[0], &src[0], non_zero_coeff_count, should_round,
+    if (Adst4DcOnly(&src[0], &src[0], adjusted_tx_height, should_round,
                     row_shift)) {
       return;
     }
 
-    const int num_rows =
-        GetNumRows<4>(tx_type, tx_height, non_zero_coeff_count);
     if (should_round) {
-      ApplyRounding<4>(src, num_rows);
+      ApplyRounding<4>(src, adjusted_tx_height);
     }
 
     // Process 4 1d adst4 rows in parallel per iteration.
@@ -2728,10 +2711,10 @@ void Adst4TransformLoop_NEON(TransformType tx_type, TransformSize tx_size,
       Adst4_NEON<false>(&src[i * 4], &src[i * 4], /*step=*/4,
                         /*transpose=*/true);
       i += 4;
-    } while (i < num_rows);
+    } while (i < adjusted_tx_height);
 
     if (tx_height == 16) {
-      RowShift<4>(src, num_rows, 1);
+      RowShift<4>(src, adjusted_tx_height, 1);
     }
     return;
   }
@@ -2741,7 +2724,7 @@ void Adst4TransformLoop_NEON(TransformType tx_type, TransformSize tx_size,
     FlipColumns<4>(src, tx_width);
   }
 
-  if (!Adst4DcOnlyColumn(&src[0], &src[0], non_zero_coeff_count, tx_width)) {
+  if (!Adst4DcOnlyColumn(&src[0], &src[0], adjusted_tx_height, tx_width)) {
     // Process 4 1d adst4 columns in parallel per iteration.
     int i = 0;
     do {
@@ -2755,30 +2738,27 @@ void Adst4TransformLoop_NEON(TransformType tx_type, TransformSize tx_size,
 }
 
 void Adst8TransformLoop_NEON(TransformType tx_type, TransformSize tx_size,
-                             void* src_buffer, int start_x, int start_y,
-                             void* dst_frame, bool is_row,
-                             int non_zero_coeff_count) {
+                             int adjusted_tx_height, void* src_buffer,
+                             int start_x, int start_y, void* dst_frame,
+                             bool is_row) {
   auto& frame = *static_cast<Array2DView<uint8_t>*>(dst_frame);
   auto* src = static_cast<int16_t*>(src_buffer);
   const int tx_width = kTransformWidth[tx_size];
-  const int tx_height = kTransformHeight[tx_size];
 
   if (is_row) {
     const bool should_round = kShouldRound[tx_size];
     const uint8_t row_shift = kTransformRowShift[tx_size];
 
-    if (Adst8DcOnly(&src[0], &src[0], non_zero_coeff_count, should_round,
+    if (Adst8DcOnly(&src[0], &src[0], adjusted_tx_height, should_round,
                     row_shift)) {
       return;
     }
 
-    const int num_rows =
-        GetNumRows<8>(tx_type, tx_height, non_zero_coeff_count);
     if (should_round) {
-      ApplyRounding<8>(src, num_rows);
+      ApplyRounding<8>(src, adjusted_tx_height);
     }
 
-    if (num_rows <= 4) {
+    if (adjusted_tx_height == 4) {
       // Process 4 1d adst8 rows in parallel.
       Adst8_NEON<ButterflyRotation_4, true>(&src[0], &src[0], /*step=*/8,
                                             /*transpose=*/true);
@@ -2790,10 +2770,10 @@ void Adst8TransformLoop_NEON(TransformType tx_type, TransformSize tx_size,
                                                /*step=*/8,
                                                /*transpose=*/true);
         i += 8;
-      } while (i < num_rows);
+      } while (i < adjusted_tx_height);
     }
     if (row_shift > 0) {
-      RowShift<8>(src, num_rows, row_shift);
+      RowShift<8>(src, adjusted_tx_height, row_shift);
     }
     return;
   }
@@ -2803,7 +2783,7 @@ void Adst8TransformLoop_NEON(TransformType tx_type, TransformSize tx_size,
     FlipColumns<8>(src, tx_width);
   }
 
-  if (!Adst8DcOnlyColumn(&src[0], &src[0], non_zero_coeff_count, tx_width)) {
+  if (!Adst8DcOnlyColumn(&src[0], &src[0], adjusted_tx_height, tx_width)) {
     if (tx_width == 4) {
       // Process 4 1d adst8 columns in parallel.
       Adst8_NEON<ButterflyRotation_4, true>(&src[0], &src[0], 4,
@@ -2823,30 +2803,27 @@ void Adst8TransformLoop_NEON(TransformType tx_type, TransformSize tx_size,
 }
 
 void Adst16TransformLoop_NEON(TransformType tx_type, TransformSize tx_size,
-                              void* src_buffer, int start_x, int start_y,
-                              void* dst_frame, bool is_row,
-                              int non_zero_coeff_count) {
+                              int adjusted_tx_height, void* src_buffer,
+                              int start_x, int start_y, void* dst_frame,
+                              bool is_row) {
   auto& frame = *static_cast<Array2DView<uint8_t>*>(dst_frame);
   auto* src = static_cast<int16_t*>(src_buffer);
   const int tx_width = kTransformWidth[tx_size];
-  const int tx_height = kTransformHeight[tx_size];
 
   if (is_row) {
     const bool should_round = kShouldRound[tx_size];
     const uint8_t row_shift = kTransformRowShift[tx_size];
 
-    if (Adst16DcOnly(&src[0], &src[0], non_zero_coeff_count, should_round,
+    if (Adst16DcOnly(&src[0], &src[0], adjusted_tx_height, should_round,
                      row_shift)) {
       return;
     }
 
-    const int num_rows =
-        GetNumRows<16>(tx_type, std::min(tx_height, 32), non_zero_coeff_count);
     if (should_round) {
-      ApplyRounding<16>(src, num_rows);
+      ApplyRounding<16>(src, adjusted_tx_height);
     }
 
-    if (num_rows <= 4) {
+    if (adjusted_tx_height == 4) {
       // Process 4 1d adst16 rows in parallel.
       Adst16_NEON<ButterflyRotation_4, true>(&src[0], &src[0], 16,
                                              /*is_row=*/true, row_shift);
@@ -2857,7 +2834,7 @@ void Adst16TransformLoop_NEON(TransformType tx_type, TransformSize tx_size,
         Adst16_NEON<ButterflyRotation_8, false>(&src[i * 16], &src[i * 16], 16,
                                                 /*is_row=*/true, row_shift);
         i += 8;
-      } while (i < num_rows);
+      } while (i < adjusted_tx_height);
     }
     return;
   }
@@ -2867,7 +2844,7 @@ void Adst16TransformLoop_NEON(TransformType tx_type, TransformSize tx_size,
     FlipColumns<16>(src, tx_width);
   }
 
-  if (!Adst16DcOnlyColumn(&src[0], &src[0], non_zero_coeff_count, tx_width)) {
+  if (!Adst16DcOnlyColumn(&src[0], &src[0], adjusted_tx_height, tx_width)) {
     if (tx_width == 4) {
       // Process 4 1d adst16 columns in parallel.
       Adst16_NEON<ButterflyRotation_4, true>(&src[0], &src[0], 4,
@@ -2888,9 +2865,9 @@ void Adst16TransformLoop_NEON(TransformType tx_type, TransformSize tx_size,
 }
 
 void Identity4TransformLoop_NEON(TransformType tx_type, TransformSize tx_size,
-                                 void* src_buffer, int start_x, int start_y,
-                                 void* dst_frame, bool is_row,
-                                 int non_zero_coeff_count) {
+                                 int adjusted_tx_height, void* src_buffer,
+                                 int start_x, int start_y, void* dst_frame,
+                                 bool is_row) {
   auto& frame = *static_cast<Array2DView<uint8_t>*>(dst_frame);
   auto* src = static_cast<int16_t*>(src_buffer);
   const int tx_width = kTransformWidth[tx_size];
@@ -2906,38 +2883,35 @@ void Identity4TransformLoop_NEON(TransformType tx_type, TransformSize tx_size,
 
     const bool should_round = (tx_height == 8);
 
-    if (Identity4DcOnly(&src[0], &src[0], non_zero_coeff_count, should_round,
+    if (Identity4DcOnly(&src[0], &src[0], adjusted_tx_height, should_round,
                         tx_height)) {
       return;
     }
 
-    const int num_rows =
-        GetNumRows<4>(tx_type, tx_height, non_zero_coeff_count);
     if (should_round) {
-      ApplyRounding<4>(src, num_rows);
+      ApplyRounding<4>(src, adjusted_tx_height);
     }
     if (tx_height < 16) {
       int i = 0;
       do {
         Identity4_NEON<false>(&src[i * 4], &src[i * 4], /*step=*/4);
         i += 4;
-      } while (i < num_rows);
+      } while (i < adjusted_tx_height);
     } else {
       int i = 0;
       do {
         Identity4_NEON<true>(&src[i * 4], &src[i * 4], /*step=*/4);
         i += 4;
-      } while (i < num_rows);
+      } while (i < adjusted_tx_height);
     }
     return;
   }
   assert(!is_row);
-  const int height = (non_zero_coeff_count == 1) ? 1 : tx_height;
   // Special case: Process row calculations during column transform call.
   if (tx_type == kTransformTypeIdentityIdentity &&
       (tx_size == kTransformSize4x4 || tx_size == kTransformSize8x4)) {
-    Identity4RowColumnStoreToFrame(frame, start_x, start_y, tx_width, height,
-                                   src);
+    Identity4RowColumnStoreToFrame(frame, start_x, start_y, tx_width,
+                                   adjusted_tx_height, src);
     return;
   }
 
@@ -2945,13 +2919,14 @@ void Identity4TransformLoop_NEON(TransformType tx_type, TransformSize tx_size,
     FlipColumns<4>(src, tx_width);
   }
 
-  IdentityColumnStoreToFrame<4>(frame, start_x, start_y, tx_width, height, src);
+  IdentityColumnStoreToFrame<4>(frame, start_x, start_y, tx_width,
+                                adjusted_tx_height, src);
 }
 
 void Identity8TransformLoop_NEON(TransformType tx_type, TransformSize tx_size,
-                                 void* src_buffer, int start_x, int start_y,
-                                 void* dst_frame, bool is_row,
-                                 int non_zero_coeff_count) {
+                                 int adjusted_tx_height, void* src_buffer,
+                                 int start_x, int start_y, void* dst_frame,
+                                 bool is_row) {
   auto& frame = *static_cast<Array2DView<uint8_t>*>(dst_frame);
   auto* src = static_cast<int16_t*>(src_buffer);
   const int tx_width = kTransformWidth[tx_size];
@@ -2967,15 +2942,13 @@ void Identity8TransformLoop_NEON(TransformType tx_type, TransformSize tx_size,
     const bool should_round = kShouldRound[tx_size];
     const uint8_t row_shift = kTransformRowShift[tx_size];
 
-    if (Identity8DcOnly(&src[0], &src[0], non_zero_coeff_count, should_round,
+    if (Identity8DcOnly(&src[0], &src[0], adjusted_tx_height, should_round,
                         row_shift)) {
       return;
     }
 
-    const int num_rows =
-        GetNumRows<8>(tx_type, tx_height, non_zero_coeff_count);
     if (should_round) {
-      ApplyRounding<8>(src, num_rows);
+      ApplyRounding<8>(src, adjusted_tx_height);
     }
 
     // When combining the identity8 multiplier with the row shift, the
@@ -2985,7 +2958,7 @@ void Identity8TransformLoop_NEON(TransformType tx_type, TransformSize tx_size,
       return;
     }
     if (tx_height == 32) {
-      for (int i = 0; i < num_rows; i += 4) {
+      for (int i = 0; i < adjusted_tx_height; i += 4) {
         Identity8Row32_NEON(&src[i * 8], &src[i * 8], /*step=*/8);
       }
       return;
@@ -2993,7 +2966,7 @@ void Identity8TransformLoop_NEON(TransformType tx_type, TransformSize tx_size,
 
     // Process kTransformSize8x4
     assert(tx_size == kTransformSize8x4);
-    for (int i = 0; i < num_rows; i += 4) {
+    for (int i = 0; i < adjusted_tx_height; i += 4) {
       Identity8Row4_NEON(&src[i * 8], &src[i * 8], /*step=*/8);
     }
     return;
@@ -3003,34 +2976,31 @@ void Identity8TransformLoop_NEON(TransformType tx_type, TransformSize tx_size,
   if (kTransformFlipColumnsMask.Contains(tx_type)) {
     FlipColumns<8>(src, tx_width);
   }
-  const int height = (non_zero_coeff_count == 1) ? 1 : tx_height;
-  IdentityColumnStoreToFrame<8>(frame, start_x, start_y, tx_width, height, src);
+  IdentityColumnStoreToFrame<8>(frame, start_x, start_y, tx_width,
+                                adjusted_tx_height, src);
 }
 
 void Identity16TransformLoop_NEON(TransformType tx_type, TransformSize tx_size,
-                                  void* src_buffer, int start_x, int start_y,
-                                  void* dst_frame, bool is_row,
-                                  int non_zero_coeff_count) {
+                                  int adjusted_tx_height, void* src_buffer,
+                                  int start_x, int start_y, void* dst_frame,
+                                  bool is_row) {
   auto& frame = *static_cast<Array2DView<uint8_t>*>(dst_frame);
   auto* src = static_cast<int16_t*>(src_buffer);
   const int tx_width = kTransformWidth[tx_size];
-  const int tx_height = kTransformHeight[tx_size];
 
   if (is_row) {
     const bool should_round = kShouldRound[tx_size];
     const uint8_t row_shift = kTransformRowShift[tx_size];
 
-    if (Identity16DcOnly(&src[0], &src[0], non_zero_coeff_count, should_round,
+    if (Identity16DcOnly(&src[0], &src[0], adjusted_tx_height, should_round,
                          row_shift)) {
       return;
     }
 
-    const int num_rows =
-        GetNumRows<16>(tx_type, std::min(tx_height, 32), non_zero_coeff_count);
     if (should_round) {
-      ApplyRounding<16>(src, num_rows);
+      ApplyRounding<16>(src, adjusted_tx_height);
     }
-    for (int i = 0; i < num_rows; i += 4) {
+    for (int i = 0; i < adjusted_tx_height; i += 4) {
       Identity16Row_NEON(&src[i * 16], &src[i * 16], /*step=*/16,
                          kTransformRowShift[tx_size]);
     }
@@ -3041,15 +3011,14 @@ void Identity16TransformLoop_NEON(TransformType tx_type, TransformSize tx_size,
   if (kTransformFlipColumnsMask.Contains(tx_type)) {
     FlipColumns<16>(src, tx_width);
   }
-  const int height = (non_zero_coeff_count == 1) ? 1 : tx_height;
-  IdentityColumnStoreToFrame<16>(frame, start_x, start_y, tx_width, height,
-                                 src);
+  IdentityColumnStoreToFrame<16>(frame, start_x, start_y, tx_width,
+                                 adjusted_tx_height, src);
 }
 
-void Identity32TransformLoop_NEON(TransformType tx_type, TransformSize tx_size,
+void Identity32TransformLoop_NEON(TransformType /*tx_type*/,
+                                  TransformSize tx_size, int adjusted_tx_height,
                                   void* src_buffer, int start_x, int start_y,
-                                  void* dst_frame, bool is_row,
-                                  int non_zero_coeff_count) {
+                                  void* dst_frame, bool is_row) {
   auto& frame = *static_cast<Array2DView<uint8_t>*>(dst_frame);
   auto* src = static_cast<int16_t*>(src_buffer);
   const int tx_width = kTransformWidth[tx_size];
@@ -3066,31 +3035,27 @@ void Identity32TransformLoop_NEON(TransformType tx_type, TransformSize tx_size,
     // Process kTransformSize32x16.  The src is always rounded before the
     // identity transform and shifted by 1 afterwards.
 
-    if (Identity32DcOnly(&src[0], &src[0], non_zero_coeff_count)) {
+    if (Identity32DcOnly(&src[0], &src[0], adjusted_tx_height)) {
       return;
     }
 
-    const int num_rows =
-        GetNumRows<32>(tx_type, tx_height, non_zero_coeff_count);
-
     assert(tx_size == kTransformSize32x16);
-    ApplyRounding<32>(src, num_rows);
-    for (int i = 0; i < num_rows; i += 4) {
+    ApplyRounding<32>(src, adjusted_tx_height);
+    for (int i = 0; i < adjusted_tx_height; i += 4) {
       Identity32Row16_NEON(&src[i * 32], &src[i * 32], /*step=*/32);
     }
     return;
   }
 
   assert(!is_row);
-  const int height = (non_zero_coeff_count == 1) ? 1 : tx_height;
-  IdentityColumnStoreToFrame<32>(frame, start_x, start_y, tx_width, height,
-                                 src);
+  IdentityColumnStoreToFrame<32>(frame, start_x, start_y, tx_width,
+                                 adjusted_tx_height, src);
 }
 
 void Wht4TransformLoop_NEON(TransformType tx_type, TransformSize tx_size,
-                            void* src_buffer, int start_x, int start_y,
-                            void* dst_frame, bool is_row,
-                            int non_zero_coeff_count) {
+                            int adjusted_tx_height, void* src_buffer,
+                            int start_x, int start_y, void* dst_frame,
+                            bool is_row) {
   assert(tx_type == kTransformTypeDctDct);
   assert(tx_size == kTransformSize4x4);
   static_cast<void>(tx_type);
@@ -3106,7 +3071,7 @@ void Wht4TransformLoop_NEON(TransformType tx_type, TransformSize tx_size,
   auto& frame = *static_cast<Array2DView<uint8_t>*>(dst_frame);
   uint8_t* dst = frame[start_y] + start_x;
   const int dst_stride = frame.columns();
-  Wht4_NEON(dst, dst_stride, src, non_zero_coeff_count);
+  Wht4_NEON(dst, dst_stride, src, adjusted_tx_height);
 }
 
 //------------------------------------------------------------------------------

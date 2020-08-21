@@ -1139,8 +1139,8 @@ template <int bitdepth, typename Residual, typename Pixel,
           InverseTransform1DFunc row_transform1d_func,
           InverseTransform1DFunc column_transform1d_func = row_transform1d_func>
 void TransformLoop_C(TransformType tx_type, TransformSize tx_size,
-                     void* src_buffer, int start_x, int start_y,
-                     void* dst_frame, bool is_row, int non_zero_coeff_count) {
+                     int adjusted_tx_height, void* src_buffer, int start_x,
+                     int start_y, void* dst_frame, bool is_row) {
   constexpr bool lossless = transform1d_type == k1DTransformWht;
   constexpr bool is_identity = transform1d_type == k1DTransformIdentity;
   // The transform size of the WHT is always 4x4. Setting tx_width and
@@ -1168,7 +1168,7 @@ void TransformLoop_C(TransformType tx_type, TransformSize tx_size,
     // the fraction 2896 / 2^12.
     const bool should_round = std::abs(tx_width_log2 - tx_height_log2) == 1;
 
-    if (non_zero_coeff_count == 1) {
+    if (adjusted_tx_height == 1) {
       dconly_transform1d(residual[0], residual[0], row_clamp_range,
                          should_round, row_shift, true);
       return;
@@ -1177,10 +1177,7 @@ void TransformLoop_C(TransformType tx_type, TransformSize tx_size,
     // Row transforms need to be done only up to 32 because the rest of the rows
     // are always all zero if |tx_height| is 64.  Otherwise, only process the
     // rows that have a non zero coefficients.
-    // TODO(slavarnway): Expand to include other possible non_zero_coeff_count
-    // values.
-    const int num_rows = std::min(tx_height, 32);
-    for (int i = 0; i < num_rows; ++i) {
+    for (int i = 0; i < adjusted_tx_height; ++i) {
       // If lossless, the transform size is 4x4, so should_round is false.
       if (!lossless && should_round) {
         // The last 32 values of every row are always zero if the |tx_width| is
@@ -1224,7 +1221,7 @@ void TransformLoop_C(TransformType tx_type, TransformSize tx_size,
     for (int i = 0; i < tx_height; ++i) {
       tx_buffer[i] = residual[i][flipped_j];
     }
-    if (non_zero_coeff_count == 1) {
+    if (adjusted_tx_height == 1) {
       dconly_transform1d(tx_buffer, tx_buffer, column_clamp_range, false, 0,
                          false);
     } else {
