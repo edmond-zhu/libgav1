@@ -2950,17 +2950,21 @@ void Identity8TransformLoop_NEON(TransformType tx_type, TransformSize tx_size,
       return;
     }
     if (tx_height == 32) {
-      for (int i = 0; i < adjusted_tx_height; i += 4) {
+      int i = 0;
+      do {
         Identity8Row32_NEON(&src[i * 8], &src[i * 8], /*step=*/8);
-      }
+        i += 4;
+      } while (i < adjusted_tx_height);
       return;
     }
 
     // Process kTransformSize8x4
     assert(tx_size == kTransformSize8x4);
-    for (int i = 0; i < adjusted_tx_height; i += 4) {
+    int i = 0;
+    do {
       Identity8Row4_NEON(&src[i * 8], &src[i * 8], /*step=*/8);
-    }
+      i += 4;
+    } while (i < adjusted_tx_height);
     return;
   }
 
@@ -2992,10 +2996,12 @@ void Identity16TransformLoop_NEON(TransformType tx_type, TransformSize tx_size,
     if (should_round) {
       ApplyRounding<16>(src, adjusted_tx_height);
     }
-    for (int i = 0; i < adjusted_tx_height; i += 4) {
+    int i = 0;
+    do {
       Identity16Row_NEON(&src[i * 16], &src[i * 16], /*step=*/16,
                          kTransformRowShift[tx_size]);
-    }
+      i += 4;
+    } while (i < adjusted_tx_height);
     return;
   }
 
@@ -3033,9 +3039,11 @@ void Identity32TransformLoop_NEON(TransformType /*tx_type*/,
 
     assert(tx_size == kTransformSize32x16);
     ApplyRounding<32>(src, adjusted_tx_height);
-    for (int i = 0; i < adjusted_tx_height; i += 4) {
+    int i = 0;
+    do {
       Identity32Row16_NEON(&src[i * 32], &src[i * 32], /*step=*/32);
-    }
+      i += 4;
+    } while (i < adjusted_tx_height);
     return;
   }
 
