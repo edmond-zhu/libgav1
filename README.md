@@ -40,11 +40,12 @@ Configuration options:
     versions of dsp functions available. Automatically defined in
     `src/dsp/dsp.h` if unset.
 *   `LIBGAV1_ENABLE_AVX2`: define to a non-zero value to enable avx2
-    optimizations. Automatically defined in `src/dsp/dsp.h` if unset.
+    optimizations. Automatically defined in `src/utils/cpu.h` if unset.
 *   `LIBGAV1_ENABLE_NEON`: define to a non-zero value to enable NEON
-    optimizations. Automatically defined in `src/dsp/dsp.h` if unset.
+    optimizations. Automatically defined in `src/utils/cpu.h` if unset.
 *   `LIBGAV1_ENABLE_SSE4_1`: define to a non-zero value to enable sse4.1
-    optimizations. Automatically defined in `src/dsp/dsp.h` if unset.
+    optimizations. Automatically defined in `src/utils/cpu.h` if unset. Note
+    setting this to 0 will also disable AVX2.
 *   `LIBGAV1_ENABLE_LOGGING`: define to 0/1 to control debug logging.
     Automatically defined in `src/utils/logging.h` if unset.
 *   `LIBGAV1_EXAMPLES_ENABLE_LOGGING`: define to 0/1 to control error logging in

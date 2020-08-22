@@ -25,14 +25,6 @@ namespace libgav1 {
 #define LIBGAV1_X86_MSVC
 #endif
 
-#if !defined(LIBGAV1_ENABLE_AVX2)
-#ifdef __AVX2__
-#define LIBGAV1_ENABLE_AVX2 1
-#else
-#define LIBGAV1_ENABLE_AVX2 0
-#endif
-#endif  // !defined(LIBGAV1_ENABLE_AVX2)
-
 #if !defined(LIBGAV1_ENABLE_SSE4_1)
 #if defined(__SSE4_1__) || defined(LIBGAV1_X86_MSVC)
 #define LIBGAV1_ENABLE_SSE4_1 1
@@ -40,6 +32,20 @@ namespace libgav1 {
 #define LIBGAV1_ENABLE_SSE4_1 0
 #endif
 #endif  // !defined(LIBGAV1_ENABLE_SSE4_1)
+
+#if LIBGAV1_ENABLE_SSE4_1
+#if !defined(LIBGAV1_ENABLE_AVX2)
+#ifdef __AVX2__
+#define LIBGAV1_ENABLE_AVX2 1
+#else
+#define LIBGAV1_ENABLE_AVX2 0
+#endif
+#endif  // !defined(LIBGAV1_ENABLE_AVX2)
+#else  // !LIBGAV1_ENABLE_SSE4_1
+// Disable AVX2 when SSE4.1 is disabled as it may rely on shared components.
+#undef LIBGAV1_ENABLE_AVX2
+#define LIBGAV1_ENABLE_AVX2 0
+#endif  // LIBGAV1_ENABLE_SSE4_1
 
 #undef LIBGAV1_X86_MSVC
 
