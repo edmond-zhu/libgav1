@@ -44,10 +44,8 @@ inline void WienerHorizontalClip(const __m128i s[2], const __m128i s_3x128,
       (1 << (8 + 1 + kWienerFilterBits - kInterRoundBitsHorizontal)) - 1;
   const __m128i offsets = _mm_set1_epi16(-offset);
   const __m128i limits = _mm_set1_epi16(limit - offset);
-  const __m128i round = _mm_set1_epi16(1 << (kInterRoundBitsHorizontal - 1));
-  // The sum range here is [-128 * 255, 90 * 255].
-  const __m128i madd = _mm_add_epi16(s[0], s[1]);
-  const __m128i sum = _mm_add_epi16(madd, round);
+  // The sum range here is [-128 * 255 + 4, 90 * 255 + 4].
+  const __m128i sum = _mm_add_epi16(s[0], s[1]);
   const __m128i rounded_sum0 = _mm_srai_epi16(sum, kInterRoundBitsHorizontal);
   // Add back scaled down offset correction.
   const __m128i rounded_sum1 = _mm_add_epi16(rounded_sum0, s_3x128);
@@ -56,75 +54,78 @@ inline void WienerHorizontalClip(const __m128i s[2], const __m128i s_3x128,
   StoreAligned16(wiener_buffer, d1);
 }
 
-inline void WienerHorizontalTap7Kernel(const __m128i s[2],
+inline void WienerHorizontalTap7Kernel(const __m128i s[4],
                                        const __m128i filter[4],
                                        int16_t* const wiener_buffer) {
-  const auto s01 = _mm_alignr_epi8(s[1], s[0], 1);
-  const auto s23 = _mm_alignr_epi8(s[1], s[0], 5);
-  const auto s45 = _mm_alignr_epi8(s[1], s[0], 9);
-  const auto s67 = _mm_alignr_epi8(s[1], s[0], 13);
   __m128i madds[4];
-  madds[0] = _mm_maddubs_epi16(s01, filter[0]);
-  madds[1] = _mm_maddubs_epi16(s23, filter[1]);
-  madds[2] = _mm_maddubs_epi16(s45, filter[2]);
-  madds[3] = _mm_maddubs_epi16(s67, filter[3]);
+  madds[0] = _mm_maddubs_epi16(s[0], filter[0]);
+  madds[1] = _mm_maddubs_epi16(s[1], filter[1]);
+  madds[2] = _mm_maddubs_epi16(s[2], filter[2]);
+  madds[3] = _mm_maddubs_epi16(s[3], filter[3]);
   madds[0] = _mm_add_epi16(madds[0], madds[2]);
   madds[1] = _mm_add_epi16(madds[1], madds[3]);
   const __m128i s_3x128 =
-      _mm_slli_epi16(_mm_srli_epi16(s23, 8), 7 - kInterRoundBitsHorizontal);
+      _mm_slli_epi16(_mm_srli_epi16(s[1], 8), 7 - kInterRoundBitsHorizontal);
   WienerHorizontalClip(madds, s_3x128, wiener_buffer);
 }
 
-inline void WienerHorizontalTap5Kernel(const __m128i s[2],
+inline void WienerHorizontalTap5Kernel(const __m128i s[5],
                                        const __m128i filter[3],
                                        int16_t* const wiener_buffer) {
-  const auto s01 = _mm_alignr_epi8(s[1], s[0], 1);
-  const auto s23 = _mm_alignr_epi8(s[1], s[0], 5);
-  const auto s45 = _mm_alignr_epi8(s[1], s[0], 9);
   __m128i madds[3];
-  madds[0] = _mm_maddubs_epi16(s01, filter[0]);
-  madds[1] = _mm_maddubs_epi16(s23, filter[1]);
-  madds[2] = _mm_maddubs_epi16(s45, filter[2]);
+  madds[0] = _mm_maddubs_epi16(s[0], filter[0]);
+  madds[1] = _mm_maddubs_epi16(s[1], filter[1]);
+  madds[2] = _mm_maddubs_epi16(s[2], filter[2]);
   madds[0] = _mm_add_epi16(madds[0], madds[2]);
   const __m128i s_3x128 =
-      _mm_srli_epi16(_mm_slli_epi16(s23, 8), kInterRoundBitsHorizontal + 1);
+      _mm_srli_epi16(_mm_slli_epi16(s[1], 8), kInterRoundBitsHorizontal + 1);
   WienerHorizontalClip(madds, s_3x128, wiener_buffer);
 }
 
 inline void WienerHorizontalTap3Kernel(const __m128i s[2],
                                        const __m128i filter[2],
                                        int16_t* const wiener_buffer) {
-  const auto s01 = _mm_alignr_epi8(s[1], s[0], 1);
-  const auto s23 = _mm_alignr_epi8(s[1], s[0], 5);
   __m128i madds[2];
-  madds[0] = _mm_maddubs_epi16(s01, filter[0]);
-  madds[1] = _mm_maddubs_epi16(s23, filter[1]);
+  madds[0] = _mm_maddubs_epi16(s[0], filter[0]);
+  madds[1] = _mm_maddubs_epi16(s[1], filter[1]);
   const __m128i s_3x128 =
-      _mm_slli_epi16(_mm_srli_epi16(s01, 8), 7 - kInterRoundBitsHorizontal);
+      _mm_slli_epi16(_mm_srli_epi16(s[0], 8), 7 - kInterRoundBitsHorizontal);
   WienerHorizontalClip(madds, s_3x128, wiener_buffer);
 }
 
+// loading all and unpacking is about 7% faster than using _mm_alignr_epi8().
 inline void WienerHorizontalTap7(const uint8_t* src, const ptrdiff_t src_stride,
                                  const ptrdiff_t width, const int height,
+                                 const int coefficient0,
                                  const __m128i coefficients,
                                  int16_t** const wiener_buffer) {
+  const __m128i round = _mm_set1_epi8(1 << (kInterRoundBitsHorizontal - 1));
   __m128i filter[4];
   filter[0] = _mm_shuffle_epi8(coefficients, _mm_set1_epi16(0x0200));
   filter[1] = _mm_shuffle_epi8(coefficients, _mm_set1_epi16(0x0604));
   filter[2] = _mm_shuffle_epi8(coefficients, _mm_set1_epi16(0x0204));
-  filter[3] = _mm_shuffle_epi8(coefficients, _mm_set1_epi16(0x8000));
+  filter[3] = _mm_set1_epi16((1 << 8) | static_cast<uint8_t>(coefficient0));
   for (int y = height; y != 0; --y) {
-    __m128i s = LoadUnaligned16(src);
-    __m128i ss[3];
-    ss[0] = _mm_unpacklo_epi8(s, s);
     ptrdiff_t x = 0;
     do {
-      ss[1] = _mm_unpackhi_epi8(s, s);
-      s = LoadUnaligned16(src + x + 16);
-      ss[2] = _mm_unpacklo_epi8(s, s);
-      WienerHorizontalTap7Kernel(ss + 0, filter, *wiener_buffer + x + 0);
-      WienerHorizontalTap7Kernel(ss + 1, filter, *wiener_buffer + x + 8);
-      ss[0] = ss[2];
+      __m128i s[7], ss[4];
+      s[0] = LoadUnaligned16(src + x + 0);
+      s[1] = LoadUnaligned16(src + x + 1);
+      s[2] = LoadUnaligned16(src + x + 2);
+      s[3] = LoadUnaligned16(src + x + 3);
+      s[4] = LoadUnaligned16(src + x + 4);
+      s[5] = LoadUnaligned16(src + x + 5);
+      s[6] = LoadUnaligned16(src + x + 6);
+      ss[0] = _mm_unpacklo_epi8(s[0], s[1]);
+      ss[1] = _mm_unpacklo_epi8(s[2], s[3]);
+      ss[2] = _mm_unpacklo_epi8(s[4], s[5]);
+      ss[3] = _mm_unpacklo_epi8(s[6], round);
+      WienerHorizontalTap7Kernel(ss, filter, *wiener_buffer + x + 0);
+      ss[0] = _mm_unpackhi_epi8(s[0], s[1]);
+      ss[1] = _mm_unpackhi_epi8(s[2], s[3]);
+      ss[2] = _mm_unpackhi_epi8(s[4], s[5]);
+      ss[3] = _mm_unpackhi_epi8(s[6], round);
+      WienerHorizontalTap7Kernel(ss, filter, *wiener_buffer + x + 8);
       x += 16;
     } while (x < width);
     src += src_stride;
@@ -134,24 +135,31 @@ inline void WienerHorizontalTap7(const uint8_t* src, const ptrdiff_t src_stride,
 
 inline void WienerHorizontalTap5(const uint8_t* src, const ptrdiff_t src_stride,
                                  const ptrdiff_t width, const int height,
+                                 const int coefficient1,
                                  const __m128i coefficients,
                                  int16_t** const wiener_buffer) {
+  const __m128i round = _mm_set1_epi8(1 << (kInterRoundBitsHorizontal - 1));
   __m128i filter[3];
   filter[0] = _mm_shuffle_epi8(coefficients, _mm_set1_epi16(0x0402));
   filter[1] = _mm_shuffle_epi8(coefficients, _mm_set1_epi16(0x0406));
-  filter[2] = _mm_shuffle_epi8(coefficients, _mm_set1_epi16(0x8002));
+  filter[2] = _mm_set1_epi16((1 << 8) | static_cast<uint8_t>(coefficient1));
   for (int y = height; y != 0; --y) {
-    __m128i s = LoadUnaligned16(src);
-    __m128i ss[3];
-    ss[0] = _mm_unpacklo_epi8(s, s);
     ptrdiff_t x = 0;
     do {
-      ss[1] = _mm_unpackhi_epi8(s, s);
-      s = LoadUnaligned16(src + x + 16);
-      ss[2] = _mm_unpacklo_epi8(s, s);
-      WienerHorizontalTap5Kernel(ss + 0, filter, *wiener_buffer + x + 0);
-      WienerHorizontalTap5Kernel(ss + 1, filter, *wiener_buffer + x + 8);
-      ss[0] = ss[2];
+      __m128i s[5], ss[3];
+      s[0] = LoadUnaligned16(src + x + 0);
+      s[1] = LoadUnaligned16(src + x + 1);
+      s[2] = LoadUnaligned16(src + x + 2);
+      s[3] = LoadUnaligned16(src + x + 3);
+      s[4] = LoadUnaligned16(src + x + 4);
+      ss[0] = _mm_unpacklo_epi8(s[0], s[1]);
+      ss[1] = _mm_unpacklo_epi8(s[2], s[3]);
+      ss[2] = _mm_unpacklo_epi8(s[4], round);
+      WienerHorizontalTap5Kernel(ss, filter, *wiener_buffer + x + 0);
+      ss[0] = _mm_unpackhi_epi8(s[0], s[1]);
+      ss[1] = _mm_unpackhi_epi8(s[2], s[3]);
+      ss[2] = _mm_unpackhi_epi8(s[4], round);
+      WienerHorizontalTap5Kernel(ss, filter, *wiener_buffer + x + 8);
       x += 16;
     } while (x < width);
     src += src_stride;
@@ -161,23 +169,26 @@ inline void WienerHorizontalTap5(const uint8_t* src, const ptrdiff_t src_stride,
 
 inline void WienerHorizontalTap3(const uint8_t* src, const ptrdiff_t src_stride,
                                  const ptrdiff_t width, const int height,
+                                 const int coefficient2,
                                  const __m128i coefficients,
                                  int16_t** const wiener_buffer) {
+  const __m128i round = _mm_set1_epi8(1 << (kInterRoundBitsHorizontal - 1));
   __m128i filter[2];
   filter[0] = _mm_shuffle_epi8(coefficients, _mm_set1_epi16(0x0604));
-  filter[1] = _mm_shuffle_epi8(coefficients, _mm_set1_epi16(0x8004));
+  filter[1] = _mm_set1_epi16((1 << 8) | static_cast<uint8_t>(coefficient2));
   for (int y = height; y != 0; --y) {
-    __m128i s = LoadUnaligned16(src);
-    __m128i ss[3];
-    ss[0] = _mm_unpacklo_epi8(s, s);
     ptrdiff_t x = 0;
     do {
-      ss[1] = _mm_unpackhi_epi8(s, s);
-      s = LoadUnaligned16(src + x + 16);
-      ss[2] = _mm_unpacklo_epi8(s, s);
-      WienerHorizontalTap3Kernel(ss + 0, filter, *wiener_buffer + x + 0);
-      WienerHorizontalTap3Kernel(ss + 1, filter, *wiener_buffer + x + 8);
-      ss[0] = ss[2];
+      __m128i s[3], ss[2];
+      s[0] = LoadUnaligned16(src + x + 0);
+      s[1] = LoadUnaligned16(src + x + 1);
+      s[2] = LoadUnaligned16(src + x + 2);
+      ss[0] = _mm_unpacklo_epi8(s[0], s[1]);
+      ss[1] = _mm_unpacklo_epi8(s[2], round);
+      WienerHorizontalTap3Kernel(ss, filter, *wiener_buffer + x + 0);
+      ss[0] = _mm_unpackhi_epi8(s[0], s[1]);
+      ss[1] = _mm_unpackhi_epi8(s[2], round);
+      WienerHorizontalTap3Kernel(ss, filter, *wiener_buffer + x + 8);
       x += 16;
     } while (x < width);
     src += src_stride;
@@ -497,37 +508,44 @@ void WienerFilter_SSE4_1(const RestorationUnitInfo& restoration_info,
   const auto* const src = static_cast<const uint8_t*>(source);
   const auto* const top = static_cast<const uint8_t*>(top_border);
   const auto* const bottom = static_cast<const uint8_t*>(bottom_border);
-  const __m128i c =
-      LoadLo8(restoration_info.wiener_info.filter[WienerInfo::kHorizontal]);
+  const int16_t* const filter_horizontal =
+      restoration_info.wiener_info.filter[WienerInfo::kHorizontal];
+  const __m128i c = LoadLo8(filter_horizontal);
   // In order to keep the horizontal pass intermediate values within 16 bits we
   // offset |filter[3]| by 128. The 128 offset will be added back in the loop.
   const __m128i coefficients_horizontal =
       _mm_sub_epi16(c, _mm_setr_epi16(0, 0, 0, 128, 0, 0, 0, 0));
   if (number_leading_zero_coefficients[WienerInfo::kHorizontal] == 0) {
     WienerHorizontalTap7(top + (2 - height_extra) * stride - 3, stride,
-                         wiener_stride, height_extra, coefficients_horizontal,
-                         &wiener_buffer_horizontal);
+                         wiener_stride, height_extra, filter_horizontal[0],
+                         coefficients_horizontal, &wiener_buffer_horizontal);
     WienerHorizontalTap7(src - 3, stride, wiener_stride, height,
-                         coefficients_horizontal, &wiener_buffer_horizontal);
+                         filter_horizontal[0], coefficients_horizontal,
+                         &wiener_buffer_horizontal);
     WienerHorizontalTap7(bottom - 3, stride, wiener_stride, height_extra,
-                         coefficients_horizontal, &wiener_buffer_horizontal);
+                         filter_horizontal[0], coefficients_horizontal,
+                         &wiener_buffer_horizontal);
   } else if (number_leading_zero_coefficients[WienerInfo::kHorizontal] == 1) {
     WienerHorizontalTap5(top + (2 - height_extra) * stride - 2, stride,
-                         wiener_stride, height_extra, coefficients_horizontal,
-                         &wiener_buffer_horizontal);
+                         wiener_stride, height_extra, filter_horizontal[1],
+                         coefficients_horizontal, &wiener_buffer_horizontal);
     WienerHorizontalTap5(src - 2, stride, wiener_stride, height,
-                         coefficients_horizontal, &wiener_buffer_horizontal);
+                         filter_horizontal[1], coefficients_horizontal,
+                         &wiener_buffer_horizontal);
     WienerHorizontalTap5(bottom - 2, stride, wiener_stride, height_extra,
-                         coefficients_horizontal, &wiener_buffer_horizontal);
+                         filter_horizontal[1], coefficients_horizontal,
+                         &wiener_buffer_horizontal);
   } else if (number_leading_zero_coefficients[WienerInfo::kHorizontal] == 2) {
     // The maximum over-reads happen here.
     WienerHorizontalTap3(top + (2 - height_extra) * stride - 1, stride,
-                         wiener_stride, height_extra, coefficients_horizontal,
-                         &wiener_buffer_horizontal);
+                         wiener_stride, height_extra, filter_horizontal[2],
+                         coefficients_horizontal, &wiener_buffer_horizontal);
     WienerHorizontalTap3(src - 1, stride, wiener_stride, height,
-                         coefficients_horizontal, &wiener_buffer_horizontal);
+                         filter_horizontal[2], coefficients_horizontal,
+                         &wiener_buffer_horizontal);
     WienerHorizontalTap3(bottom - 1, stride, wiener_stride, height_extra,
-                         coefficients_horizontal, &wiener_buffer_horizontal);
+                         filter_horizontal[2], coefficients_horizontal,
+                         &wiener_buffer_horizontal);
   } else {
     assert(number_leading_zero_coefficients[WienerInfo::kHorizontal] == 3);
     WienerHorizontalTap1(top + (2 - height_extra) * stride, stride,
