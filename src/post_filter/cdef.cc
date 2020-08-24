@@ -341,7 +341,7 @@ void PostFilter::ApplyCdefForOneUnit(uint16_t* cdef_block, const int index,
 
   // Stored direction used during the u/v pass.  If bit 3 is set, then block is
   // a skip.
-  int direction_y[8 * 8];
+  uint8_t direction_y[8 * 8];
   int y_index = 0;
 
   const uint8_t y_primary_strength =

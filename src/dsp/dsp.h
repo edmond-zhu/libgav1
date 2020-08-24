@@ -325,7 +325,7 @@ using LoopFilterFuncs =
 // with |stride| given in bytes. |direction| and |variance| are output
 // parameters and must not be nullptr.
 using CdefDirectionFunc = void (*)(const void* src, ptrdiff_t stride,
-                                   int* direction, int* variance);
+                                   uint8_t* direction, int* variance);
 
 // Cdef filtering function signature. Section 7.15.3.
 // |source| is a pointer to the input block padded with kCdefLargeValue if at a

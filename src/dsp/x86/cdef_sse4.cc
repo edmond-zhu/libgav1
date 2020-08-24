@@ -395,7 +395,7 @@ inline uint32_t SquareSum_S16(const __m128i a) {
 }
 
 void CdefDirection_SSE4_1(const void* const source, ptrdiff_t stride,
-                          int* const direction, int* const variance) {
+                          uint8_t* const direction, int* const variance) {
   assert(direction != nullptr);
   assert(variance != nullptr);
   const auto* src = static_cast<const uint8_t*>(source);

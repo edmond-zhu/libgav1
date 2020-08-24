@@ -360,7 +360,7 @@ uint32_t CostOdd(const uint16x8_t a, const uint16x8_t b, const uint32x4_t mask,
 }
 
 void CdefDirection_NEON(const void* const source, ptrdiff_t stride,
-                        int* const direction, int* const variance) {
+                        uint8_t* const direction, int* const variance) {
   assert(direction != nullptr);
   assert(variance != nullptr);
   const auto* src = static_cast<const uint8_t*>(source);
