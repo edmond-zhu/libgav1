@@ -496,7 +496,7 @@ LIBGAV1_ALWAYS_INLINE bool DctDcOnlyColumn(void* dest, int adjusted_tx_height,
 
   // Copy first row to the rest of the block.
   for (int y = 1; y < height; ++y) {
-    memcpy(&dst[y * width], &dst[(y - 1) * width], width * sizeof(dst[0]));
+    memcpy(&dst[y * width], dst, width * sizeof(dst[0]));
   }
   return true;
 }
