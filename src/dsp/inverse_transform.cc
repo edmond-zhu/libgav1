@@ -161,16 +161,13 @@ constexpr uint8_t kBitReverseLookup[kNum1DTransformSizes][64] = {
      3, 35, 19, 51, 11, 43, 27, 59, 7, 39, 23, 55, 15, 47, 31, 63}};
 
 template <typename Residual, int size_log2>
-void Dct_C(void* dest, const void* source, int8_t range) {
+void Dct_C(void* dest, int8_t range) {
   static_assert(size_log2 >= 2 && size_log2 <= 6, "");
   auto* const dst = static_cast<Residual*>(dest);
-  const auto* const src = static_cast<const Residual*>(source);
   // stage 1.
   const int size = 1 << size_log2;
-  // The copy is necessary because |dst| and |src| could be pointing to the same
-  // buffer.
   Residual temp[size];
-  memcpy(temp, src, sizeof(temp));
+  memcpy(temp, dst, sizeof(temp));
   for (int i = 0; i < size; ++i) {
     dst[i] = temp[kBitReverseLookup[size_log2 - 2][i]];
   }
@@ -396,12 +393,10 @@ void Dct_C(void* dest, const void* source, int8_t range) {
 }
 
 template <int bitdepth, typename Residual, int size_log2>
-void DctDcOnly_C(void* dest, const void* source, int8_t range,
-                 bool should_round, int row_shift, bool is_row) {
+void DctDcOnly_C(void* dest, int8_t range, bool should_round, int row_shift,
+                 bool is_row) {
   auto* const dst = static_cast<Residual*>(dest);
-  const auto* const src = static_cast<const Residual*>(source);
 
-  dst[0] = src[0];
   if (is_row && should_round) {
     dst[0] = RightShiftWithRounding(dst[0] * kTransformRowMultiplier, 12);
   }
@@ -428,11 +423,9 @@ void DctDcOnly_C(void* dest, const void* source, int8_t range,
  * Column transform max range in bits for bitdepths 8/10/12: 28/28/30.
  */
 template <typename Residual>
-void Adst4_C(void* dest, const void* source, int8_t range) {
+void Adst4_C(void* dest, int8_t range) {
   auto* const dst = static_cast<Residual*>(dest);
-  const auto* const src = static_cast<const Residual*>(source);
-  if ((src[0] | src[1] | src[2] | src[3]) == 0) {
-    memset(dst, 0, 4 * sizeof(dst[0]));
+  if ((dst[0] | dst[1] | dst[2] | dst[3]) == 0) {
     return;
   }
 
@@ -441,22 +434,22 @@ void Adst4_C(void* dest, const void* source, int8_t range) {
   // values stored in the s and x arrays by this process are representable by
   // a signed integer using range + 12 bits of precision.
   int32_t s[7];
-  s[0] = RangeCheckValue(kAdst4Multiplier[0] * src[0], range + 12);
-  s[1] = RangeCheckValue(kAdst4Multiplier[1] * src[0], range + 12);
-  s[2] = RangeCheckValue(kAdst4Multiplier[2] * src[1], range + 12);
-  s[3] = RangeCheckValue(kAdst4Multiplier[3] * src[2], range + 12);
-  s[4] = RangeCheckValue(kAdst4Multiplier[0] * src[2], range + 12);
-  s[5] = RangeCheckValue(kAdst4Multiplier[1] * src[3], range + 12);
-  s[6] = RangeCheckValue(kAdst4Multiplier[3] * src[3], range + 12);
+  s[0] = RangeCheckValue(kAdst4Multiplier[0] * dst[0], range + 12);
+  s[1] = RangeCheckValue(kAdst4Multiplier[1] * dst[0], range + 12);
+  s[2] = RangeCheckValue(kAdst4Multiplier[2] * dst[1], range + 12);
+  s[3] = RangeCheckValue(kAdst4Multiplier[3] * dst[2], range + 12);
+  s[4] = RangeCheckValue(kAdst4Multiplier[0] * dst[2], range + 12);
+  s[5] = RangeCheckValue(kAdst4Multiplier[1] * dst[3], range + 12);
+  s[6] = RangeCheckValue(kAdst4Multiplier[3] * dst[3], range + 12);
   // stage 2.
   // Section 7.13.2.6: It is a requirement of bitstream conformance that
   // values stored in the variable a7 by this process are representable by a
   // signed integer using range + 1 bits of precision.
-  const int32_t a7 = RangeCheckValue(src[0] - src[2], range + 1);
+  const int32_t a7 = RangeCheckValue(dst[0] - dst[2], range + 1);
   // Section 7.13.2.6: It is a requirement of bitstream conformance that
   // values stored in the variable b7 by this process are representable by a
   // signed integer using |range| bits of precision.
-  const int32_t b7 = RangeCheckValue(a7 + src[3], range);
+  const int32_t b7 = RangeCheckValue(a7 + dst[3], range);
   // stage 3.
   s[0] = RangeCheckValue(s[0] + s[3], range + 12);
   s[1] = RangeCheckValue(s[1] - s[4], range + 12);
@@ -490,14 +483,12 @@ void Adst4_C(void* dest, const void* source, int8_t range) {
 }
 
 template <int bitdepth, typename Residual>
-void Adst4DcOnly_C(void* dest, const void* source, int8_t range,
-                   bool should_round, int row_shift, bool is_row) {
+void Adst4DcOnly_C(void* dest, int8_t range, bool should_round, int row_shift,
+                   bool is_row) {
   auto* const dst = static_cast<Residual*>(dest);
-  const auto* const src = static_cast<const Residual*>(source);
 
-  dst[0] = src[0];
   if (is_row && should_round) {
-    dst[0] = RightShiftWithRounding(src[0] * kTransformRowMultiplier, 12);
+    dst[0] = RightShiftWithRounding(dst[0] * kTransformRowMultiplier, 12);
   }
 
   // stage 1.
@@ -570,12 +561,11 @@ void AdstOutputPermutation(Residual* const dst, const int32_t* const src,
 }
 
 template <typename Residual>
-void Adst8_C(void* dest, const void* source, int8_t range) {
+void Adst8_C(void* dest, int8_t range) {
   auto* const dst = static_cast<Residual*>(dest);
-  const auto* const src = static_cast<const Residual*>(source);
   // stage 1.
   int32_t temp[8];
-  AdstInputPermutation(temp, src, 8);
+  AdstInputPermutation(temp, dst, 8);
   // stage 2.
   for (int i = 0; i < 4; ++i) {
     ButterflyRotation_C(temp, MultiplyBy2(i), MultiplyBy2(i) + 1, 60 - 16 * i,
@@ -606,15 +596,14 @@ void Adst8_C(void* dest, const void* source, int8_t range) {
 }
 
 template <int bitdepth, typename Residual>
-void Adst8DcOnly_C(void* dest, const void* source, int8_t range,
-                   bool should_round, int row_shift, bool is_row) {
+void Adst8DcOnly_C(void* dest, int8_t range, bool should_round, int row_shift,
+                   bool is_row) {
   auto* const dst = static_cast<Residual*>(dest);
-  const auto* const src = static_cast<const Residual*>(source);
 
   // stage 1.
   int32_t temp[8];
   // After the permutation, the dc value is in temp[1]. The remaining are zero.
-  AdstInputPermutation(temp, src, 8);
+  AdstInputPermutation(temp, dst, 8);
 
   if (is_row && should_round) {
     temp[1] = RightShiftWithRounding(temp[1] * kTransformRowMultiplier, 12);
@@ -654,12 +643,11 @@ void Adst8DcOnly_C(void* dest, const void* source, int8_t range,
 }
 
 template <typename Residual>
-void Adst16_C(void* dest, const void* source, int8_t range) {
+void Adst16_C(void* dest, int8_t range) {
   auto* const dst = static_cast<Residual*>(dest);
-  const auto* const src = static_cast<const Residual*>(source);
   // stage 1.
   int32_t temp[16];
-  AdstInputPermutation(temp, src, 16);
+  AdstInputPermutation(temp, dst, 16);
   // stage 2.
   for (int i = 0; i < 8; ++i) {
     ButterflyRotation_C(temp, MultiplyBy2(i), MultiplyBy2(i) + 1, 62 - 8 * i,
@@ -707,15 +695,14 @@ void Adst16_C(void* dest, const void* source, int8_t range) {
 }
 
 template <int bitdepth, typename Residual>
-void Adst16DcOnly_C(void* dest, const void* source, int8_t range,
-                    bool should_round, int row_shift, bool is_row) {
+void Adst16DcOnly_C(void* dest, int8_t range, bool should_round, int row_shift,
+                    bool is_row) {
   auto* const dst = static_cast<Residual*>(dest);
-  const auto* const src = static_cast<const Residual*>(source);
 
   // stage 1.
   int32_t temp[16];
   // After the permutation, the dc value is in temp[1].  The remaining are zero.
-  AdstInputPermutation(temp, src, 16);
+  AdstInputPermutation(temp, dst, 16);
 
   if (is_row && should_round) {
     temp[1] = RightShiftWithRounding(temp[1] * kTransformRowMultiplier, 12);
@@ -798,7 +785,7 @@ void Adst16DcOnly_C(void* dest, const void* source, int8_t range,
 //    optimized.
 //
 // The identity transform functions have the following prototype:
-//   void Identity_C(void* dest, const void* source, int8_t shift);
+//   void Identity_C(void* dest, int8_t shift);
 //
 // The |shift| parameter is the amount of shift for the Round2() call. For row
 // transforms, |shift| is 0, 1, or 2. For column transforms, |shift| is always
@@ -852,10 +839,9 @@ void Adst16DcOnly_C(void* dest, const void* source, int8_t range,
 // 4 (2 bits) and |shift| is always 4.
 
 template <typename Residual>
-void Identity4Row_C(void* dest, const void* source, int8_t shift) {
+void Identity4Row_C(void* dest, int8_t shift) {
   assert(shift == 0 || shift == 1);
   auto* const dst = static_cast<Residual*>(dest);
-  const auto* const src = static_cast<const Residual*>(source);
   // If |shift| is 0, |rounding| should be 1 << 11. If |shift| is 1, |rounding|
   // should be (1 + (1 << 1)) << 11. The following expression works for both
   // values of |shift|.
@@ -864,7 +850,7 @@ void Identity4Row_C(void* dest, const void* source, int8_t shift) {
     // The intermediate value here will have to fit into an int32_t for it to be
     // bitstream conformant. The multiplication is promoted to int32_t by
     // defining kIdentity4Multiplier as int32_t.
-    int32_t dst_i = (src[i] * kIdentity4Multiplier + rounding) >> (12 + shift);
+    int32_t dst_i = (dst[i] * kIdentity4Multiplier + rounding) >> (12 + shift);
     if (sizeof(Residual) == 2) {
       dst_i = Clip3(dst_i, INT16_MIN, INT16_MAX);
     }
@@ -873,27 +859,24 @@ void Identity4Row_C(void* dest, const void* source, int8_t shift) {
 }
 
 template <typename Residual>
-void Identity4Column_C(void* dest, const void* source, int8_t /*shift*/) {
+void Identity4Column_C(void* dest, int8_t /*shift*/) {
   auto* const dst = static_cast<Residual*>(dest);
-  const auto* const src = static_cast<const Residual*>(source);
   const int32_t rounding = (1 + (1 << kTransformColumnShift)) << 11;
   for (int i = 0; i < 4; ++i) {
     // The intermediate value here will have to fit into an int32_t for it to be
     // bitstream conformant. The multiplication is promoted to int32_t by
     // defining kIdentity4Multiplier as int32_t.
-    dst[i] = static_cast<Residual>((src[i] * kIdentity4Multiplier + rounding) >>
+    dst[i] = static_cast<Residual>((dst[i] * kIdentity4Multiplier + rounding) >>
                                    (12 + kTransformColumnShift));
   }
 }
 
 template <int bitdepth, typename Residual>
-void Identity4DcOnly_C(void* dest, const void* source, int8_t /*range*/,
-                       bool should_round, int row_shift, bool is_row) {
+void Identity4DcOnly_C(void* dest, int8_t /*range*/, bool should_round,
+                       int row_shift, bool is_row) {
   auto* const dst = static_cast<Residual*>(dest);
-  const auto* const src = static_cast<const Residual*>(source);
 
   if (is_row) {
-    dst[0] = src[0];
     if (should_round) {
       dst[0] = RightShiftWithRounding(dst[0] * kTransformRowMultiplier, 12);
     }
@@ -911,17 +894,16 @@ void Identity4DcOnly_C(void* dest, const void* source, int8_t /*range*/,
   }
 
   const int32_t rounding = (1 + (1 << kTransformColumnShift)) << 11;
-  dst[0] = static_cast<Residual>((src[0] * kIdentity4Multiplier + rounding) >>
+  dst[0] = static_cast<Residual>((dst[0] * kIdentity4Multiplier + rounding) >>
                                  (12 + kTransformColumnShift));
 }
 
 template <typename Residual>
-void Identity8Row_C(void* dest, const void* source, int8_t shift) {
+void Identity8Row_C(void* dest, int8_t shift) {
   assert(shift == 0 || shift == 1 || shift == 2);
   auto* const dst = static_cast<Residual*>(dest);
-  const auto* const src = static_cast<const Residual*>(source);
   for (int i = 0; i < 8; ++i) {
-    int32_t dst_i = RightShiftWithRounding(MultiplyBy2(src[i]), shift);
+    int32_t dst_i = RightShiftWithRounding(MultiplyBy2(dst[i]), shift);
     if (sizeof(Residual) == 2) {
       dst_i = Clip3(dst_i, INT16_MIN, INT16_MAX);
     }
@@ -930,23 +912,20 @@ void Identity8Row_C(void* dest, const void* source, int8_t shift) {
 }
 
 template <typename Residual>
-void Identity8Column_C(void* dest, const void* source, int8_t /*shift*/) {
+void Identity8Column_C(void* dest, int8_t /*shift*/) {
   auto* const dst = static_cast<Residual*>(dest);
-  const auto* const src = static_cast<const Residual*>(source);
   for (int i = 0; i < 8; ++i) {
     dst[i] = static_cast<Residual>(
-        RightShiftWithRounding(src[i], kTransformColumnShift - 1));
+        RightShiftWithRounding(dst[i], kTransformColumnShift - 1));
   }
 }
 
 template <int bitdepth, typename Residual>
-void Identity8DcOnly_C(void* dest, const void* source, int8_t /*range*/,
-                       bool should_round, int row_shift, bool is_row) {
+void Identity8DcOnly_C(void* dest, int8_t /*range*/, bool should_round,
+                       int row_shift, bool is_row) {
   auto* const dst = static_cast<Residual*>(dest);
-  const auto* const src = static_cast<const Residual*>(source);
 
   if (is_row) {
-    dst[0] = src[0];
     if (should_round) {
       dst[0] = RightShiftWithRounding(dst[0] * kTransformRowMultiplier, 12);
     }
@@ -969,20 +948,19 @@ void Identity8DcOnly_C(void* dest, const void* source, int8_t /*range*/,
   }
 
   dst[0] = static_cast<Residual>(
-      RightShiftWithRounding(src[0], kTransformColumnShift - 1));
+      RightShiftWithRounding(dst[0], kTransformColumnShift - 1));
 }
 
 template <typename Residual>
-void Identity16Row_C(void* dest, const void* source, int8_t shift) {
+void Identity16Row_C(void* dest, int8_t shift) {
   assert(shift == 1 || shift == 2);
   auto* const dst = static_cast<Residual*>(dest);
-  const auto* const src = static_cast<const Residual*>(source);
   const int32_t rounding = (1 + (1 << shift)) << 11;
   for (int i = 0; i < 16; ++i) {
     // The intermediate value here will have to fit into an int32_t for it to be
     // bitstream conformant. The multiplication is promoted to int32_t by
     // defining kIdentity16Multiplier as int32_t.
-    int32_t dst_i = (src[i] * kIdentity16Multiplier + rounding) >> (12 + shift);
+    int32_t dst_i = (dst[i] * kIdentity16Multiplier + rounding) >> (12 + shift);
     if (sizeof(Residual) == 2) {
       dst_i = Clip3(dst_i, INT16_MIN, INT16_MAX);
     }
@@ -991,28 +969,25 @@ void Identity16Row_C(void* dest, const void* source, int8_t shift) {
 }
 
 template <typename Residual>
-void Identity16Column_C(void* dest, const void* source, int8_t /*shift*/) {
+void Identity16Column_C(void* dest, int8_t /*shift*/) {
   auto* const dst = static_cast<Residual*>(dest);
-  const auto* const src = static_cast<const Residual*>(source);
   const int32_t rounding = (1 + (1 << kTransformColumnShift)) << 11;
   for (int i = 0; i < 16; ++i) {
     // The intermediate value here will have to fit into an int32_t for it to be
     // bitstream conformant. The multiplication is promoted to int32_t by
     // defining kIdentity16Multiplier as int32_t.
     dst[i] =
-        static_cast<Residual>((src[i] * kIdentity16Multiplier + rounding) >>
+        static_cast<Residual>((dst[i] * kIdentity16Multiplier + rounding) >>
                               (12 + kTransformColumnShift));
   }
 }
 
 template <int bitdepth, typename Residual>
-void Identity16DcOnly_C(void* dest, const void* source, int8_t /*range*/,
-                        bool should_round, int row_shift, bool is_row) {
+void Identity16DcOnly_C(void* dest, int8_t /*range*/, bool should_round,
+                        int row_shift, bool is_row) {
   auto* const dst = static_cast<Residual*>(dest);
-  const auto* const src = static_cast<const Residual*>(source);
 
   if (is_row) {
-    dst[0] = src[0];
     if (should_round) {
       dst[0] = RightShiftWithRounding(dst[0] * kTransformRowMultiplier, 12);
     }
@@ -1030,17 +1005,16 @@ void Identity16DcOnly_C(void* dest, const void* source, int8_t /*range*/,
   }
 
   const int32_t rounding = (1 + (1 << kTransformColumnShift)) << 11;
-  dst[0] = static_cast<Residual>((src[0] * kIdentity16Multiplier + rounding) >>
+  dst[0] = static_cast<Residual>((dst[0] * kIdentity16Multiplier + rounding) >>
                                  (12 + kTransformColumnShift));
 }
 
 template <typename Residual>
-void Identity32Row_C(void* dest, const void* source, int8_t shift) {
+void Identity32Row_C(void* dest, int8_t shift) {
   assert(shift == 1 || shift == 2);
   auto* const dst = static_cast<Residual*>(dest);
-  const auto* const src = static_cast<const Residual*>(source);
   for (int i = 0; i < 32; ++i) {
-    int32_t dst_i = RightShiftWithRounding(MultiplyBy4(src[i]), shift);
+    int32_t dst_i = RightShiftWithRounding(MultiplyBy4(dst[i]), shift);
     if (sizeof(Residual) == 2) {
       dst_i = Clip3(dst_i, INT16_MIN, INT16_MAX);
     }
@@ -1049,23 +1023,20 @@ void Identity32Row_C(void* dest, const void* source, int8_t shift) {
 }
 
 template <typename Residual>
-void Identity32Column_C(void* dest, const void* source, int8_t /*shift*/) {
+void Identity32Column_C(void* dest, int8_t /*shift*/) {
   auto* const dst = static_cast<Residual*>(dest);
-  const auto* const src = static_cast<const Residual*>(source);
   for (int i = 0; i < 32; ++i) {
     dst[i] = static_cast<Residual>(
-        RightShiftWithRounding(src[i], kTransformColumnShift - 2));
+        RightShiftWithRounding(dst[i], kTransformColumnShift - 2));
   }
 }
 
 template <int bitdepth, typename Residual>
-void Identity32DcOnly_C(void* dest, const void* source, int8_t /*range*/,
-                        bool should_round, int row_shift, bool is_row) {
+void Identity32DcOnly_C(void* dest, int8_t /*range*/, bool should_round,
+                        int row_shift, bool is_row) {
   auto* const dst = static_cast<Residual*>(dest);
-  const auto* const src = static_cast<const Residual*>(source);
 
   if (is_row) {
-    dst[0] = src[0];
     if (should_round) {
       dst[0] = RightShiftWithRounding(dst[0] * kTransformRowMultiplier, 12);
     }
@@ -1081,21 +1052,20 @@ void Identity32DcOnly_C(void* dest, const void* source, int8_t /*range*/,
   }
 
   dst[0] = static_cast<Residual>(
-      RightShiftWithRounding(src[0], kTransformColumnShift - 2));
+      RightShiftWithRounding(dst[0], kTransformColumnShift - 2));
 }
 
 //------------------------------------------------------------------------------
 // Walsh Hadamard Transform.
 
 template <typename Residual>
-void Wht4_C(void* dest, const void* source, int8_t shift) {
+void Wht4_C(void* dest, int8_t shift) {
   auto* const dst = static_cast<Residual*>(dest);
-  const auto* const src = static_cast<const Residual*>(source);
   Residual temp[4];
-  temp[0] = src[0] >> shift;
-  temp[2] = src[1] >> shift;
-  temp[3] = src[2] >> shift;
-  temp[1] = src[3] >> shift;
+  temp[0] = dst[0] >> shift;
+  temp[2] = dst[1] >> shift;
+  temp[3] = dst[2] >> shift;
+  temp[1] = dst[3] >> shift;
   temp[0] += temp[2];
   temp[3] -= temp[1];
   // This signed right shift must be an arithmetic shift.
@@ -1107,13 +1077,12 @@ void Wht4_C(void* dest, const void* source, int8_t shift) {
 }
 
 template <int bitdepth, typename Residual>
-void Wht4DcOnly_C(void* dest, const void* source, int8_t range,
-                  bool /*should_round*/, int /*row_shift*/, bool /*is_row*/) {
+void Wht4DcOnly_C(void* dest, int8_t range, bool /*should_round*/,
+                  int /*row_shift*/, bool /*is_row*/) {
   auto* const dst = static_cast<Residual*>(dest);
-  const auto* const src = static_cast<const Residual*>(source);
   const int shift = range;
 
-  Residual temp = src[0] >> shift;
+  Residual temp = dst[0] >> shift;
   // This signed right shift must be an arithmetic shift.
   Residual e = temp >> 1;
   dst[0] = temp - e;
@@ -1127,11 +1096,10 @@ void Wht4DcOnly_C(void* dest, const void* source, int8_t range,
 //------------------------------------------------------------------------------
 // row/column transform loop
 
-using InverseTransform1DFunc = void (*)(void* dst, const void* src,
-                                        int8_t range);
-using InverseTransformDcOnlyFunc = void (*)(void* dest, const void* source,
-                                            int8_t range, bool should_round,
-                                            int row_shift, bool is_row);
+using InverseTransform1DFunc = void (*)(void* dst, int8_t range);
+using InverseTransformDcOnlyFunc = void (*)(void* dest, int8_t range,
+                                            bool should_round, int row_shift,
+                                            bool is_row);
 
 template <int bitdepth, typename Residual, typename Pixel,
           Transform1D transform1d_type,
@@ -1169,8 +1137,8 @@ void TransformLoop_C(TransformType tx_type, TransformSize tx_size,
     const bool should_round = std::abs(tx_width_log2 - tx_height_log2) == 1;
 
     if (adjusted_tx_height == 1) {
-      dconly_transform1d(residual[0], residual[0], row_clamp_range,
-                         should_round, row_shift, true);
+      dconly_transform1d(residual[0], row_clamp_range, should_round, row_shift,
+                         true);
       return;
     }
 
@@ -1189,7 +1157,7 @@ void TransformLoop_C(TransformType tx_type, TransformSize tx_size,
       }
       // For identity transform, |row_transform1d_func| also performs the
       // Round2(T[j], rowShift) call in the spec.
-      row_transform1d_func(residual[i], residual[i],
+      row_transform1d_func(residual[i],
                            is_identity ? row_shift : row_clamp_range);
       if (!lossless && !is_identity && row_shift > 0) {
         for (int j = 0; j < tx_width; ++j) {
@@ -1222,12 +1190,11 @@ void TransformLoop_C(TransformType tx_type, TransformSize tx_size,
       tx_buffer[i] = residual[i][flipped_j];
     }
     if (adjusted_tx_height == 1) {
-      dconly_transform1d(tx_buffer, tx_buffer, column_clamp_range, false, 0,
-                         false);
+      dconly_transform1d(tx_buffer, column_clamp_range, false, 0, false);
     } else {
       // For identity transform, |column_transform1d_func| also performs the
       // Round2(T[i], colShift) call in the spec.
-      column_transform1d_func(tx_buffer, tx_buffer,
+      column_transform1d_func(tx_buffer,
                               is_identity ? column_shift : column_clamp_range);
     }
     const int x = start_x + j;
