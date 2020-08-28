@@ -207,6 +207,7 @@ inline void StoreHi8(void* a, const __m128i v) {
 }
 
 inline void StoreAligned16(void* a, const __m128i v) {
+  assert((reinterpret_cast<uintptr_t>(a) & 0xf) == 0);
   _mm_store_si128(static_cast<__m128i*>(a), v);
 }
 
