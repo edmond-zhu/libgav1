@@ -20,7 +20,7 @@
 #include "src/utils/compiler_attributes.h"
 #include "src/utils/cpu.h"
 
-#if LIBGAV1_ENABLE_AVX2
+#if LIBGAV1_TARGETING_AVX2
 
 #include <immintrin.h>
 
@@ -57,5 +57,5 @@ inline void StoreUnaligned32(void* a, const __m256i v) {
 }  // namespace dsp
 }  // namespace libgav1
 
-#endif  // LIBGAV1_ENABLE_AVX2
+#endif  // LIBGAV1_TARGETING_AVX2
 #endif  // LIBGAV1_SRC_DSP_X86_COMMON_AVX2_H_

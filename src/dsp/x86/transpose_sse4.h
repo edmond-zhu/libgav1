@@ -20,7 +20,7 @@
 #include "src/utils/compiler_attributes.h"
 #include "src/utils/cpu.h"
 
-#if LIBGAV1_ENABLE_SSE4_1
+#if LIBGAV1_TARGETING_SSE4_1
 #include <emmintrin.h>
 
 namespace libgav1 {
@@ -303,5 +303,5 @@ LIBGAV1_ALWAYS_INLINE void Transpose8x8_U16(const __m128i* const in,
 }  // namespace dsp
 }  // namespace libgav1
 
-#endif  // LIBGAV1_ENABLE_SSE4_1
+#endif  // LIBGAV1_TARGETING_SSE4_1
 #endif  // LIBGAV1_SRC_DSP_X86_TRANSPOSE_SSE4_H_

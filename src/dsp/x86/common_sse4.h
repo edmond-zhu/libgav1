@@ -20,7 +20,7 @@
 #include "src/utils/compiler_attributes.h"
 #include "src/utils/cpu.h"
 
-#if LIBGAV1_ENABLE_SSE4_1
+#if LIBGAV1_TARGETING_SSE4_1
 
 #include <emmintrin.h>
 #include <smmintrin.h>
@@ -261,5 +261,5 @@ inline __m128i MaskHighNBytes(int n) {
 }  // namespace dsp
 }  // namespace libgav1
 
-#endif  // LIBGAV1_ENABLE_SSE4_1
+#endif  // LIBGAV1_TARGETING_SSE4_1
 #endif  // LIBGAV1_SRC_DSP_X86_COMMON_SSE4_H_

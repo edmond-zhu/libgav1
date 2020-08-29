@@ -15,7 +15,7 @@
 #include "src/dsp/intrapred.h"
 #include "src/utils/cpu.h"
 
-#if LIBGAV1_ENABLE_SSE4_1
+#if LIBGAV1_TARGETING_SSE4_1
 
 #include <xmmintrin.h>
 
@@ -3524,7 +3524,7 @@ void IntraPredInit_SSE4_1() {
 }  // namespace dsp
 }  // namespace libgav1
 
-#else  // !LIBGAV1_ENABLE_SSE4_1
+#else  // !LIBGAV1_TARGETING_SSE4_1
 namespace libgav1 {
 namespace dsp {
 
@@ -3532,4 +3532,4 @@ void IntraPredInit_SSE4_1() {}
 
 }  // namespace dsp
 }  // namespace libgav1
-#endif  // LIBGAV1_ENABLE_SSE4_1
+#endif  // LIBGAV1_TARGETING_SSE4_1

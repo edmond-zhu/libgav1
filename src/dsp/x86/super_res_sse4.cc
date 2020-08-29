@@ -15,7 +15,7 @@
 #include "src/dsp/super_res.h"
 #include "src/utils/cpu.h"
 
-#if LIBGAV1_ENABLE_SSE4_1
+#if LIBGAV1_TARGETING_SSE4_1
 
 #include <smmintrin.h>
 
@@ -154,7 +154,7 @@ void SuperResInit_SSE4_1() { low_bitdepth::Init8bpp(); }
 }  // namespace dsp
 }  // namespace libgav1
 
-#else  // !LIBGAV1_ENABLE_SSE4_1
+#else  // !LIBGAV1_TARGETING_SSE4_1
 
 namespace libgav1 {
 namespace dsp {
@@ -163,4 +163,4 @@ void SuperResInit_SSE4_1() {}
 
 }  // namespace dsp
 }  // namespace libgav1
-#endif  // LIBGAV1_ENABLE_SSE4_1
+#endif  // LIBGAV1_TARGETING_SSE4_1

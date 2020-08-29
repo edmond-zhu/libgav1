@@ -856,6 +856,14 @@ const Dsp* GetDspTable(int bitdepth);
 
 namespace dsp_internal {
 
+// Visual Studio builds don't have a way to detect SSE4_1. Only exclude the C
+// functions if /arch:AVX2 is used across all sources.
+#if !LIBGAV1_TARGETING_AVX2 && \
+    (defined(_MSC_VER) || (defined(_M_IX86) || defined(_M_X64)))
+#undef LIBGAV1_ENABLE_ALL_DSP_FUNCTIONS
+#define LIBGAV1_ENABLE_ALL_DSP_FUNCTIONS 1
+#endif
+
 // Returns true if a more highly optimized version of |func| is not defined for
 // the associated bitdepth or if it is forcibly enabled with
 // LIBGAV1_ENABLE_ALL_DSP_FUNCTIONS. The define checked for |func| corresponds

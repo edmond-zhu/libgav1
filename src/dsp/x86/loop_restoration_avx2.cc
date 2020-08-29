@@ -15,7 +15,7 @@
 #include "src/dsp/loop_restoration.h"
 #include "src/utils/cpu.h"
 
-#if LIBGAV1_ENABLE_AVX2
+#if LIBGAV1_TARGETING_AVX2
 #include <immintrin.h>
 
 #include <algorithm>
@@ -595,7 +595,7 @@ void LoopRestorationInit_AVX2() { low_bitdepth::Init8bpp(); }
 }  // namespace dsp
 }  // namespace libgav1
 
-#else  // !LIBGAV1_ENABLE_AVX2
+#else  // !LIBGAV1_TARGETING_AVX2
 namespace libgav1 {
 namespace dsp {
 
@@ -603,4 +603,4 @@ void LoopRestorationInit_AVX2() {}
 
 }  // namespace dsp
 }  // namespace libgav1
-#endif  // LIBGAV1_ENABLE_AVX2
+#endif  // LIBGAV1_TARGETING_AVX2

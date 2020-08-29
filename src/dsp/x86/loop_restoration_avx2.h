@@ -32,12 +32,12 @@ void LoopRestorationInit_AVX2();
 
 // If avx2 is enabled and the baseline isn't set due to a higher level of
 // optimization being enabled, signal the avx2 implementation should be used.
-#if LIBGAV1_ENABLE_AVX2
+#if LIBGAV1_TARGETING_AVX2
 
 #ifndef LIBGAV1_Dsp8bpp_WienerFilter
 #define LIBGAV1_Dsp8bpp_WienerFilter LIBGAV1_CPU_AVX2
 #endif
 
-#endif  // LIBGAV1_ENABLE_AVX2
+#endif  // LIBGAV1_TARGETING_AVX2
 
 #endif  // LIBGAV1_SRC_DSP_X86_LOOP_RESTORATION_AVX2_H_
