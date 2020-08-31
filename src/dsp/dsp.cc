@@ -101,6 +101,9 @@ void DspInit() {
       SuperResInit_SSE4_1();
       WarpInit_SSE4_1();
       WeightMaskInit_SSE4_1();
+#if LIBGAV1_MAX_BITDEPTH >= 10
+      LoopRestorationInit10bpp_SSE4_1();
+#endif  // LIBGAV1_MAX_BITDEPTH >= 10
     }
 #endif  // LIBGAV1_ENABLE_SSE4_1
 #if LIBGAV1_ENABLE_AVX2
