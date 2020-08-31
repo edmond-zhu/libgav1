@@ -260,7 +260,7 @@ void PostFilter::GetVerticalDeblockFilterEdgeInfoUV(
       kDeblockFilterLevelIndex[kPlaneU][kLoopFilterTypeVertical];
   const int filter_id_v =
       kDeblockFilterLevelIndex[kPlaneV][kLoopFilterTypeVertical];
-  const BlockParameters* bp_prev = *(bp_ptr - (1 << subsampling_x));
+  const BlockParameters* bp_prev = *(bp_ptr - (ptrdiff_t{1} << subsampling_x));
 
   if (bp == bp_prev) {
     // Not a border.
