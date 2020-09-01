@@ -109,6 +109,9 @@ void DspInit() {
 #if LIBGAV1_ENABLE_AVX2
     if ((cpu_features & kAVX2) != 0) {
       LoopRestorationInit_AVX2();
+#if LIBGAV1_MAX_BITDEPTH >= 10
+      LoopRestorationInit10bpp_AVX2();
+#endif  // LIBGAV1_MAX_BITDEPTH >= 10
     }
 #endif  // LIBGAV1_ENABLE_AVX2
 #endif  // LIBGAV1_ENABLE_SSE4_1 || LIBGAV1_ENABLE_AVX2

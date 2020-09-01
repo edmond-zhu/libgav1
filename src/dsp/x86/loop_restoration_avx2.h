@@ -24,8 +24,9 @@ namespace libgav1 {
 namespace dsp {
 
 // Initializes Dsp::loop_restorations, see the defines below for specifics.
-// This function is not thread-safe.
+// These functions are not thread-safe.
 void LoopRestorationInit_AVX2();
+void LoopRestorationInit10bpp_AVX2();
 
 }  // namespace dsp
 }  // namespace libgav1
@@ -36,6 +37,10 @@ void LoopRestorationInit_AVX2();
 
 #ifndef LIBGAV1_Dsp8bpp_WienerFilter
 #define LIBGAV1_Dsp8bpp_WienerFilter LIBGAV1_CPU_AVX2
+#endif
+
+#ifndef LIBGAV1_Dsp10bpp_WienerFilter
+#define LIBGAV1_Dsp10bpp_WienerFilter LIBGAV1_CPU_AVX2
 #endif
 
 #endif  // LIBGAV1_TARGETING_AVX2

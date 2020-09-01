@@ -525,8 +525,11 @@ void WienerFilter_SSE4_1(const RestorationUnitInfo& restoration_info,
 void Init10bpp() {
   Dsp* const dsp = dsp_internal::GetWritableDspTable(kBitdepth10);
   assert(dsp != nullptr);
+  static_cast<void>(dsp);
 #if DSP_ENABLED_10BPP_SSE4_1(WienerFilter)
   dsp->loop_restorations[0] = WienerFilter_SSE4_1;
+#else
+  static_cast<void>(WienerFilter_SSE4_1);
 #endif
 }
 
