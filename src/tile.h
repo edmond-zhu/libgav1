@@ -357,7 +357,12 @@ class Tile : public Allocable {
                                 const MvContexts& mode_contexts);
   void ReadRefMvIndex(const Block& block);
   void ReadInterIntraMode(const Block& block, bool is_compound);  // 5.11.28.
-  bool IsScaled(ReferenceFrameType type) const;  // Part of 5.11.27.
+  bool IsScaled(ReferenceFrameType type) const {  // Part of 5.11.27.
+    const int index =
+        frame_header_.reference_frame_index[type - kReferenceFrameLast];
+    return reference_frames_[index]->upscaled_width() != frame_header_.width ||
+           reference_frames_[index]->frame_height() != frame_header_.height;
+  }
   void ReadMotionMode(const Block& block, bool is_compound);  // 5.11.27.
   uint16_t* GetIsExplicitCompoundTypeCdf(const Block& block);
   uint16_t* GetIsCompoundTypeAverageCdf(const Block& block);
