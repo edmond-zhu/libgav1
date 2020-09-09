@@ -186,17 +186,6 @@ class Tile : public Allocable {
   int column4x4_end() const { return column4x4_end_; }
 
  private:
-  Tile(int tile_number, const uint8_t* data, size_t size,
-       const ObuSequenceHeader& sequence_header,
-       const ObuFrameHeader& frame_header, RefCountedBuffer* current_frame,
-       const DecoderState& state, FrameScratchBuffer* frame_scratch_buffer,
-       const WedgeMaskArray& wedge_masks,
-       SymbolDecoderContext* saved_symbol_decoder_context,
-       const SegmentationMap* prev_segment_ids, PostFilter* post_filter,
-       const dsp::Dsp* dsp, ThreadPool* thread_pool,
-       BlockingCounterWithStatus* pending_tiles, bool frame_parallel,
-       bool use_intra_prediction_buffer);
-
   // Stores the transform tree state when reading variable size transform trees
   // and when applying the transform tree. When applying the transform tree,
   // |depth| is not used.
@@ -247,6 +236,17 @@ class Tile : public Allocable {
   //    The pointer is reset to the beginning of the |residual_buffer_| for
   //    every transform block.
   using ResidualPtr = uint8_t*;
+
+  Tile(int tile_number, const uint8_t* data, size_t size,
+       const ObuSequenceHeader& sequence_header,
+       const ObuFrameHeader& frame_header, RefCountedBuffer* current_frame,
+       const DecoderState& state, FrameScratchBuffer* frame_scratch_buffer,
+       const WedgeMaskArray& wedge_masks,
+       SymbolDecoderContext* saved_symbol_decoder_context,
+       const SegmentationMap* prev_segment_ids, PostFilter* post_filter,
+       const dsp::Dsp* dsp, ThreadPool* thread_pool,
+       BlockingCounterWithStatus* pending_tiles, bool frame_parallel,
+       bool use_intra_prediction_buffer);
 
   // Performs member initializations that may fail. Helper function used by
   // Create().
