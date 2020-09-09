@@ -399,21 +399,27 @@ class Tile : public Allocable {
                          TransformSize tx_size);  // 5.11.47.
   template <typename ResidualType>
   void ReadCoeffBase2D(
-      const uint16_t* scan, PlaneType plane_type, TransformSize tx_size,
-      int clamped_tx_size_context, int adjusted_tx_width_log2, int eob,
+      const uint16_t* scan, TransformSize tx_size, int adjusted_tx_width_log2,
+      int eob,
       uint16_t coeff_base_cdf[kCoeffBaseContexts][kCoeffBaseSymbolCount + 1],
+      uint16_t coeff_base_range_cdf[kCoeffBaseRangeContexts]
+                                   [kCoeffBaseRangeSymbolCount + 1],
       ResidualType* quantized_buffer);
   template <typename ResidualType>
   void ReadCoeffBaseHorizontal(
-      const uint16_t* scan, PlaneType plane_type, TransformSize tx_size,
-      int clamped_tx_size_context, int adjusted_tx_width_log2, int eob,
+      const uint16_t* scan, TransformSize tx_size, int adjusted_tx_width_log2,
+      int eob,
       uint16_t coeff_base_cdf[kCoeffBaseContexts][kCoeffBaseSymbolCount + 1],
+      uint16_t coeff_base_range_cdf[kCoeffBaseRangeContexts]
+                                   [kCoeffBaseRangeSymbolCount + 1],
       ResidualType* quantized_buffer);
   template <typename ResidualType>
   void ReadCoeffBaseVertical(
-      const uint16_t* scan, PlaneType plane_type, TransformSize tx_size,
-      int clamped_tx_size_context, int adjusted_tx_width_log2, int eob,
+      const uint16_t* scan, TransformSize tx_size, int adjusted_tx_width_log2,
+      int eob,
       uint16_t coeff_base_cdf[kCoeffBaseContexts][kCoeffBaseSymbolCount + 1],
+      uint16_t coeff_base_range_cdf[kCoeffBaseRangeContexts]
+                                   [kCoeffBaseRangeSymbolCount + 1],
       ResidualType* quantized_buffer);
   int GetDcSignContext(int x4, int y4, int w4, int h4, Plane plane);
   void SetEntropyContexts(int x4, int y4, int w4, int h4, Plane plane,
@@ -500,9 +506,8 @@ class Tile : public Allocable {
       const uint16_t* scan, int i, int q_value, const uint8_t* quantizer_matrix,
       int shift, int max_value, uint16_t* dc_sign_cdf, int8_t* dc_category,
       int* coefficient_level,
-      ResidualType* residual_buffer);  // Part of 5.11.39.
-  int ReadCoeffBaseRange(int clamped_tx_size_context, int cdf_context,
-                         int plane_type);  // Part of 5.11.39.
+      ResidualType* residual_buffer);     // Part of 5.11.39.
+  int ReadCoeffBaseRange(uint16_t* cdf);  // Part of 5.11.39.
   // Returns the number of non-zero coefficients that were read. |tx_type| is an
   // output parameter that stores the computed transform type for the plane
   // whose coefficients were read. Returns -1 on failure.

@@ -1087,9 +1087,11 @@ void Tile::ReadTransformType(const Block& block, int x4, int y4,
 // positions are still all 0s according to the diagonal scan order.
 template <typename ResidualType>
 void Tile::ReadCoeffBase2D(
-    const uint16_t* scan, PlaneType plane_type, TransformSize tx_size,
-    int clamped_tx_size_context, int adjusted_tx_width_log2, int eob,
+    const uint16_t* scan, TransformSize tx_size, int adjusted_tx_width_log2,
+    int eob,
     uint16_t coeff_base_cdf[kCoeffBaseContexts][kCoeffBaseSymbolCount + 1],
+    uint16_t coeff_base_range_cdf[kCoeffBaseRangeContexts]
+                                 [kCoeffBaseRangeSymbolCount + 1],
     ResidualType* const quantized_buffer) {
   const int tx_width = 1 << adjusted_tx_width_log2;
   for (int i = eob - 2; i >= 1; --i) {
@@ -1119,7 +1121,7 @@ void Tile::ReadCoeffBase2D(
                                       quantized[tx_width] +       // {1, 0}
                                       quantized[tx_width + 1]));  // {1, 1}
       context += 14 >> static_cast<int>((row | column) < 2);
-      level += ReadCoeffBaseRange(clamped_tx_size_context, context, plane_type);
+      level += ReadCoeffBaseRange(coeff_base_range_cdf[context]);
     }
     quantized[0] = level;
   }
@@ -1135,7 +1137,7 @@ void Tile::ReadCoeffBase2D(
           std::min(6, DivideBy2(1 + quantized[1] +          // {0, 1}
                                 quantized[tx_width] +       // {1, 0}
                                 quantized[tx_width + 1]));  // {1, 1}
-      level += ReadCoeffBaseRange(clamped_tx_size_context, context, plane_type);
+      level += ReadCoeffBaseRange(coeff_base_range_cdf[context]);
     }
     quantized[0] = level;
   }
@@ -1155,9 +1157,11 @@ void Tile::ReadCoeffBase2D(
 // we always do the boundary check for its fourth right neighbor.
 template <typename ResidualType>
 void Tile::ReadCoeffBaseHorizontal(
-    const uint16_t* scan, PlaneType plane_type, TransformSize /*tx_size*/,
-    int clamped_tx_size_context, int adjusted_tx_width_log2, int eob,
+    const uint16_t* scan, TransformSize /*tx_size*/, int adjusted_tx_width_log2,
+    int eob,
     uint16_t coeff_base_cdf[kCoeffBaseContexts][kCoeffBaseSymbolCount + 1],
+    uint16_t coeff_base_range_cdf[kCoeffBaseRangeContexts]
+                                 [kCoeffBaseRangeSymbolCount + 1],
     ResidualType* const quantized_buffer) {
   const int tx_width = 1 << adjusted_tx_width_log2;
   int i = eob - 2;
@@ -1189,7 +1193,7 @@ void Tile::ReadCoeffBaseHorizontal(
       if (pos != 0) {
         context += 14 >> static_cast<int>(column == 0);
       }
-      level += ReadCoeffBaseRange(clamped_tx_size_context, context, plane_type);
+      level += ReadCoeffBaseRange(coeff_base_range_cdf[context]);
     }
     quantized[0] = level;
   } while (--i >= 0);
@@ -1200,9 +1204,11 @@ void Tile::ReadCoeffBaseHorizontal(
 // Right boundary check is performed explicitly.
 template <typename ResidualType>
 void Tile::ReadCoeffBaseVertical(
-    const uint16_t* scan, PlaneType plane_type, TransformSize /*tx_size*/,
-    int clamped_tx_size_context, int adjusted_tx_width_log2, int eob,
+    const uint16_t* scan, TransformSize /*tx_size*/, int adjusted_tx_width_log2,
+    int eob,
     uint16_t coeff_base_cdf[kCoeffBaseContexts][kCoeffBaseSymbolCount + 1],
+    uint16_t coeff_base_range_cdf[kCoeffBaseRangeContexts]
+                                 [kCoeffBaseRangeSymbolCount + 1],
     ResidualType* const quantized_buffer) {
   const int tx_width = 1 << adjusted_tx_width_log2;
   int i = eob - 2;
@@ -1237,7 +1243,7 @@ void Tile::ReadCoeffBaseVertical(
       if (pos != 0) {
         context += 14 >> static_cast<int>(row == 0);
       }
-      level += ReadCoeffBaseRange(clamped_tx_size_context, context, plane_type);
+      level += ReadCoeffBaseRange(coeff_base_range_cdf[context]);
     }
     quantized[0] = level;
   } while (--i >= 0);
@@ -1340,13 +1346,11 @@ bool Tile::ReadSignAndApplyDequantization(
   return true;
 }
 
-int Tile::ReadCoeffBaseRange(int clamped_tx_size_context, int cdf_context,
-                             int plane_type) {
+int Tile::ReadCoeffBaseRange(uint16_t* cdf) {
   int level = 0;
   for (int j = 0; j < kCoeffBaseRangeMaxIterations; ++j) {
-    const int coeff_base_range = reader_.ReadSymbol<kCoeffBaseRangeSymbolCount>(
-        symbol_decoder_context_.coeff_base_range_cdf[clamped_tx_size_context]
-                                                    [plane_type][cdf_context]);
+    const int coeff_base_range =
+        reader_.ReadSymbol<kCoeffBaseRangeSymbolCount>(cdf);
     level += coeff_base_range;
     if (coeff_base_range < (kCoeffBaseRangeSymbolCount - 1)) break;
   }
@@ -1446,6 +1450,9 @@ int Tile::ReadTransformCoefficients(const Block& block, Plane plane,
   }
   const uint16_t* scan = kScan[tx_class][tx_size];
   const int clamped_tx_size_context = std::min(tx_size_context, 3);
+  auto coeff_base_range_cdf =
+      symbol_decoder_context_
+          .coeff_base_range_cdf[clamped_tx_size_context][plane_type];
   // Read the last coefficient.
   {
     context = GetCoeffBaseContextEob(tx_size, eob - 1);
@@ -1455,10 +1462,9 @@ int Tile::ReadTransformCoefficients(const Block& block, Plane plane,
                 symbol_decoder_context_
                     .coeff_base_eob_cdf[tx_size_context][plane_type][context]);
     if (level > kNumQuantizerBaseLevels) {
-      level += ReadCoeffBaseRange(
-          clamped_tx_size_context,
-          GetCoeffBaseRangeContextEob(adjusted_tx_width_log2, pos, tx_class),
-          plane_type);
+      level +=
+          ReadCoeffBaseRange(coeff_base_range_cdf[GetCoeffBaseRangeContextEob(
+              adjusted_tx_width_log2, pos, tx_class)]);
     }
     residual[pos] = level;
   }
@@ -1467,18 +1473,19 @@ int Tile::ReadTransformCoefficients(const Block& block, Plane plane,
     // Lookup used to call the right variant of ReadCoeffBase*() based on the
     // transform class.
     static constexpr void (Tile::*kGetCoeffBaseFunc[])(
-        const uint16_t* scan, PlaneType plane_type, TransformSize tx_size,
-        int clamped_tx_size_context, int adjusted_tx_width_log2, int eob,
+        const uint16_t* scan, TransformSize tx_size, int adjusted_tx_width_log2,
+        int eob,
         uint16_t coeff_base_cdf[kCoeffBaseContexts][kCoeffBaseSymbolCount + 1],
+        uint16_t coeff_base_range_cdf[kCoeffBaseRangeContexts]
+                                     [kCoeffBaseRangeSymbolCount + 1],
         ResidualType* quantized_buffer) = {
         &Tile::ReadCoeffBase2D<ResidualType>,
         &Tile::ReadCoeffBaseHorizontal<ResidualType>,
         &Tile::ReadCoeffBaseVertical<ResidualType>};
     (this->*kGetCoeffBaseFunc[tx_class])(
-        scan, plane_type, tx_size, clamped_tx_size_context,
-        adjusted_tx_width_log2, eob,
+        scan, tx_size, adjusted_tx_width_log2, eob,
         symbol_decoder_context_.coeff_base_cdf[tx_size_context][plane_type],
-        residual);
+        coeff_base_range_cdf, residual);
   }
   const int max_value = (1 << (7 + sequence_header_.color_config.bitdepth)) - 1;
   const int current_quantizer_index = GetQIndex(
