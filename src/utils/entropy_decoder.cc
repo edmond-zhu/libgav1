@@ -20,6 +20,7 @@
 #include "src/utils/common.h"
 #include "src/utils/compiler_attributes.h"
 #include "src/utils/constants.h"
+#include "src/utils/cpu.h"
 
 #if defined(__ARM_NEON__) || defined(__aarch64__) || \
     (defined(_MSC_VER) && defined(_M_ARM))
@@ -32,14 +33,14 @@
 #include <arm_neon.h>
 #endif
 
-#if defined(__SSE4_1__) || defined(LIBGAV1_X86_MSVC)
-#define LIBGAV1_ENTROPY_DECODER_ENABLE_SSE4 1
+#if defined(__SSE2__) || defined(LIBGAV1_X86_MSVC)
+#define LIBGAV1_ENTROPY_DECODER_ENABLE_SSE2 1
 #else
-#define LIBGAV1_ENTROPY_DECODER_ENABLE_SSE4 0
+#define LIBGAV1_ENTROPY_DECODER_ENABLE_SSE2 0
 #endif
 
-#if LIBGAV1_ENTROPY_DECODER_ENABLE_SSE4
-#include <smmintrin.h>
+#if LIBGAV1_ENTROPY_DECODER_ENABLE_SSE2
+#include <emmintrin.h>
 #endif
 
 namespace libgav1 {
@@ -330,7 +331,7 @@ void UpdateCdf16(uint16_t* const cdf, const int symbol) {
 
 #else  // !LIBGAV1_ENTROPY_DECODER_ENABLE_NEON
 
-#if LIBGAV1_ENTROPY_DECODER_ENABLE_SSE4
+#if LIBGAV1_ENTROPY_DECODER_ENABLE_SSE2
 
 inline __m128i LoadLo8(const void* a) {
   return _mm_loadl_epi64(static_cast<const __m128i*>(a));
@@ -352,13 +353,12 @@ void UpdateCdf5(uint16_t* const cdf, const int symbol) {
   __m128i cdf_vec = LoadLo8(cdf);
   const uint16_t count = cdf[5];
   const int rate = (4 | (count >> 4)) + 1;
-  const __m128i zero = _mm_setzero_si128();
   const __m128i cdf_max_probability = _mm_shufflelo_epi16(
       _mm_cvtsi32_si128(kCdfMaxProbability + 1 - (1 << rate)), 0);
   const __m128i index = _mm_set_epi32(0x0, 0x0, 0x00030002, 0x00010000);
   const __m128i symbol_vec = _mm_shufflelo_epi16(_mm_cvtsi32_si128(symbol), 0);
   const __m128i mask = _mm_cmplt_epi16(index, symbol_vec);
-  const __m128i a = _mm_blendv_epi8(zero, cdf_max_probability, mask);
+  const __m128i a = _mm_and_si128(cdf_max_probability, mask);
   const __m128i diff = _mm_sub_epi16(cdf_vec, a);
   const __m128i delta = _mm_sra_epi16(diff, _mm_cvtsi32_si128(rate));
   cdf_vec = _mm_sub_epi16(cdf_vec, delta);
@@ -373,14 +373,13 @@ void UpdateCdf7To9(uint16_t* const cdf, const int symbol) {
   __m128i cdf_vec = LoadUnaligned16(cdf);
   const uint16_t count = cdf[symbol_count];
   const int rate = (4 | (count >> 4)) + 1;
-  const __m128i zero = _mm_setzero_si128();
   const __m128i cdf_max_probability =
       _mm_set1_epi16(kCdfMaxProbability + 1 - (1 << rate));
   const __m128i index =
       _mm_set_epi32(0x00070006, 0x00050004, 0x00030002, 0x00010000);
   const __m128i symbol_vec = _mm_set1_epi16(static_cast<int16_t>(symbol));
   const __m128i mask = _mm_cmplt_epi16(index, symbol_vec);
-  const __m128i a = _mm_blendv_epi8(zero, cdf_max_probability, mask);
+  const __m128i a = _mm_and_si128(cdf_max_probability, mask);
   const __m128i diff = _mm_sub_epi16(cdf_vec, a);
   const __m128i delta = _mm_sra_epi16(diff, _mm_cvtsi32_si128(rate));
   cdf_vec = _mm_sub_epi16(cdf_vec, delta);
@@ -408,14 +407,13 @@ void UpdateCdf11(uint16_t* const cdf, const int symbol) {
   if (symbol > 1) {
     cdf[0] += (kCdfMaxProbability - cdf[0]) >> rate;
     cdf[1] += (kCdfMaxProbability - cdf[1]) >> rate;
-    const __m128i zero = _mm_setzero_si128();
     const __m128i cdf_max_probability = _mm_set1_epi16(
         static_cast<int16_t>(kCdfMaxProbability + 1 - (1 << rate)));
     const __m128i index =
         _mm_set_epi32(0x00090008, 0x00070006, 0x00050004, 0x00030002);
     const __m128i symbol_vec = _mm_set1_epi16(static_cast<int16_t>(symbol));
     const __m128i mask = _mm_cmplt_epi16(index, symbol_vec);
-    const __m128i a = _mm_blendv_epi8(zero, cdf_max_probability, mask);
+    const __m128i a = _mm_and_si128(cdf_max_probability, mask);
     const __m128i diff = _mm_sub_epi16(cdf_vec, a);
     const __m128i delta = _mm_sra_epi16(diff, _mm_cvtsi32_si128(rate));
     cdf_vec = _mm_sub_epi16(cdf_vec, delta);
@@ -439,7 +437,6 @@ void UpdateCdf13(uint16_t* const cdf, const int symbol) {
   __m128i cdf_vec1 = LoadUnaligned16(cdf + 4);
   const uint16_t count = cdf[13];
   const int rate = (4 | (count >> 4)) + 1;
-  const __m128i zero = _mm_setzero_si128();
   const __m128i cdf_max_probability = _mm_set1_epi16(
       static_cast<int16_t>(kCdfMaxProbability + 1 - (1 << rate)));
   const __m128i symbol_vec = _mm_set1_epi16(static_cast<int16_t>(symbol));
@@ -447,7 +444,7 @@ void UpdateCdf13(uint16_t* const cdf, const int symbol) {
   const __m128i index =
       _mm_set_epi32(0x00070006, 0x00050004, 0x00030002, 0x00010000);
   const __m128i mask = _mm_cmplt_epi16(index, symbol_vec);
-  const __m128i a = _mm_blendv_epi8(zero, cdf_max_probability, mask);
+  const __m128i a = _mm_and_si128(cdf_max_probability, mask);
   const __m128i diff = _mm_sub_epi16(cdf_vec0, a);
   const __m128i delta = _mm_sra_epi16(diff, _mm_cvtsi32_si128(rate));
   cdf_vec0 = _mm_sub_epi16(cdf_vec0, delta);
@@ -456,7 +453,7 @@ void UpdateCdf13(uint16_t* const cdf, const int symbol) {
   const __m128i index1 =
       _mm_set_epi32(0x000b000a, 0x00090008, 0x00070006, 0x00050004);
   const __m128i mask1 = _mm_cmplt_epi16(index1, symbol_vec);
-  const __m128i a1 = _mm_blendv_epi8(zero, cdf_max_probability, mask1);
+  const __m128i a1 = _mm_and_si128(cdf_max_probability, mask1);
   const __m128i diff1 = _mm_sub_epi16(cdf_vec1, a1);
   const __m128i delta1 = _mm_sra_epi16(diff1, _mm_cvtsi32_si128(rate));
   cdf_vec1 = _mm_sub_epi16(cdf_vec1, delta1);
@@ -469,7 +466,6 @@ void UpdateCdf16(uint16_t* const cdf, const int symbol) {
   __m128i cdf_vec0 = LoadUnaligned16(cdf);
   const uint16_t count = cdf[16];
   const int rate = (4 | (count >> 4)) + 1;
-  const __m128i zero = _mm_setzero_si128();
   const __m128i cdf_max_probability = _mm_set1_epi16(
       static_cast<int16_t>(kCdfMaxProbability + 1 - (1 << rate)));
   const __m128i symbol_vec = _mm_set1_epi16(static_cast<int16_t>(symbol));
@@ -477,7 +473,7 @@ void UpdateCdf16(uint16_t* const cdf, const int symbol) {
   const __m128i index =
       _mm_set_epi32(0x00070006, 0x00050004, 0x00030002, 0x00010000);
   const __m128i mask = _mm_cmplt_epi16(index, symbol_vec);
-  const __m128i a = _mm_blendv_epi8(zero, cdf_max_probability, mask);
+  const __m128i a = _mm_and_si128(cdf_max_probability, mask);
   const __m128i diff = _mm_sub_epi16(cdf_vec0, a);
   const __m128i delta = _mm_sra_epi16(diff, _mm_cvtsi32_si128(rate));
   cdf_vec0 = _mm_sub_epi16(cdf_vec0, delta);
@@ -487,7 +483,7 @@ void UpdateCdf16(uint16_t* const cdf, const int symbol) {
   const __m128i index1 =
       _mm_set_epi32(0x000f000e, 0x000d000c, 0x000b000a, 0x00090008);
   const __m128i mask1 = _mm_cmplt_epi16(index1, symbol_vec);
-  const __m128i a1 = _mm_blendv_epi8(zero, cdf_max_probability, mask1);
+  const __m128i a1 = _mm_and_si128(cdf_max_probability, mask1);
   const __m128i diff1 = _mm_sub_epi16(cdf_vec1, a1);
   const __m128i delta1 = _mm_sra_epi16(diff1, _mm_cvtsi32_si128(rate));
   cdf_vec1 = _mm_sub_epi16(cdf_vec1, delta1);
@@ -496,7 +492,7 @@ void UpdateCdf16(uint16_t* const cdf, const int symbol) {
   cdf[16] = count + static_cast<uint16_t>(count < 32);
 }
 
-#else  // !LIBGAV1_ENTROPY_DECODER_ENABLE_SSE4
+#else  // !LIBGAV1_ENTROPY_DECODER_ENABLE_SSE2
 
 void UpdateCdf5(uint16_t* const cdf, const int symbol) {
   UpdateCdf(cdf, 5, symbol);
@@ -526,7 +522,7 @@ void UpdateCdf16(uint16_t* const cdf, const int symbol) {
   UpdateCdf(cdf, 16, symbol);
 }
 
-#endif  // LIBGAV1_ENTROPY_DECODER_ENABLE_SSE4
+#endif  // LIBGAV1_ENTROPY_DECODER_ENABLE_SSE2
 #endif  // LIBGAV1_ENTROPY_DECODER_ENABLE_NEON
 
 inline DaalaBitReader::WindowSize HostToBigEndian(
@@ -844,12 +840,12 @@ int DaalaBitReader::ReadSymbol3Or4(uint16_t* const cdf,
         const uint16x4_t delta = vshl_u16(cdf_vec, negative_rate);
         cdf_vec = vsub_u16(cdf_vec, delta);
         vst1_u16(cdf, cdf_vec);
-#elif LIBGAV1_ENTROPY_DECODER_ENABLE_SSE4
+#elif LIBGAV1_ENTROPY_DECODER_ENABLE_SSE2
         __m128i cdf_vec = LoadLo8(cdf);
         const __m128i delta = _mm_sra_epi16(cdf_vec, _mm_cvtsi32_si128(rate));
         cdf_vec = _mm_sub_epi16(cdf_vec, delta);
         StoreLo8(cdf, cdf_vec);
-#else  // !LIBGAV1_ENTROPY_DECODER_ENABLE_SSE4
+#else  // !LIBGAV1_ENTROPY_DECODER_ENABLE_SSE2
         cdf[0] -= cdf[0] >> rate;
         cdf[1] -= cdf[1] >> rate;
         cdf[2] -= cdf[2] >> rate;
@@ -928,7 +924,7 @@ int DaalaBitReader::ReadSymbol3Or4(uint16_t* const cdf,
       cdf_vec = vadd_u16(cdf_vec, delta);
       vst1_u16(cdf, cdf_vec);
       cdf[3] = 0;
-#elif LIBGAV1_ENTROPY_DECODER_ENABLE_SSE4
+#elif LIBGAV1_ENTROPY_DECODER_ENABLE_SSE2
       __m128i cdf_vec = LoadLo8(cdf);
       const __m128i cdf_max_probability =
           _mm_shufflelo_epi16(_mm_cvtsi32_si128(kCdfMaxProbability), 0);
@@ -937,7 +933,7 @@ int DaalaBitReader::ReadSymbol3Or4(uint16_t* const cdf,
       cdf_vec = _mm_add_epi16(cdf_vec, delta);
       StoreLo8(cdf, cdf_vec);
       cdf[3] = 0;
-#else  // !LIBGAV1_ENTROPY_DECODER_ENABLE_SSE4
+#else  // !LIBGAV1_ENTROPY_DECODER_ENABLE_SSE2
       cdf[0] += (kCdfMaxProbability - cdf[0]) >> rate;
       cdf[1] += (kCdfMaxProbability - cdf[1]) >> rate;
       cdf[2] += (kCdfMaxProbability - cdf[2]) >> rate;

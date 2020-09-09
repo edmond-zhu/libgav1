@@ -73,7 +73,6 @@ namespace libgav1 {
 #endif
 
 #undef LIBGAV1_X86
-#undef LIBGAV1_X86_MSVC
 
 #if !defined(LIBGAV1_ENABLE_NEON)
 // TODO(jzern): add support for _M_ARM64.
