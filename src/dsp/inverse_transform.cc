@@ -263,7 +263,7 @@ void Dct_C(void* dest, int8_t range) {
   if (size_log2 >= 3) {
     for (int i = 0; i < 2; ++i) {
       HadamardRotation_C(dst, MultiplyBy2(i) + 4, MultiplyBy2(i) + 5,
-                         static_cast<bool>(i), range);
+                         /*flip=*/i != 0, range);
     }
   }
   // stage 14.
@@ -305,7 +305,7 @@ void Dct_C(void* dest, int8_t range) {
     for (int i = 0; i < 2; ++i) {
       for (int j = 0; j < 2; ++j) {
         HadamardRotation_C(dst, MultiplyBy4(i) + j + 8, MultiplyBy4(i) - j + 11,
-                           static_cast<bool>(i), range);
+                           /*flip=*/i != 0, range);
       }
     }
   }
