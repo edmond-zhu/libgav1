@@ -43,8 +43,6 @@ namespace {
 #include "src/quantizer_tables.inc"
 #include "src/scan_tables.inc"
 
-// Precision bits when scaling reference frames.
-constexpr int kReferenceScaleShift = 14;
 // Range above kNumQuantizerBaseLevels which the exponential golomb coding
 // process is activated.
 constexpr int kQuantizerCoefficientBaseRange = 12;
@@ -1279,68 +1277,6 @@ void Tile::SetEntropyContexts(int x4, int y4, int w4, int h4, Plane plane,
          coefficient_level, num_left_elements);
   memset(&dc_categories_[kEntropyContextLeft][plane][y4], dc_category,
          num_left_elements);
-}
-
-void Tile::ScaleMotionVector(const MotionVector& mv, const Plane plane,
-                             const int reference_frame_index, const int x,
-                             const int y, int* const start_x,
-                             int* const start_y, int* const step_x,
-                             int* const step_y) {
-  const int reference_upscaled_width =
-      (reference_frame_index == -1)
-          ? frame_header_.upscaled_width
-          : reference_frames_[reference_frame_index]->upscaled_width();
-  const int reference_height =
-      (reference_frame_index == -1)
-          ? frame_header_.height
-          : reference_frames_[reference_frame_index]->frame_height();
-  assert(2 * frame_header_.width >= reference_upscaled_width &&
-         2 * frame_header_.height >= reference_height &&
-         frame_header_.width <= 16 * reference_upscaled_width &&
-         frame_header_.height <= 16 * reference_height);
-  const bool is_scaled_x = reference_upscaled_width != frame_header_.width;
-  const bool is_scaled_y = reference_height != frame_header_.height;
-  const int half_sample = 1 << (kSubPixelBits - 1);
-  int orig_x = (x << kSubPixelBits) + ((2 * mv.mv[1]) >> subsampling_x_[plane]);
-  int orig_y = (y << kSubPixelBits) + ((2 * mv.mv[0]) >> subsampling_y_[plane]);
-  const int rounding_offset =
-      DivideBy2(1 << (kScaleSubPixelBits - kSubPixelBits));
-  if (is_scaled_x) {
-    const int scale_x = ((reference_upscaled_width << kReferenceScaleShift) +
-                         DivideBy2(frame_header_.width)) /
-                        frame_header_.width;
-    *step_x = RightShiftWithRoundingSigned(
-        scale_x, kReferenceScaleShift - kScaleSubPixelBits);
-    orig_x += half_sample;
-    // When frame size is 4k and above, orig_x can be above 16 bits, scale_x can
-    // be up to 15 bits. So we use int64_t to hold base_x.
-    const int64_t base_x = static_cast<int64_t>(orig_x) * scale_x -
-                           (half_sample << kReferenceScaleShift);
-    *start_x =
-        RightShiftWithRoundingSigned(
-            base_x, kReferenceScaleShift + kSubPixelBits - kScaleSubPixelBits) +
-        rounding_offset;
-  } else {
-    *step_x = 1 << kScaleSubPixelBits;
-    *start_x = LeftShift(orig_x, 6) + rounding_offset;
-  }
-  if (is_scaled_y) {
-    const int scale_y = ((reference_height << kReferenceScaleShift) +
-                         DivideBy2(frame_header_.height)) /
-                        frame_header_.height;
-    *step_y = RightShiftWithRoundingSigned(
-        scale_y, kReferenceScaleShift - kScaleSubPixelBits);
-    orig_y += half_sample;
-    const int64_t base_y = static_cast<int64_t>(orig_y) * scale_y -
-                           (half_sample << kReferenceScaleShift);
-    *start_y =
-        RightShiftWithRoundingSigned(
-            base_y, kReferenceScaleShift + kSubPixelBits - kScaleSubPixelBits) +
-        rounding_offset;
-  } else {
-    *step_y = 1 << kScaleSubPixelBits;
-    *start_y = LeftShift(orig_y, 6) + rounding_offset;
-  }
 }
 
 template <typename ResidualType, bool is_dc_coefficient>
