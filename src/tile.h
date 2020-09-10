@@ -404,7 +404,7 @@ class Tile : public Allocable {
       uint16_t coeff_base_cdf[kCoeffBaseContexts][kCoeffBaseSymbolCount + 1],
       uint16_t coeff_base_range_cdf[kCoeffBaseRangeContexts]
                                    [kCoeffBaseRangeSymbolCount + 1],
-      ResidualType* quantized_buffer);
+      ResidualType* quantized_buffer, uint8_t* level_buffer);
   template <typename ResidualType>
   void ReadCoeffBaseHorizontal(
       const uint16_t* scan, TransformSize tx_size, int adjusted_tx_width_log2,
@@ -412,7 +412,7 @@ class Tile : public Allocable {
       uint16_t coeff_base_cdf[kCoeffBaseContexts][kCoeffBaseSymbolCount + 1],
       uint16_t coeff_base_range_cdf[kCoeffBaseRangeContexts]
                                    [kCoeffBaseRangeSymbolCount + 1],
-      ResidualType* quantized_buffer);
+      ResidualType* quantized_buffer, uint8_t* level_buffer);
   template <typename ResidualType>
   void ReadCoeffBaseVertical(
       const uint16_t* scan, TransformSize tx_size, int adjusted_tx_width_log2,
@@ -420,7 +420,7 @@ class Tile : public Allocable {
       uint16_t coeff_base_cdf[kCoeffBaseContexts][kCoeffBaseSymbolCount + 1],
       uint16_t coeff_base_range_cdf[kCoeffBaseRangeContexts]
                                    [kCoeffBaseRangeSymbolCount + 1],
-      ResidualType* quantized_buffer);
+      ResidualType* quantized_buffer, uint8_t* level_buffer);
   int GetDcSignContext(int x4, int y4, int w4, int h4, Plane plane);
   void SetEntropyContexts(int x4, int y4, int w4, int h4, Plane plane,
                           uint8_t coefficient_level, int8_t dc_category);
