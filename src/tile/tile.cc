@@ -1058,6 +1058,18 @@ void Tile::ReadTransformType(const Block& block, int x4, int y4,
     if (bp.is_inter) {
       cdf = symbol_decoder_context_
                 .inter_tx_type_cdf[cdf_index][cdf_tx_size_index];
+      switch (tx_set) {
+        case kTransformSetInter1:
+          tx_type = static_cast<TransformType>(reader_.ReadSymbol<16>(cdf));
+          break;
+        case kTransformSetInter2:
+          tx_type = static_cast<TransformType>(reader_.ReadSymbol<12>(cdf));
+          break;
+        default:
+          assert(tx_set == kTransformSetInter3);
+          tx_type = static_cast<TransformType>(reader_.ReadSymbol(cdf));
+          break;
+      }
     } else {
       const PredictionMode intra_direction =
           block.bp->prediction_parameters->use_filter_intra
@@ -1067,9 +1079,12 @@ void Tile::ReadTransformType(const Block& block, int x4, int y4,
       cdf =
           symbol_decoder_context_
               .intra_tx_type_cdf[cdf_index][cdf_tx_size_index][intra_direction];
+      assert(tx_set == kTransformSetIntra1 || tx_set == kTransformSetIntra2);
+      tx_type = static_cast<TransformType>((tx_set == kTransformSetIntra1)
+                                               ? reader_.ReadSymbol<7>(cdf)
+                                               : reader_.ReadSymbol<5>(cdf));
     }
-    tx_type = static_cast<TransformType>(
-        reader_.ReadSymbol(cdf, kNumTransformTypesInSet[tx_set]));
+
     // This array does not contain an entry for kTransformSetDctOnly, so the
     // first dimension needs to be offset by 1.
     tx_type = kInverseTransformTypeBySet[tx_set - 1][tx_type];
