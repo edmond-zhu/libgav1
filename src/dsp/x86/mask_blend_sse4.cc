@@ -121,10 +121,8 @@ inline void WriteMaskBlendLine4x2(const int16_t* const pred_0,
                                   const __m128i pred_mask_0,
                                   const __m128i pred_mask_1, uint8_t* dst,
                                   const ptrdiff_t dst_stride) {
-  const __m128i pred_val_0_lo = LoadLo8(pred_0);
-  const __m128i pred_val_0 = LoadHi8(pred_val_0_lo, pred_0 + 4);
-  const __m128i pred_val_1_lo = LoadLo8(pred_1);
-  const __m128i pred_val_1 = LoadHi8(pred_val_1_lo, pred_1 + 4);
+  const __m128i pred_val_0 = LoadAligned16(pred_0);
+  const __m128i pred_val_1 = LoadAligned16(pred_1);
   const __m128i mask_lo = _mm_unpacklo_epi16(pred_mask_0, pred_mask_1);
   const __m128i mask_hi = _mm_unpackhi_epi16(pred_mask_0, pred_mask_1);
   const __m128i pred_lo = _mm_unpacklo_epi16(pred_val_0, pred_val_1);
@@ -286,8 +284,7 @@ inline void InterIntraWriteMaskBlendLine8bpp4x2(const uint8_t* const pred_0,
                                                 const __m128i pred_mask_1) {
   const __m128i pred_mask = _mm_unpacklo_epi8(pred_mask_0, pred_mask_1);
 
-  __m128i pred_val_0 = Load4(pred_0);
-  pred_val_0 = _mm_or_si128(_mm_slli_si128(Load4(pred_0 + 4), 4), pred_val_0);
+  const __m128i pred_val_0 = LoadLo8(pred_0);
   // TODO(b/150326556): One load.
   __m128i pred_val_1 = Load4(pred_1);
   pred_val_1 = _mm_or_si128(_mm_slli_si128(Load4(pred_1 + pred_stride_1), 4),
