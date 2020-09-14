@@ -75,10 +75,12 @@ void UpdateCdf(uint16_t* const cdf, const int symbol_count, const int symbol) {
   //  count >> 4 is 2 for count == 31.
   // Now, the equation becomes:
   //  4 + (count >> 4) + (symbol_count > 3).
-  // Since (count >> 4) can only be 0 or 1 or 2, the addition can be replaced
-  // with bitwise or. So the final equation is:
-  // (4 | (count >> 4)) + (symbol_count > 3).
-  const int rate = (4 | (count >> 4)) + static_cast<int>(symbol_count > 3);
+  // Since (count >> 4) can only be 0 or 1 or 2, the addition could be replaced
+  // with bitwise or:
+  //  (4 | (count >> 4)) + (symbol_count > 3).
+  // but using addition will allow the compiler to eliminate an operation when
+  // symbol_count is known and this function is inlined.
+  const int rate = (count >> 4) + 4 + static_cast<int>(symbol_count > 3);
   // Hints for further optimizations:
   //
   // 1. clang can vectorize this for loop with width 4, even though the loop
@@ -169,7 +171,7 @@ void UpdateCdf(uint16_t* const cdf, const int symbol_count, const int symbol) {
 void UpdateCdf5(uint16_t* const cdf, const int symbol) {
   uint16x4_t cdf_vec = vld1_u16(cdf);
   const uint16_t count = cdf[5];
-  const int rate = (4 | (count >> 4)) + 1;
+  const int rate = (count >> 4) + 5;
   const uint16x4_t cdf_max_probability = vdup_n_u16(kCdfMaxProbability);
   const uint16x4_t index = vcreate_u16(0x0003000200010000);
   const uint16x4_t symbol_vec = vdup_n_u16(symbol);
@@ -197,7 +199,7 @@ void UpdateCdf7To9(uint16_t* const cdf, const int symbol) {
   static_assert(symbol_count >= 7 && symbol_count <= 9, "");
   uint16x8_t cdf_vec = vld1q_u16(cdf);
   const uint16_t count = cdf[symbol_count];
-  const int rate = (4 | (count >> 4)) + 1;
+  const int rate = (count >> 4) + 5;
   const uint16x8_t cdf_max_probability = vdupq_n_u16(kCdfMaxProbability);
   const uint16x8_t index = vcombine_u16(vcreate_u16(0x0003000200010000),
                                         vcreate_u16(0x0007000600050004));
@@ -231,7 +233,7 @@ void UpdateCdf11(uint16_t* const cdf, const int symbol) {
   uint16x8_t cdf_vec = vld1q_u16(cdf + 2);
   const uint16_t count = cdf[11];
   cdf[11] = count + static_cast<uint16_t>(count < 32);
-  const int rate = (4 | (count >> 4)) + 1;
+  const int rate = (count >> 4) + 5;
   if (symbol > 1) {
     cdf[0] += (kCdfMaxProbability - cdf[0]) >> rate;
     cdf[1] += (kCdfMaxProbability - cdf[1]) >> rate;
@@ -268,7 +270,7 @@ void UpdateCdf13(uint16_t* const cdf, const int symbol) {
   uint16x8_t cdf_vec0 = vld1q_u16(cdf);
   uint16x8_t cdf_vec1 = vld1q_u16(cdf + 4);
   const uint16_t count = cdf[13];
-  const int rate = (4 | (count >> 4)) + 1;
+  const int rate = (count >> 4) + 5;
   const uint16x8_t cdf_max_probability = vdupq_n_u16(kCdfMaxProbability);
   const uint16x8_t symbol_vec = vdupq_n_u16(symbol);
   const int16x8_t negative_rate = vdupq_n_s16(-rate);
@@ -300,7 +302,7 @@ void UpdateCdf13(uint16_t* const cdf, const int symbol) {
 void UpdateCdf16(uint16_t* const cdf, const int symbol) {
   uint16x8_t cdf_vec = vld1q_u16(cdf);
   const uint16_t count = cdf[16];
-  const int rate = (4 | (count >> 4)) + 1;
+  const int rate = (count >> 4) + 5;
   const uint16x8_t cdf_max_probability = vdupq_n_u16(kCdfMaxProbability);
   const uint16x8_t symbol_vec = vdupq_n_u16(symbol);
   const int16x8_t negative_rate = vdupq_n_s16(-rate);
@@ -352,7 +354,7 @@ inline void StoreUnaligned16(void* a, const __m128i v) {
 void UpdateCdf5(uint16_t* const cdf, const int symbol) {
   __m128i cdf_vec = LoadLo8(cdf);
   const uint16_t count = cdf[5];
-  const int rate = (4 | (count >> 4)) + 1;
+  const int rate = (count >> 4) + 5;
   const __m128i cdf_max_probability =
       _mm_shufflelo_epi16(_mm_cvtsi32_si128(kCdfMaxProbability), 0);
   const __m128i index = _mm_set_epi32(0x0, 0x0, 0x00040003, 0x00020001);
@@ -381,7 +383,7 @@ void UpdateCdf7To9(uint16_t* const cdf, const int symbol) {
   static_assert(symbol_count >= 7 && symbol_count <= 9, "");
   __m128i cdf_vec = LoadUnaligned16(cdf);
   const uint16_t count = cdf[symbol_count];
-  const int rate = (4 | (count >> 4)) + 1;
+  const int rate = (count >> 4) + 5;
   const __m128i cdf_max_probability =
       _mm_set1_epi16(static_cast<int16_t>(kCdfMaxProbability));
   const __m128i index =
@@ -414,7 +416,7 @@ void UpdateCdf11(uint16_t* const cdf, const int symbol) {
   __m128i cdf_vec = LoadUnaligned16(cdf + 2);
   const uint16_t count = cdf[11];
   cdf[11] = count + static_cast<uint16_t>(count < 32);
-  const int rate = (4 | (count >> 4)) + 1;
+  const int rate = (count >> 4) + 5;
   if (symbol > 1) {
     cdf[0] += (kCdfMaxProbability - cdf[0]) >> rate;
     cdf[1] += (kCdfMaxProbability - cdf[1]) >> rate;
@@ -449,7 +451,7 @@ void UpdateCdf13(uint16_t* const cdf, const int symbol) {
   __m128i cdf_vec0 = LoadUnaligned16(cdf);
   __m128i cdf_vec1 = LoadUnaligned16(cdf + 4);
   const uint16_t count = cdf[13];
-  const int rate = (4 | (count >> 4)) + 1;
+  const int rate = (count >> 4) + 5;
   const __m128i cdf_max_probability =
       _mm_set1_epi16(static_cast<int16_t>(kCdfMaxProbability));
   const __m128i symbol_vec = _mm_set1_epi16(static_cast<int16_t>(symbol));
@@ -480,7 +482,7 @@ void UpdateCdf13(uint16_t* const cdf, const int symbol) {
 void UpdateCdf16(uint16_t* const cdf, const int symbol) {
   __m128i cdf_vec0 = LoadUnaligned16(cdf);
   const uint16_t count = cdf[16];
-  const int rate = (4 | (count >> 4)) + 1;
+  const int rate = (count >> 4) + 5;
   const __m128i cdf_max_probability =
       _mm_set1_epi16(static_cast<int16_t>(kCdfMaxProbability));
   const __m128i symbol_vec = _mm_set1_epi16(static_cast<int16_t>(symbol));
@@ -844,7 +846,7 @@ int DaalaBitReader::ReadSymbol3Or4(uint16_t* const cdf,
       // Inlined version of UpdateCdf(cdf, [3,4], /*symbol=*/0).
       const uint16_t count = cdf[symbol_count];
       cdf[symbol_count] += static_cast<uint16_t>(count < 32);
-      const int rate = (4 | (count >> 4)) + static_cast<int>(symbol_count == 4);
+      const int rate = (count >> 4) + 4 + static_cast<int>(symbol_count == 4);
       if (symbol_count == 4) {
 #if LIBGAV1_ENTROPY_DECODER_ENABLE_NEON
         // 1. On Motorola Moto G5 Plus (running 32-bit Android 8.1.0), the ARM
@@ -886,7 +888,7 @@ int DaalaBitReader::ReadSymbol3Or4(uint16_t* const cdf,
       // Inlined version of UpdateCdf(cdf, [3,4], /*symbol=*/1).
       const uint16_t count = cdf[symbol_count];
       cdf[symbol_count] += static_cast<uint16_t>(count < 32);
-      const int rate = (4 | (count >> 4)) + static_cast<int>(symbol_count == 4);
+      const int rate = (count >> 4) + 4 + static_cast<int>(symbol_count == 4);
       cdf[0] += (kCdfMaxProbability - cdf[0]) >> rate;
       cdf[1] -= cdf[1] >> rate;
       if (symbol_count == 4) cdf[2] -= cdf[2] >> rate;
@@ -906,7 +908,7 @@ int DaalaBitReader::ReadSymbol3Or4(uint16_t* const cdf,
         // Inlined version of UpdateCdf(cdf, 4, /*symbol=*/2).
         const uint16_t count = cdf[4];
         cdf[4] += static_cast<uint16_t>(count < 32);
-        const int rate = (4 | (count >> 4)) + 1;
+        const int rate = (count >> 4) + 5;
         cdf[0] += (kCdfMaxProbability - cdf[0]) >> rate;
         cdf[1] += (kCdfMaxProbability - cdf[1]) >> rate;
         cdf[2] -= cdf[2] >> rate;
