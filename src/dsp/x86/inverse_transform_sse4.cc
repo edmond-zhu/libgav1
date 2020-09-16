@@ -2244,10 +2244,10 @@ LIBGAV1_ALWAYS_INLINE void RowShift(int16_t* source, int num_rows,
   }
 }
 
+template <bool is_row>
 void Dct4TransformLoop_SSE4_1(TransformType tx_type, TransformSize tx_size,
                               int adjusted_tx_height, void* src_buffer,
-                              int start_x, int start_y, void* dst_frame,
-                              bool is_row) {
+                              int start_x, int start_y, void* dst_frame) {
   auto& frame = *static_cast<Array2DView<uint8_t>*>(dst_frame);
   auto* src = static_cast<int16_t*>(src_buffer);
   const int tx_width = kTransformWidth[tx_size];
@@ -2307,10 +2307,10 @@ void Dct4TransformLoop_SSE4_1(TransformType tx_type, TransformSize tx_size,
   StoreToFrameWithRound(frame, start_x, start_y, tx_width, 4, src, tx_type);
 }
 
+template <bool is_row>
 void Dct8TransformLoop_SSE4_1(TransformType tx_type, TransformSize tx_size,
                               int adjusted_tx_height, void* src_buffer,
-                              int start_x, int start_y, void* dst_frame,
-                              bool is_row) {
+                              int start_x, int start_y, void* dst_frame) {
   auto& frame = *static_cast<Array2DView<uint8_t>*>(dst_frame);
   auto* src = static_cast<int16_t*>(src_buffer);
   const int tx_width = kTransformWidth[tx_size];
@@ -2368,10 +2368,10 @@ void Dct8TransformLoop_SSE4_1(TransformType tx_type, TransformSize tx_size,
   StoreToFrameWithRound(frame, start_x, start_y, tx_width, 8, src, tx_type);
 }
 
+template <bool is_row>
 void Dct16TransformLoop_SSE4_1(TransformType tx_type, TransformSize tx_size,
                                int adjusted_tx_height, void* src_buffer,
-                               int start_x, int start_y, void* dst_frame,
-                               bool is_row) {
+                               int start_x, int start_y, void* dst_frame) {
   auto& frame = *static_cast<Array2DView<uint8_t>*>(dst_frame);
   auto* src = static_cast<int16_t*>(src_buffer);
   const int tx_width = kTransformWidth[tx_size];
@@ -2428,10 +2428,10 @@ void Dct16TransformLoop_SSE4_1(TransformType tx_type, TransformSize tx_size,
   StoreToFrameWithRound(frame, start_x, start_y, tx_width, 16, src, tx_type);
 }
 
+template <bool is_row>
 void Dct32TransformLoop_SSE4_1(TransformType tx_type, TransformSize tx_size,
                                int adjusted_tx_height, void* src_buffer,
-                               int start_x, int start_y, void* dst_frame,
-                               bool is_row) {
+                               int start_x, int start_y, void* dst_frame) {
   auto& frame = *static_cast<Array2DView<uint8_t>*>(dst_frame);
   auto* src = static_cast<int16_t*>(src_buffer);
   const int tx_width = kTransformWidth[tx_size];
@@ -2471,10 +2471,10 @@ void Dct32TransformLoop_SSE4_1(TransformType tx_type, TransformSize tx_size,
   StoreToFrameWithRound(frame, start_x, start_y, tx_width, 32, src, tx_type);
 }
 
+template <bool is_row>
 void Dct64TransformLoop_SSE4_1(TransformType tx_type, TransformSize tx_size,
                                int adjusted_tx_height, void* src_buffer,
-                               int start_x, int start_y, void* dst_frame,
-                               bool is_row) {
+                               int start_x, int start_y, void* dst_frame) {
   auto& frame = *static_cast<Array2DView<uint8_t>*>(dst_frame);
   auto* src = static_cast<int16_t*>(src_buffer);
   const int tx_width = kTransformWidth[tx_size];
@@ -2514,10 +2514,10 @@ void Dct64TransformLoop_SSE4_1(TransformType tx_type, TransformSize tx_size,
   StoreToFrameWithRound(frame, start_x, start_y, tx_width, 64, src, tx_type);
 }
 
+template <bool is_row>
 void Adst4TransformLoop_SSE4_1(TransformType tx_type, TransformSize tx_size,
                                int adjusted_tx_height, void* src_buffer,
-                               int start_x, int start_y, void* dst_frame,
-                               bool is_row) {
+                               int start_x, int start_y, void* dst_frame) {
   auto& frame = *static_cast<Array2DView<uint8_t>*>(dst_frame);
   auto* src = static_cast<int16_t*>(src_buffer);
   const int tx_width = kTransformWidth[tx_size];
@@ -2566,10 +2566,10 @@ void Adst4TransformLoop_SSE4_1(TransformType tx_type, TransformSize tx_size,
                                                    tx_width, 4, src, tx_type);
 }
 
+template <bool is_row>
 void Adst8TransformLoop_SSE4_1(TransformType tx_type, TransformSize tx_size,
                                int adjusted_tx_height, void* src_buffer,
-                               int start_x, int start_y, void* dst_frame,
-                               bool is_row) {
+                               int start_x, int start_y, void* dst_frame) {
   auto& frame = *static_cast<Array2DView<uint8_t>*>(dst_frame);
   auto* src = static_cast<int16_t*>(src_buffer);
   const int tx_width = kTransformWidth[tx_size];
@@ -2628,10 +2628,10 @@ void Adst8TransformLoop_SSE4_1(TransformType tx_type, TransformSize tx_size,
                                                    tx_width, 8, src, tx_type);
 }
 
+template <bool is_row>
 void Adst16TransformLoop_SSE4_1(TransformType tx_type, TransformSize tx_size,
                                 int adjusted_tx_height, void* src_buffer,
-                                int start_x, int start_y, void* dst_frame,
-                                bool is_row) {
+                                int start_x, int start_y, void* dst_frame) {
   auto& frame = *static_cast<Array2DView<uint8_t>*>(dst_frame);
   auto* src = static_cast<int16_t*>(src_buffer);
   const int tx_width = kTransformWidth[tx_size];
@@ -2689,10 +2689,10 @@ void Adst16TransformLoop_SSE4_1(TransformType tx_type, TransformSize tx_size,
                                                    tx_width, 16, src, tx_type);
 }
 
+template <bool is_row>
 void Identity4TransformLoop_SSE4_1(TransformType tx_type, TransformSize tx_size,
                                    int adjusted_tx_height, void* src_buffer,
-                                   int start_x, int start_y, void* dst_frame,
-                                   bool is_row) {
+                                   int start_x, int start_y, void* dst_frame) {
   auto& frame = *static_cast<Array2DView<uint8_t>*>(dst_frame);
   auto* src = static_cast<int16_t*>(src_buffer);
   const int tx_width = kTransformWidth[tx_size];
@@ -2746,10 +2746,10 @@ void Identity4TransformLoop_SSE4_1(TransformType tx_type, TransformSize tx_size,
                               adjusted_tx_height, src);
 }
 
+template <bool is_row>
 void Identity8TransformLoop_SSE4_1(TransformType tx_type, TransformSize tx_size,
                                    int adjusted_tx_height, void* src_buffer,
-                                   int start_x, int start_y, void* dst_frame,
-                                   bool is_row) {
+                                   int start_x, int start_y, void* dst_frame) {
   auto& frame = *static_cast<Array2DView<uint8_t>*>(dst_frame);
   auto* src = static_cast<int16_t*>(src_buffer);
   const int tx_width = kTransformWidth[tx_size];
@@ -2807,11 +2807,11 @@ void Identity8TransformLoop_SSE4_1(TransformType tx_type, TransformSize tx_size,
                                      adjusted_tx_height, src);
 }
 
+template <bool is_row>
 void Identity16TransformLoop_SSE4_1(TransformType tx_type,
                                     TransformSize tx_size,
                                     int adjusted_tx_height, void* src_buffer,
-                                    int start_x, int start_y, void* dst_frame,
-                                    bool is_row) {
+                                    int start_x, int start_y, void* dst_frame) {
   auto& frame = *static_cast<Array2DView<uint8_t>*>(dst_frame);
   auto* src = static_cast<int16_t*>(src_buffer);
   const int tx_width = kTransformWidth[tx_size];
@@ -2843,11 +2843,11 @@ void Identity16TransformLoop_SSE4_1(TransformType tx_type,
                                       adjusted_tx_height, src);
 }
 
+template <bool is_row>
 void Identity32TransformLoop_SSE4_1(TransformType /*tx_type*/,
                                     TransformSize tx_size,
                                     int adjusted_tx_height, void* src_buffer,
-                                    int start_x, int start_y, void* dst_frame,
-                                    bool is_row) {
+                                    int start_x, int start_y, void* dst_frame) {
   auto& frame = *static_cast<Array2DView<uint8_t>*>(dst_frame);
   auto* src = static_cast<int16_t*>(src_buffer);
   const int tx_width = kTransformWidth[tx_size];
@@ -2884,10 +2884,10 @@ void Identity32TransformLoop_SSE4_1(TransformType /*tx_type*/,
                                adjusted_tx_height, src);
 }
 
+template <bool is_row>
 void Wht4TransformLoop_SSE4_1(TransformType tx_type, TransformSize tx_size,
                               int adjusted_tx_height, void* src_buffer,
-                              int start_x, int start_y, void* dst_frame,
-                              bool is_row) {
+                              int start_x, int start_y, void* dst_frame) {
   assert(tx_type == kTransformTypeDctDct);
   assert(tx_size == kTransformSize4x4);
   static_cast<void>(tx_type);
@@ -2909,38 +2909,64 @@ void Wht4TransformLoop_SSE4_1(TransformType tx_type, TransformSize tx_size,
 template <typename Residual, typename Pixel>
 void InitAll(Dsp* const dsp) {
   // Maximum transform size for Dct is 64.
-  dsp->inverse_transforms[k1DTransformDct][k1DTransformSize4] =
-      Dct4TransformLoop_SSE4_1;
-  dsp->inverse_transforms[k1DTransformDct][k1DTransformSize8] =
-      Dct8TransformLoop_SSE4_1;
-  dsp->inverse_transforms[k1DTransformDct][k1DTransformSize16] =
-      Dct16TransformLoop_SSE4_1;
-  dsp->inverse_transforms[k1DTransformDct][k1DTransformSize32] =
-      Dct32TransformLoop_SSE4_1;
-  dsp->inverse_transforms[k1DTransformDct][k1DTransformSize64] =
-      Dct64TransformLoop_SSE4_1;
+  dsp->inverse_transforms[k1DTransformDct][k1DTransformSize4][kRow] =
+      Dct4TransformLoop_SSE4_1<true>;
+  dsp->inverse_transforms[k1DTransformDct][k1DTransformSize4][kColumn] =
+      Dct4TransformLoop_SSE4_1<false>;
+  dsp->inverse_transforms[k1DTransformDct][k1DTransformSize8][kRow] =
+      Dct8TransformLoop_SSE4_1<true>;
+  dsp->inverse_transforms[k1DTransformDct][k1DTransformSize8][kColumn] =
+      Dct8TransformLoop_SSE4_1<false>;
+  dsp->inverse_transforms[k1DTransformDct][k1DTransformSize16][kRow] =
+      Dct16TransformLoop_SSE4_1<true>;
+  dsp->inverse_transforms[k1DTransformDct][k1DTransformSize16][kColumn] =
+      Dct16TransformLoop_SSE4_1<false>;
+  dsp->inverse_transforms[k1DTransformDct][k1DTransformSize32][kRow] =
+      Dct32TransformLoop_SSE4_1<true>;
+  dsp->inverse_transforms[k1DTransformDct][k1DTransformSize32][kColumn] =
+      Dct32TransformLoop_SSE4_1<false>;
+  dsp->inverse_transforms[k1DTransformDct][k1DTransformSize64][kRow] =
+      Dct64TransformLoop_SSE4_1<true>;
+  dsp->inverse_transforms[k1DTransformDct][k1DTransformSize64][kColumn] =
+      Dct64TransformLoop_SSE4_1<false>;
 
   // Maximum transform size for Adst is 16.
-  dsp->inverse_transforms[k1DTransformAdst][k1DTransformSize4] =
-      Adst4TransformLoop_SSE4_1;
-  dsp->inverse_transforms[k1DTransformAdst][k1DTransformSize8] =
-      Adst8TransformLoop_SSE4_1;
-  dsp->inverse_transforms[k1DTransformAdst][k1DTransformSize16] =
-      Adst16TransformLoop_SSE4_1;
+  dsp->inverse_transforms[k1DTransformAdst][k1DTransformSize4][kRow] =
+      Adst4TransformLoop_SSE4_1<true>;
+  dsp->inverse_transforms[k1DTransformAdst][k1DTransformSize4][kColumn] =
+      Adst4TransformLoop_SSE4_1<false>;
+  dsp->inverse_transforms[k1DTransformAdst][k1DTransformSize8][kRow] =
+      Adst8TransformLoop_SSE4_1<true>;
+  dsp->inverse_transforms[k1DTransformAdst][k1DTransformSize8][kColumn] =
+      Adst8TransformLoop_SSE4_1<false>;
+  dsp->inverse_transforms[k1DTransformAdst][k1DTransformSize16][kRow] =
+      Adst16TransformLoop_SSE4_1<true>;
+  dsp->inverse_transforms[k1DTransformAdst][k1DTransformSize16][kColumn] =
+      Adst16TransformLoop_SSE4_1<false>;
 
   // Maximum transform size for Identity transform is 32.
-  dsp->inverse_transforms[k1DTransformIdentity][k1DTransformSize4] =
-      Identity4TransformLoop_SSE4_1;
-  dsp->inverse_transforms[k1DTransformIdentity][k1DTransformSize8] =
-      Identity8TransformLoop_SSE4_1;
-  dsp->inverse_transforms[k1DTransformIdentity][k1DTransformSize16] =
-      Identity16TransformLoop_SSE4_1;
-  dsp->inverse_transforms[k1DTransformIdentity][k1DTransformSize32] =
-      Identity32TransformLoop_SSE4_1;
+  dsp->inverse_transforms[k1DTransformIdentity][k1DTransformSize4][kRow] =
+      Identity4TransformLoop_SSE4_1<true>;
+  dsp->inverse_transforms[k1DTransformIdentity][k1DTransformSize4][kColumn] =
+      Identity4TransformLoop_SSE4_1<false>;
+  dsp->inverse_transforms[k1DTransformIdentity][k1DTransformSize8][kRow] =
+      Identity8TransformLoop_SSE4_1<true>;
+  dsp->inverse_transforms[k1DTransformIdentity][k1DTransformSize8][kColumn] =
+      Identity8TransformLoop_SSE4_1<false>;
+  dsp->inverse_transforms[k1DTransformIdentity][k1DTransformSize16][kRow] =
+      Identity16TransformLoop_SSE4_1<true>;
+  dsp->inverse_transforms[k1DTransformIdentity][k1DTransformSize16][kColumn] =
+      Identity16TransformLoop_SSE4_1<false>;
+  dsp->inverse_transforms[k1DTransformIdentity][k1DTransformSize32][kRow] =
+      Identity32TransformLoop_SSE4_1<true>;
+  dsp->inverse_transforms[k1DTransformIdentity][k1DTransformSize32][kColumn] =
+      Identity32TransformLoop_SSE4_1<false>;
 
   // Maximum transform size for Wht is 4.
-  dsp->inverse_transforms[k1DTransformWht][k1DTransformSize4] =
-      Wht4TransformLoop_SSE4_1;
+  dsp->inverse_transforms[k1DTransformWht][k1DTransformSize4][kRow] =
+      Wht4TransformLoop_SSE4_1<true>;
+  dsp->inverse_transforms[k1DTransformWht][k1DTransformSize4][kColumn] =
+      Wht4TransformLoop_SSE4_1<false>;
 }
 
 void Init8bpp() {
@@ -2950,56 +2976,82 @@ void Init8bpp() {
   InitAll<int16_t, uint8_t>(dsp);
 #else  // !LIBGAV1_ENABLE_ALL_DSP_FUNCTIONS
 #if DSP_ENABLED_8BPP_SSE4_1(1DTransformSize4_1DTransformDct)
-  dsp->inverse_transforms[k1DTransformDct][k1DTransformSize4] =
-      Dct4TransformLoop_SSE4_1;
+  dsp->inverse_transforms[k1DTransformDct][k1DTransformSize4][kRow] =
+      Dct4TransformLoop_SSE4_1<true>;
+  dsp->inverse_transforms[k1DTransformDct][k1DTransformSize4][kColumn] =
+      Dct4TransformLoop_SSE4_1<false>;
 #endif
 #if DSP_ENABLED_8BPP_SSE4_1(1DTransformSize8_1DTransformDct)
-  dsp->inverse_transforms[k1DTransformDct][k1DTransformSize8] =
-      Dct8TransformLoop_SSE4_1;
+  dsp->inverse_transforms[k1DTransformDct][k1DTransformSize8][kRow] =
+      Dct8TransformLoop_SSE4_1<true>;
+  dsp->inverse_transforms[k1DTransformDct][k1DTransformSize8][kColumn] =
+      Dct8TransformLoop_SSE4_1<false>;
 #endif
 #if DSP_ENABLED_8BPP_SSE4_1(1DTransformSize16_1DTransformDct)
-  dsp->inverse_transforms[k1DTransformDct][k1DTransformSize16] =
-      Dct16TransformLoop_SSE4_1;
+  dsp->inverse_transforms[k1DTransformDct][k1DTransformSize16][kRow] =
+      Dct16TransformLoop_SSE4_1<true>;
+  dsp->inverse_transforms[k1DTransformDct][k1DTransformSize16][kColumn] =
+      Dct16TransformLoop_SSE4_1<false>;
 #endif
 #if DSP_ENABLED_8BPP_SSE4_1(1DTransformSize32_1DTransformDct)
-  dsp->inverse_transforms[k1DTransformDct][k1DTransformSize32] =
-      Dct32TransformLoop_SSE4_1;
+  dsp->inverse_transforms[k1DTransformDct][k1DTransformSize32][kRow] =
+      Dct32TransformLoop_SSE4_1<true>;
+  dsp->inverse_transforms[k1DTransformDct][k1DTransformSize32][kColumn] =
+      Dct32TransformLoop_SSE4_1<false>;
 #endif
 #if DSP_ENABLED_8BPP_SSE4_1(1DTransformSize64_1DTransformDct)
-  dsp->inverse_transforms[k1DTransformDct][k1DTransformSize64] =
-      Dct64TransformLoop_SSE4_1;
+  dsp->inverse_transforms[k1DTransformDct][k1DTransformSize64][kRow] =
+      Dct64TransformLoop_SSE4_1<true>;
+  dsp->inverse_transforms[k1DTransformDct][k1DTransformSize64][kColumn] =
+      Dct64TransformLoop_SSE4_1<false>;
 #endif
 #if DSP_ENABLED_8BPP_SSE4_1(1DTransformSize4_1DTransformAdst)
-  dsp->inverse_transforms[k1DTransformAdst][k1DTransformSize4] =
-      Adst4TransformLoop_SSE4_1;
+  dsp->inverse_transforms[k1DTransformAdst][k1DTransformSize4][kRow] =
+      Adst4TransformLoop_SSE4_1<true>;
+  dsp->inverse_transforms[k1DTransformAdst][k1DTransformSize4][kColumn] =
+      Adst4TransformLoop_SSE4_1<false>;
 #endif
 #if DSP_ENABLED_8BPP_SSE4_1(1DTransformSize8_1DTransformAdst)
-  dsp->inverse_transforms[k1DTransformAdst][k1DTransformSize8] =
-      Adst8TransformLoop_SSE4_1;
+  dsp->inverse_transforms[k1DTransformAdst][k1DTransformSize8][kRow] =
+      Adst8TransformLoop_SSE4_1<true>;
+  dsp->inverse_transforms[k1DTransformAdst][k1DTransformSize8][kColumn] =
+      Adst8TransformLoop_SSE4_1<false>;
 #endif
 #if DSP_ENABLED_8BPP_SSE4_1(1DTransformSize16_1DTransformAdst)
-  dsp->inverse_transforms[k1DTransformAdst][k1DTransformSize16] =
-      Adst16TransformLoop_SSE4_1;
+  dsp->inverse_transforms[k1DTransformAdst][k1DTransformSize16][kRow] =
+      Adst16TransformLoop_SSE4_1<true>;
+  dsp->inverse_transforms[k1DTransformAdst][k1DTransformSize16][kColumn] =
+      Adst16TransformLoop_SSE4_1<false>;
 #endif
 #if DSP_ENABLED_8BPP_SSE4_1(1DTransformSize4_1DTransformIdentity)
-  dsp->inverse_transforms[k1DTransformIdentity][k1DTransformSize4] =
-      Identity4TransformLoop_SSE4_1;
+  dsp->inverse_transforms[k1DTransformIdentity][k1DTransformSize4][kRow] =
+      Identity4TransformLoop_SSE4_1<true>;
+  dsp->inverse_transforms[k1DTransformIdentity][k1DTransformSize4][kColumn] =
+      Identity4TransformLoop_SSE4_1<false>;
 #endif
 #if DSP_ENABLED_8BPP_SSE4_1(1DTransformSize8_1DTransformIdentity)
-  dsp->inverse_transforms[k1DTransformIdentity][k1DTransformSize8] =
-      Identity8TransformLoop_SSE4_1;
+  dsp->inverse_transforms[k1DTransformIdentity][k1DTransformSize8][kRow] =
+      Identity8TransformLoop_SSE4_1<true>;
+  dsp->inverse_transforms[k1DTransformIdentity][k1DTransformSize8][kColumn] =
+      Identity8TransformLoop_SSE4_1<false>;
 #endif
 #if DSP_ENABLED_8BPP_SSE4_1(1DTransformSize16_1DTransformIdentity)
-  dsp->inverse_transforms[k1DTransformIdentity][k1DTransformSize16] =
-      Identity16TransformLoop_SSE4_1;
+  dsp->inverse_transforms[k1DTransformIdentity][k1DTransformSize16][kRow] =
+      Identity16TransformLoop_SSE4_1<true>;
+  dsp->inverse_transforms[k1DTransformIdentity][k1DTransformSize16][kColumn] =
+      Identity16TransformLoop_SSE4_1<false>;
 #endif
 #if DSP_ENABLED_8BPP_SSE4_1(1DTransformSize32_1DTransformIdentity)
-  dsp->inverse_transforms[k1DTransformIdentity][k1DTransformSize32] =
-      Identity32TransformLoop_SSE4_1;
+  dsp->inverse_transforms[k1DTransformIdentity][k1DTransformSize32][kRow] =
+      Identity32TransformLoop_SSE4_1<true>;
+  dsp->inverse_transforms[k1DTransformIdentity][k1DTransformSize32][kColumn] =
+      Identity32TransformLoop_SSE4_1<false>;
 #endif
 #if DSP_ENABLED_8BPP_SSE4_1(1DTransformSize4_1DTransformWht)
-  dsp->inverse_transforms[k1DTransformWht][k1DTransformSize4] =
-      Wht4TransformLoop_SSE4_1;
+  dsp->inverse_transforms[k1DTransformWht][k1DTransformSize4][kRow] =
+      Wht4TransformLoop_SSE4_1<true>;
+  dsp->inverse_transforms[k1DTransformWht][k1DTransformSize4][kColumn] =
+      Wht4TransformLoop_SSE4_1<false>;
 #endif
 #endif
 }

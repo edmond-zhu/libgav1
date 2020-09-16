@@ -79,6 +79,11 @@ enum LoopFilterSize : uint8_t {
   kNumLoopFilterSizes
 };
 
+enum : uint8_t {
+  kRow = 0,
+  kColumn = 1,
+};
+
 //------------------------------------------------------------------------------
 // ToString()
 //
@@ -298,16 +303,20 @@ using IntraEdgeUpsamplerFunc = void (*)(void* buffer, int size);
 // 7.13.3).
 // Apply the inverse transforms and add the residual to the destination frame
 // for the transform type and block size |tx_size| starting at position
-// |start_x| and |start_y|. |dst_frame| is a pointer to an Array2D. |is_row|
-// signals the direction of the transform loop. |adjusted_tx_height| is the
-// number of rows to process based on the non-zero coefficient count in the
-// block. It will be 1 (non-zero coefficient count == 1), 4 or a multiple of 8
-// up to 32 or the original transform height, whichever is less.
-using InverseTransformAddFunc = void (*)(
-    TransformType tx_type, TransformSize tx_size, int adjusted_tx_height,
-    void* src_buffer, int start_x, int start_y, void* dst_frame, bool is_row);
+// |start_x| and |start_y|. |dst_frame| is a pointer to an Array2D.
+// |adjusted_tx_height| is the number of rows to process based on the non-zero
+// coefficient count in the block. It will be 1 (non-zero coefficient count ==
+// 1), 4 or a multiple of 8 up to 32 or the original transform height,
+// whichever is less.
+using InverseTransformAddFunc = void (*)(TransformType tx_type,
+                                         TransformSize tx_size,
+                                         int adjusted_tx_height,
+                                         void* src_buffer, int start_x,
+                                         int start_y, void* dst_frame);
+// The final dimension holds row and column transforms indexed with kRow and
+// kColumn.
 using InverseTransformAddFuncs =
-    InverseTransformAddFunc[kNum1DTransforms][kNum1DTransformSizes];
+    InverseTransformAddFunc[kNum1DTransforms][kNum1DTransformSizes][2];
 
 //------------------------------------------------------------------------------
 // Post processing.

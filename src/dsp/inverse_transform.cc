@@ -1104,11 +1104,10 @@ using InverseTransformDcOnlyFunc = void (*)(void* dest, int8_t range,
 template <int bitdepth, typename Residual, typename Pixel,
           Transform1D transform1d_type,
           InverseTransformDcOnlyFunc dconly_transform1d,
-          InverseTransform1DFunc row_transform1d_func,
-          InverseTransform1DFunc column_transform1d_func = row_transform1d_func>
+          InverseTransform1DFunc transform1d_func, bool is_row>
 void TransformLoop_C(TransformType tx_type, TransformSize tx_size,
                      int adjusted_tx_height, void* src_buffer, int start_x,
-                     int start_y, void* dst_frame, bool is_row) {
+                     int start_y, void* dst_frame) {
   constexpr bool lossless = transform1d_type == k1DTransformWht;
   constexpr bool is_identity = transform1d_type == k1DTransformIdentity;
   // The transform size of the WHT is always 4x4. Setting tx_width and
@@ -1155,10 +1154,9 @@ void TransformLoop_C(TransformType tx_type, TransformSize tx_size,
               residual[i][j] * kTransformRowMultiplier, 12);
         }
       }
-      // For identity transform, |row_transform1d_func| also performs the
+      // For identity transform, |transform1d_func| also performs the
       // Round2(T[j], rowShift) call in the spec.
-      row_transform1d_func(residual[i],
-                           is_identity ? row_shift : row_clamp_range);
+      transform1d_func(residual[i], is_identity ? row_shift : row_clamp_range);
       if (!lossless && !is_identity && row_shift > 0) {
         for (int j = 0; j < tx_width; ++j) {
           residual[i][j] = RightShiftWithRounding(residual[i][j], row_shift);
@@ -1192,10 +1190,10 @@ void TransformLoop_C(TransformType tx_type, TransformSize tx_size,
     if (adjusted_tx_height == 1) {
       dconly_transform1d(tx_buffer, column_clamp_range, false, 0, false);
     } else {
-      // For identity transform, |column_transform1d_func| also performs the
+      // For identity transform, |transform1d_func| also performs the
       // Round2(T[i], colShift) call in the spec.
-      column_transform1d_func(tx_buffer,
-                              is_identity ? column_shift : column_clamp_range);
+      transform1d_func(tx_buffer,
+                       is_identity ? column_shift : column_clamp_range);
     }
     const int x = start_x + j;
     for (int i = 0; i < tx_height; ++i) {
@@ -1216,55 +1214,116 @@ void TransformLoop_C(TransformType tx_type, TransformSize tx_size,
 template <int bitdepth, typename Residual, typename Pixel>
 void InitAll(Dsp* const dsp) {
   // Maximum transform size for Dct is 64.
-  dsp->inverse_transforms[k1DTransformDct][k1DTransformSize4] =
+  dsp->inverse_transforms[k1DTransformDct][k1DTransformSize4][kRow] =
       TransformLoop_C<bitdepth, Residual, Pixel, k1DTransformDct,
-                      DctDcOnly_C<bitdepth, Residual, 2>, Dct_C<Residual, 2>>;
-  dsp->inverse_transforms[k1DTransformDct][k1DTransformSize8] =
+                      DctDcOnly_C<bitdepth, Residual, 2>, Dct_C<Residual, 2>,
+                      /*is_row=*/true>;
+  dsp->inverse_transforms[k1DTransformDct][k1DTransformSize4][kColumn] =
       TransformLoop_C<bitdepth, Residual, Pixel, k1DTransformDct,
-                      DctDcOnly_C<bitdepth, Residual, 3>, Dct_C<Residual, 3>>;
-  dsp->inverse_transforms[k1DTransformDct][k1DTransformSize16] =
+                      DctDcOnly_C<bitdepth, Residual, 2>, Dct_C<Residual, 2>,
+                      /*is_row=*/false>;
+  dsp->inverse_transforms[k1DTransformDct][k1DTransformSize8][kRow] =
       TransformLoop_C<bitdepth, Residual, Pixel, k1DTransformDct,
-                      DctDcOnly_C<bitdepth, Residual, 4>, Dct_C<Residual, 4>>;
-  dsp->inverse_transforms[k1DTransformDct][k1DTransformSize32] =
+                      DctDcOnly_C<bitdepth, Residual, 3>, Dct_C<Residual, 3>,
+                      /*is_row=*/true>;
+  dsp->inverse_transforms[k1DTransformDct][k1DTransformSize8][kColumn] =
       TransformLoop_C<bitdepth, Residual, Pixel, k1DTransformDct,
-                      DctDcOnly_C<bitdepth, Residual, 5>, Dct_C<Residual, 5>>;
-  dsp->inverse_transforms[k1DTransformDct][k1DTransformSize64] =
+                      DctDcOnly_C<bitdepth, Residual, 3>, Dct_C<Residual, 3>,
+                      /*is_row=*/false>;
+  dsp->inverse_transforms[k1DTransformDct][k1DTransformSize16][kRow] =
       TransformLoop_C<bitdepth, Residual, Pixel, k1DTransformDct,
-                      DctDcOnly_C<bitdepth, Residual, 6>, Dct_C<Residual, 6>>;
+                      DctDcOnly_C<bitdepth, Residual, 4>, Dct_C<Residual, 4>,
+                      /*is_row=*/true>;
+  dsp->inverse_transforms[k1DTransformDct][k1DTransformSize16][kColumn] =
+      TransformLoop_C<bitdepth, Residual, Pixel, k1DTransformDct,
+                      DctDcOnly_C<bitdepth, Residual, 4>, Dct_C<Residual, 4>,
+                      /*is_row=*/false>;
+  dsp->inverse_transforms[k1DTransformDct][k1DTransformSize32][kRow] =
+      TransformLoop_C<bitdepth, Residual, Pixel, k1DTransformDct,
+                      DctDcOnly_C<bitdepth, Residual, 5>, Dct_C<Residual, 5>,
+                      /*is_row=*/true>;
+  dsp->inverse_transforms[k1DTransformDct][k1DTransformSize32][kColumn] =
+      TransformLoop_C<bitdepth, Residual, Pixel, k1DTransformDct,
+                      DctDcOnly_C<bitdepth, Residual, 5>, Dct_C<Residual, 5>,
+                      /*is_row=*/false>;
+  dsp->inverse_transforms[k1DTransformDct][k1DTransformSize64][kRow] =
+      TransformLoop_C<bitdepth, Residual, Pixel, k1DTransformDct,
+                      DctDcOnly_C<bitdepth, Residual, 6>, Dct_C<Residual, 6>,
+                      /*is_row=*/true>;
+  dsp->inverse_transforms[k1DTransformDct][k1DTransformSize64][kColumn] =
+      TransformLoop_C<bitdepth, Residual, Pixel, k1DTransformDct,
+                      DctDcOnly_C<bitdepth, Residual, 6>, Dct_C<Residual, 6>,
+                      /*is_row=*/false>;
 
   // Maximum transform size for Adst is 16.
-  dsp->inverse_transforms[k1DTransformAdst][k1DTransformSize4] =
+  dsp->inverse_transforms[k1DTransformAdst][k1DTransformSize4][kRow] =
       TransformLoop_C<bitdepth, Residual, Pixel, k1DTransformAdst,
-                      Adst4DcOnly_C<bitdepth, Residual>, Adst4_C<Residual>>;
-  dsp->inverse_transforms[k1DTransformAdst][k1DTransformSize8] =
+                      Adst4DcOnly_C<bitdepth, Residual>, Adst4_C<Residual>,
+                      /*is_row=*/true>;
+  dsp->inverse_transforms[k1DTransformAdst][k1DTransformSize4][kColumn] =
       TransformLoop_C<bitdepth, Residual, Pixel, k1DTransformAdst,
-                      Adst8DcOnly_C<bitdepth, Residual>, Adst8_C<Residual>>;
-  dsp->inverse_transforms[k1DTransformAdst][k1DTransformSize16] =
+                      Adst4DcOnly_C<bitdepth, Residual>, Adst4_C<Residual>,
+                      /*is_row=*/false>;
+  dsp->inverse_transforms[k1DTransformAdst][k1DTransformSize8][kRow] =
       TransformLoop_C<bitdepth, Residual, Pixel, k1DTransformAdst,
-                      Adst16DcOnly_C<bitdepth, Residual>, Adst16_C<Residual>>;
+                      Adst8DcOnly_C<bitdepth, Residual>, Adst8_C<Residual>,
+                      /*is_row=*/true>;
+  dsp->inverse_transforms[k1DTransformAdst][k1DTransformSize8][kColumn] =
+      TransformLoop_C<bitdepth, Residual, Pixel, k1DTransformAdst,
+                      Adst8DcOnly_C<bitdepth, Residual>, Adst8_C<Residual>,
+                      /*is_row=*/false>;
+  dsp->inverse_transforms[k1DTransformAdst][k1DTransformSize16][kRow] =
+      TransformLoop_C<bitdepth, Residual, Pixel, k1DTransformAdst,
+                      Adst16DcOnly_C<bitdepth, Residual>, Adst16_C<Residual>,
+                      /*is_row=*/true>;
+  dsp->inverse_transforms[k1DTransformAdst][k1DTransformSize16][kColumn] =
+      TransformLoop_C<bitdepth, Residual, Pixel, k1DTransformAdst,
+                      Adst16DcOnly_C<bitdepth, Residual>, Adst16_C<Residual>,
+                      /*is_row=*/false>;
 
   // Maximum transform size for Identity transform is 32.
-  dsp->inverse_transforms[k1DTransformIdentity][k1DTransformSize4] =
+  dsp->inverse_transforms[k1DTransformIdentity][k1DTransformSize4][kRow] =
       TransformLoop_C<bitdepth, Residual, Pixel, k1DTransformIdentity,
                       Identity4DcOnly_C<bitdepth, Residual>,
-                      Identity4Row_C<Residual>, Identity4Column_C<Residual>>;
-  dsp->inverse_transforms[k1DTransformIdentity][k1DTransformSize8] =
+                      Identity4Row_C<Residual>, /*is_row=*/true>;
+  dsp->inverse_transforms[k1DTransformIdentity][k1DTransformSize4][kColumn] =
+      TransformLoop_C<bitdepth, Residual, Pixel, k1DTransformIdentity,
+                      Identity4DcOnly_C<bitdepth, Residual>,
+                      Identity4Column_C<Residual>, /*is_row=*/false>;
+  dsp->inverse_transforms[k1DTransformIdentity][k1DTransformSize8][kRow] =
       TransformLoop_C<bitdepth, Residual, Pixel, k1DTransformIdentity,
                       Identity8DcOnly_C<bitdepth, Residual>,
-                      Identity8Row_C<Residual>, Identity8Column_C<Residual>>;
-  dsp->inverse_transforms[k1DTransformIdentity][k1DTransformSize16] =
+                      Identity8Row_C<Residual>, /*is_row=*/true>;
+  dsp->inverse_transforms[k1DTransformIdentity][k1DTransformSize8][kColumn] =
+      TransformLoop_C<bitdepth, Residual, Pixel, k1DTransformIdentity,
+                      Identity8DcOnly_C<bitdepth, Residual>,
+                      Identity8Column_C<Residual>, /*is_row=*/false>;
+  dsp->inverse_transforms[k1DTransformIdentity][k1DTransformSize16][kRow] =
       TransformLoop_C<bitdepth, Residual, Pixel, k1DTransformIdentity,
                       Identity16DcOnly_C<bitdepth, Residual>,
-                      Identity16Row_C<Residual>, Identity16Column_C<Residual>>;
-  dsp->inverse_transforms[k1DTransformIdentity][k1DTransformSize32] =
+                      Identity16Row_C<Residual>, /*is_row=*/true>;
+  dsp->inverse_transforms[k1DTransformIdentity][k1DTransformSize16][kColumn] =
+      TransformLoop_C<bitdepth, Residual, Pixel, k1DTransformIdentity,
+                      Identity16DcOnly_C<bitdepth, Residual>,
+                      Identity16Column_C<Residual>, /*is_row=*/false>;
+  dsp->inverse_transforms[k1DTransformIdentity][k1DTransformSize32][kRow] =
       TransformLoop_C<bitdepth, Residual, Pixel, k1DTransformIdentity,
                       Identity32DcOnly_C<bitdepth, Residual>,
-                      Identity32Row_C<Residual>, Identity32Column_C<Residual>>;
+                      Identity32Row_C<Residual>, /*is_row=*/true>;
+  dsp->inverse_transforms[k1DTransformIdentity][k1DTransformSize32][kColumn] =
+      TransformLoop_C<bitdepth, Residual, Pixel, k1DTransformIdentity,
+                      Identity32DcOnly_C<bitdepth, Residual>,
+                      Identity32Column_C<Residual>, /*is_row=*/false>;
 
   // Maximum transform size for Wht is 4.
-  dsp->inverse_transforms[k1DTransformWht][k1DTransformSize4] =
+  dsp->inverse_transforms[k1DTransformWht][k1DTransformSize4][kRow] =
       TransformLoop_C<bitdepth, Residual, Pixel, k1DTransformWht,
-                      Wht4DcOnly_C<bitdepth, Residual>, Wht4_C<Residual>>;
+                      Wht4DcOnly_C<bitdepth, Residual>, Wht4_C<Residual>,
+                      /*is_row=*/true>;
+  dsp->inverse_transforms[k1DTransformWht][k1DTransformSize4][kColumn] =
+      TransformLoop_C<bitdepth, Residual, Pixel, k1DTransformWht,
+                      Wht4DcOnly_C<bitdepth, Residual>, Wht4_C<Residual>,
+                      /*is_row=*/false>;
 }
 
 void Init8bpp() {
@@ -1272,80 +1331,142 @@ void Init8bpp() {
   assert(dsp != nullptr);
   for (auto& inverse_transform_by_size : dsp->inverse_transforms) {
     for (auto& inverse_transform : inverse_transform_by_size) {
-      inverse_transform = nullptr;
+      inverse_transform[kRow] = nullptr;
+      inverse_transform[kColumn] = nullptr;
     }
   }
 #if LIBGAV1_ENABLE_ALL_DSP_FUNCTIONS
   InitAll<8, int16_t, uint8_t>(dsp);
 #else  // !LIBGAV1_ENABLE_ALL_DSP_FUNCTIONS
 #ifndef LIBGAV1_Dsp8bpp_1DTransformSize4_1DTransformDct
-  dsp->inverse_transforms[k1DTransformDct][k1DTransformSize4] =
+  dsp->inverse_transforms[k1DTransformDct][k1DTransformSize4][kRow] =
       TransformLoop_C<8, int16_t, uint8_t, k1DTransformDct,
-                      DctDcOnly_C<8, int16_t, 2>, Dct_C<int16_t, 2>>;
+                      DctDcOnly_C<8, int16_t, 2>, Dct_C<int16_t, 2>,
+                      /*is_row=*/true>;
+  dsp->inverse_transforms[k1DTransformDct][k1DTransformSize4][kColumn] =
+      TransformLoop_C<8, int16_t, uint8_t, k1DTransformDct,
+                      DctDcOnly_C<8, int16_t, 2>, Dct_C<int16_t, 2>,
+                      /*is_row=*/false>;
 #endif
 #ifndef LIBGAV1_Dsp8bpp_1DTransformSize8_1DTransformDct
-  dsp->inverse_transforms[k1DTransformDct][k1DTransformSize8] =
+  dsp->inverse_transforms[k1DTransformDct][k1DTransformSize8][kRow] =
       TransformLoop_C<8, int16_t, uint8_t, k1DTransformDct,
-                      DctDcOnly_C<8, int16_t, 3>, Dct_C<int16_t, 3>>;
+                      DctDcOnly_C<8, int16_t, 3>, Dct_C<int16_t, 3>,
+                      /*is_row=*/true>;
+  dsp->inverse_transforms[k1DTransformDct][k1DTransformSize8][kColumn] =
+      TransformLoop_C<8, int16_t, uint8_t, k1DTransformDct,
+                      DctDcOnly_C<8, int16_t, 3>, Dct_C<int16_t, 3>,
+                      /*is_row=*/false>;
 #endif
 #ifndef LIBGAV1_Dsp8bpp_1DTransformSize16_1DTransformDct
-  dsp->inverse_transforms[k1DTransformDct][k1DTransformSize16] =
+  dsp->inverse_transforms[k1DTransformDct][k1DTransformSize16][kRow] =
       TransformLoop_C<8, int16_t, uint8_t, k1DTransformDct,
-                      DctDcOnly_C<8, int16_t, 4>, Dct_C<int16_t, 4>>;
+                      DctDcOnly_C<8, int16_t, 4>, Dct_C<int16_t, 4>,
+                      /*is_row=*/true>;
+  dsp->inverse_transforms[k1DTransformDct][k1DTransformSize16][kColumn] =
+      TransformLoop_C<8, int16_t, uint8_t, k1DTransformDct,
+                      DctDcOnly_C<8, int16_t, 4>, Dct_C<int16_t, 4>,
+                      /*is_row=*/false>;
 #endif
 #ifndef LIBGAV1_Dsp8bpp_1DTransformSize32_1DTransformDct
-  dsp->inverse_transforms[k1DTransformDct][k1DTransformSize32] =
+  dsp->inverse_transforms[k1DTransformDct][k1DTransformSize32][kRow] =
       TransformLoop_C<8, int16_t, uint8_t, k1DTransformDct,
-                      DctDcOnly_C<8, int16_t, 5>, Dct_C<int16_t, 5>>;
+                      DctDcOnly_C<8, int16_t, 5>, Dct_C<int16_t, 5>,
+                      /*is_row=*/true>;
+  dsp->inverse_transforms[k1DTransformDct][k1DTransformSize32][kColumn] =
+      TransformLoop_C<8, int16_t, uint8_t, k1DTransformDct,
+                      DctDcOnly_C<8, int16_t, 5>, Dct_C<int16_t, 5>,
+                      /*is_row=*/false>;
 #endif
 #ifndef LIBGAV1_Dsp8bpp_1DTransformSize64_1DTransformDct
-  dsp->inverse_transforms[k1DTransformDct][k1DTransformSize64] =
+  dsp->inverse_transforms[k1DTransformDct][k1DTransformSize64][kRow] =
       TransformLoop_C<8, int16_t, uint8_t, k1DTransformDct,
-                      DctDcOnly_C<8, int16_t, 6>, Dct_C<int16_t, 6>>;
+                      DctDcOnly_C<8, int16_t, 6>, Dct_C<int16_t, 6>,
+                      /*is_row=*/true>;
+  dsp->inverse_transforms[k1DTransformDct][k1DTransformSize64][kColumn] =
+      TransformLoop_C<8, int16_t, uint8_t, k1DTransformDct,
+                      DctDcOnly_C<8, int16_t, 6>, Dct_C<int16_t, 6>,
+                      /*is_row=*/false>;
 #endif
 #ifndef LIBGAV1_Dsp8bpp_1DTransformSize4_1DTransformAdst
-  dsp->inverse_transforms[k1DTransformAdst][k1DTransformSize4] =
+  dsp->inverse_transforms[k1DTransformAdst][k1DTransformSize4][kRow] =
       TransformLoop_C<8, int16_t, uint8_t, k1DTransformAdst,
-                      Adst4DcOnly_C<8, int16_t>, Adst4_C<int16_t>>;
+                      Adst4DcOnly_C<8, int16_t>, Adst4_C<int16_t>,
+                      /*is_row=*/true>;
+  dsp->inverse_transforms[k1DTransformAdst][k1DTransformSize4][kColumn] =
+      TransformLoop_C<8, int16_t, uint8_t, k1DTransformAdst,
+                      Adst4DcOnly_C<8, int16_t>, Adst4_C<int16_t>,
+                      /*is_row=*/false>;
 #endif
 #ifndef LIBGAV1_Dsp8bpp_1DTransformSize8_1DTransformAdst
-  dsp->inverse_transforms[k1DTransformAdst][k1DTransformSize8] =
+  dsp->inverse_transforms[k1DTransformAdst][k1DTransformSize8][kRow] =
       TransformLoop_C<8, int16_t, uint8_t, k1DTransformAdst,
-                      Adst8DcOnly_C<8, int16_t>, Adst8_C<int16_t>>;
+                      Adst8DcOnly_C<8, int16_t>, Adst8_C<int16_t>,
+                      /*is_row=*/true>;
+  dsp->inverse_transforms[k1DTransformAdst][k1DTransformSize8][kColumn] =
+      TransformLoop_C<8, int16_t, uint8_t, k1DTransformAdst,
+                      Adst8DcOnly_C<8, int16_t>, Adst8_C<int16_t>,
+                      /*is_row=*/false>;
 #endif
 #ifndef LIBGAV1_Dsp8bpp_1DTransformSize16_1DTransformAdst
-  dsp->inverse_transforms[k1DTransformAdst][k1DTransformSize16] =
+  dsp->inverse_transforms[k1DTransformAdst][k1DTransformSize16][kRow] =
       TransformLoop_C<8, int16_t, uint8_t, k1DTransformAdst,
-                      Adst16DcOnly_C<8, int16_t>, Adst16_C<int16_t>>;
+                      Adst16DcOnly_C<8, int16_t>, Adst16_C<int16_t>,
+                      /*is_row=*/true>;
+  dsp->inverse_transforms[k1DTransformAdst][k1DTransformSize16][kColumn] =
+      TransformLoop_C<8, int16_t, uint8_t, k1DTransformAdst,
+                      Adst16DcOnly_C<8, int16_t>, Adst16_C<int16_t>,
+                      /*is_row=*/false>;
 #endif
 #ifndef LIBGAV1_Dsp8bpp_1DTransformSize4_1DTransformIdentity
-  dsp->inverse_transforms[k1DTransformIdentity][k1DTransformSize4] =
+  dsp->inverse_transforms[k1DTransformIdentity][k1DTransformSize4][kRow] =
       TransformLoop_C<8, int16_t, uint8_t, k1DTransformIdentity,
                       Identity4DcOnly_C<8, int16_t>, Identity4Row_C<int16_t>,
-                      Identity4Column_C<int16_t>>;
+                      /*is_row=*/true>;
+  dsp->inverse_transforms[k1DTransformIdentity][k1DTransformSize4][kColumn] =
+      TransformLoop_C<8, int16_t, uint8_t, k1DTransformIdentity,
+                      Identity4DcOnly_C<8, int16_t>, Identity4Column_C<int16_t>,
+                      /*is_row=*/false>;
 #endif
 #ifndef LIBGAV1_Dsp8bpp_1DTransformSize8_1DTransformIdentity
-  dsp->inverse_transforms[k1DTransformIdentity][k1DTransformSize8] =
+  dsp->inverse_transforms[k1DTransformIdentity][k1DTransformSize8][kRow] =
       TransformLoop_C<8, int16_t, uint8_t, k1DTransformIdentity,
                       Identity8DcOnly_C<8, int16_t>, Identity8Row_C<int16_t>,
-                      Identity8Column_C<int16_t>>;
+                      /*is_row=*/true>;
+  dsp->inverse_transforms[k1DTransformIdentity][k1DTransformSize8][kColumn] =
+      TransformLoop_C<8, int16_t, uint8_t, k1DTransformIdentity,
+                      Identity8DcOnly_C<8, int16_t>, Identity8Column_C<int16_t>,
+                      /*is_row=*/false>;
 #endif
 #ifndef LIBGAV1_Dsp8bpp_1DTransformSize16_1DTransformIdentity
-  dsp->inverse_transforms[k1DTransformIdentity][k1DTransformSize16] =
+  dsp->inverse_transforms[k1DTransformIdentity][k1DTransformSize16][kRow] =
       TransformLoop_C<8, int16_t, uint8_t, k1DTransformIdentity,
                       Identity16DcOnly_C<8, int16_t>, Identity16Row_C<int16_t>,
-                      Identity16Column_C<int16_t>>;
+                      /*is_row=*/true>;
+  dsp->inverse_transforms[k1DTransformIdentity][k1DTransformSize16][kColumn] =
+      TransformLoop_C<8, int16_t, uint8_t, k1DTransformIdentity,
+                      Identity16DcOnly_C<8, int16_t>,
+                      Identity16Column_C<int16_t>, /*is_row=*/false>;
 #endif
 #ifndef LIBGAV1_Dsp8bpp_1DTransformSize32_1DTransformIdentity
-  dsp->inverse_transforms[k1DTransformIdentity][k1DTransformSize32] =
+  dsp->inverse_transforms[k1DTransformIdentity][k1DTransformSize32][kRow] =
       TransformLoop_C<8, int16_t, uint8_t, k1DTransformIdentity,
                       Identity32DcOnly_C<8, int16_t>, Identity32Row_C<int16_t>,
-                      Identity32Column_C<int16_t>>;
+                      /*is_row=*/true>;
+  dsp->inverse_transforms[k1DTransformIdentity][k1DTransformSize32][kColumn] =
+      TransformLoop_C<8, int16_t, uint8_t, k1DTransformIdentity,
+                      Identity32DcOnly_C<8, int16_t>,
+                      Identity32Column_C<int16_t>, /*is_row=*/false>;
 #endif
 #ifndef LIBGAV1_Dsp8bpp_1DTransformSize4_1DTransformWht
-  dsp->inverse_transforms[k1DTransformWht][k1DTransformSize4] =
+  dsp->inverse_transforms[k1DTransformWht][k1DTransformSize4][kRow] =
       TransformLoop_C<8, int16_t, uint8_t, k1DTransformWht,
-                      Wht4DcOnly_C<8, int16_t>, Wht4_C<int16_t>>;
+                      Wht4DcOnly_C<8, int16_t>, Wht4_C<int16_t>,
+                      /*is_row=*/true>;
+  dsp->inverse_transforms[k1DTransformWht][k1DTransformSize4][kColumn] =
+      TransformLoop_C<8, int16_t, uint8_t, k1DTransformWht,
+                      Wht4DcOnly_C<8, int16_t>, Wht4_C<int16_t>,
+                      /*is_row=*/false>;
 #endif
 #endif  // LIBGAV1_ENABLE_ALL_DSP_FUNCTIONS
 }
@@ -1356,80 +1477,142 @@ void Init10bpp() {
   assert(dsp != nullptr);
   for (auto& inverse_transform_by_size : dsp->inverse_transforms) {
     for (auto& inverse_transform : inverse_transform_by_size) {
-      inverse_transform = nullptr;
+      inverse_transform[kRow] = nullptr;
+      inverse_transform[kColumn] = nullptr;
     }
   }
 #if LIBGAV1_ENABLE_ALL_DSP_FUNCTIONS
   InitAll<10, int32_t, uint16_t>(dsp);
 #else  // !LIBGAV1_ENABLE_ALL_DSP_FUNCTIONS
 #ifndef LIBGAV1_Dsp10bpp_1DTransformSize4_1DTransformDct
-  dsp->inverse_transforms[k1DTransformDct][k1DTransformSize4] =
+  dsp->inverse_transforms[k1DTransformDct][k1DTransformSize4][kRow] =
       TransformLoop_C<10, int32_t, uint16_t, k1DTransformDct,
-                      DctDcOnly_C<10, int32_t, 2>, Dct_C<int32_t, 2>>;
+                      DctDcOnly_C<10, int32_t, 2>, Dct_C<int32_t, 2>,
+                      /*is_row=*/true>;
+  dsp->inverse_transforms[k1DTransformDct][k1DTransformSize4][kColumn] =
+      TransformLoop_C<10, int32_t, uint16_t, k1DTransformDct,
+                      DctDcOnly_C<10, int32_t, 2>, Dct_C<int32_t, 2>,
+                      /*is_row=*/false>;
 #endif
 #ifndef LIBGAV1_Dsp10bpp_1DTransformSize8_1DTransformDct
-  dsp->inverse_transforms[k1DTransformDct][k1DTransformSize8] =
+  dsp->inverse_transforms[k1DTransformDct][k1DTransformSize8][kRow] =
       TransformLoop_C<10, int32_t, uint16_t, k1DTransformDct,
-                      DctDcOnly_C<10, int32_t, 3>, Dct_C<int32_t, 3>>;
+                      DctDcOnly_C<10, int32_t, 3>, Dct_C<int32_t, 3>,
+                      /*is_row=*/true>;
+  dsp->inverse_transforms[k1DTransformDct][k1DTransformSize8][kColumn] =
+      TransformLoop_C<10, int32_t, uint16_t, k1DTransformDct,
+                      DctDcOnly_C<10, int32_t, 3>, Dct_C<int32_t, 3>,
+                      /*is_row=*/false>;
 #endif
 #ifndef LIBGAV1_Dsp10bpp_1DTransformSize16_1DTransformDct
-  dsp->inverse_transforms[k1DTransformDct][k1DTransformSize16] =
+  dsp->inverse_transforms[k1DTransformDct][k1DTransformSize16][kRow] =
       TransformLoop_C<10, int32_t, uint16_t, k1DTransformDct,
-                      DctDcOnly_C<10, int32_t, 4>, Dct_C<int32_t, 4>>;
+                      DctDcOnly_C<10, int32_t, 4>, Dct_C<int32_t, 4>,
+                      /*is_row=*/true>;
+  dsp->inverse_transforms[k1DTransformDct][k1DTransformSize16][kColumn] =
+      TransformLoop_C<10, int32_t, uint16_t, k1DTransformDct,
+                      DctDcOnly_C<10, int32_t, 4>, Dct_C<int32_t, 4>,
+                      /*is_row=*/false>;
 #endif
 #ifndef LIBGAV1_Dsp10bpp_1DTransformSize32_1DTransformDct
-  dsp->inverse_transforms[k1DTransformDct][k1DTransformSize32] =
+  dsp->inverse_transforms[k1DTransformDct][k1DTransformSize32][kRow] =
       TransformLoop_C<10, int32_t, uint16_t, k1DTransformDct,
-                      DctDcOnly_C<10, int32_t, 5>, Dct_C<int32_t, 5>>;
+                      DctDcOnly_C<10, int32_t, 5>, Dct_C<int32_t, 5>,
+                      /*is_row=*/true>;
+  dsp->inverse_transforms[k1DTransformDct][k1DTransformSize32][kColumn] =
+      TransformLoop_C<10, int32_t, uint16_t, k1DTransformDct,
+                      DctDcOnly_C<10, int32_t, 5>, Dct_C<int32_t, 5>,
+                      /*is_row=*/false>;
 #endif
 #ifndef LIBGAV1_Dsp10bpp_1DTransformSize64_1DTransformDct
-  dsp->inverse_transforms[k1DTransformDct][k1DTransformSize64] =
+  dsp->inverse_transforms[k1DTransformDct][k1DTransformSize64][kRow] =
       TransformLoop_C<10, int32_t, uint16_t, k1DTransformDct,
-                      DctDcOnly_C<10, int32_t, 6>, Dct_C<int32_t, 6>>;
+                      DctDcOnly_C<10, int32_t, 6>, Dct_C<int32_t, 6>,
+                      /*is_row=*/true>;
+  dsp->inverse_transforms[k1DTransformDct][k1DTransformSize64][kColumn] =
+      TransformLoop_C<10, int32_t, uint16_t, k1DTransformDct,
+                      DctDcOnly_C<10, int32_t, 6>, Dct_C<int32_t, 6>,
+                      /*is_row=*/false>;
 #endif
 #ifndef LIBGAV1_Dsp10bpp_1DTransformSize4_1DTransformAdst
-  dsp->inverse_transforms[k1DTransformAdst][k1DTransformSize4] =
+  dsp->inverse_transforms[k1DTransformAdst][k1DTransformSize4][kRow] =
       TransformLoop_C<10, int32_t, uint16_t, k1DTransformAdst,
-                      Adst4DcOnly_C<10, int32_t>, Adst4_C<int32_t>>;
+                      Adst4DcOnly_C<10, int32_t>, Adst4_C<int32_t>,
+                      /*is_row=*/true>;
+  dsp->inverse_transforms[k1DTransformAdst][k1DTransformSize4][kColumn] =
+      TransformLoop_C<10, int32_t, uint16_t, k1DTransformAdst,
+                      Adst4DcOnly_C<10, int32_t>, Adst4_C<int32_t>,
+                      /*is_row=*/false>;
 #endif
 #ifndef LIBGAV1_Dsp10bpp_1DTransformSize8_1DTransformAdst
-  dsp->inverse_transforms[k1DTransformAdst][k1DTransformSize8] =
+  dsp->inverse_transforms[k1DTransformAdst][k1DTransformSize8][kRow] =
       TransformLoop_C<10, int32_t, uint16_t, k1DTransformAdst,
-                      Adst8DcOnly_C<10, int32_t>, Adst8_C<int32_t>>;
+                      Adst8DcOnly_C<10, int32_t>, Adst8_C<int32_t>,
+                      /*is_row=*/true>;
+  dsp->inverse_transforms[k1DTransformAdst][k1DTransformSize8][kColumn] =
+      TransformLoop_C<10, int32_t, uint16_t, k1DTransformAdst,
+                      Adst8DcOnly_C<10, int32_t>, Adst8_C<int32_t>,
+                      /*is_row=*/false>;
 #endif
 #ifndef LIBGAV1_Dsp10bpp_1DTransformSize16_1DTransformAdst
-  dsp->inverse_transforms[k1DTransformAdst][k1DTransformSize16] =
+  dsp->inverse_transforms[k1DTransformAdst][k1DTransformSize16][kRow] =
       TransformLoop_C<10, int32_t, uint16_t, k1DTransformAdst,
-                      Adst16DcOnly_C<10, int32_t>, Adst16_C<int32_t>>;
+                      Adst16DcOnly_C<10, int32_t>, Adst16_C<int32_t>,
+                      /*is_row=*/true>;
+  dsp->inverse_transforms[k1DTransformAdst][k1DTransformSize16][kColumn] =
+      TransformLoop_C<10, int32_t, uint16_t, k1DTransformAdst,
+                      Adst16DcOnly_C<10, int32_t>, Adst16_C<int32_t>,
+                      /*is_row=*/false>;
 #endif
 #ifndef LIBGAV1_Dsp10bpp_1DTransformSize4_1DTransformIdentity
-  dsp->inverse_transforms[k1DTransformIdentity][k1DTransformSize4] =
+  dsp->inverse_transforms[k1DTransformIdentity][k1DTransformSize4][kRow] =
       TransformLoop_C<10, int32_t, uint16_t, k1DTransformIdentity,
                       Identity4DcOnly_C<10, int32_t>, Identity4Row_C<int32_t>,
-                      Identity4Column_C<int32_t>>;
+                      /*is_row=*/true>;
+  dsp->inverse_transforms[k1DTransformIdentity][k1DTransformSize4][kColumn] =
+      TransformLoop_C<10, int32_t, uint16_t, k1DTransformIdentity,
+                      Identity4DcOnly_C<10, int32_t>,
+                      Identity4Column_C<int32_t>, /*is_row=*/false>;
 #endif
 #ifndef LIBGAV1_Dsp10bpp_1DTransformSize8_1DTransformIdentity
-  dsp->inverse_transforms[k1DTransformIdentity][k1DTransformSize8] =
+  dsp->inverse_transforms[k1DTransformIdentity][k1DTransformSize8][kRow] =
       TransformLoop_C<10, int32_t, uint16_t, k1DTransformIdentity,
                       Identity8DcOnly_C<10, int32_t>, Identity8Row_C<int32_t>,
-                      Identity8Column_C<int32_t>>;
+                      /*is_row=*/true>;
+  dsp->inverse_transforms[k1DTransformIdentity][k1DTransformSize8][kColumn] =
+      TransformLoop_C<10, int32_t, uint16_t, k1DTransformIdentity,
+                      Identity8DcOnly_C<10, int32_t>,
+                      Identity8Column_C<int32_t>, /*is_row=*/false>;
 #endif
 #ifndef LIBGAV1_Dsp10bpp_1DTransformSize16_1DTransformIdentity
-  dsp->inverse_transforms[k1DTransformIdentity][k1DTransformSize16] =
+  dsp->inverse_transforms[k1DTransformIdentity][k1DTransformSize16][kRow] =
       TransformLoop_C<10, int32_t, uint16_t, k1DTransformIdentity,
                       Identity16DcOnly_C<10, int32_t>, Identity16Row_C<int32_t>,
-                      Identity16Column_C<int32_t>>;
+                      /*is_row=*/true>;
+  dsp->inverse_transforms[k1DTransformIdentity][k1DTransformSize16][kColumn] =
+      TransformLoop_C<10, int32_t, uint16_t, k1DTransformIdentity,
+                      Identity16DcOnly_C<10, int32_t>,
+                      Identity16Column_C<int32_t>, /*is_row=*/false>;
 #endif
 #ifndef LIBGAV1_Dsp10bpp_1DTransformSize32_1DTransformIdentity
-  dsp->inverse_transforms[k1DTransformIdentity][k1DTransformSize32] =
+  dsp->inverse_transforms[k1DTransformIdentity][k1DTransformSize32][kRow] =
       TransformLoop_C<10, int32_t, uint16_t, k1DTransformIdentity,
                       Identity32DcOnly_C<10, int32_t>, Identity32Row_C<int32_t>,
-                      Identity32Column_C<int32_t>>;
+                      /*is_row=*/true>;
+  dsp->inverse_transforms[k1DTransformIdentity][k1DTransformSize32][kColumn] =
+      TransformLoop_C<10, int32_t, uint16_t, k1DTransformIdentity,
+                      Identity32DcOnly_C<10, int32_t>,
+                      Identity32Column_C<int32_t>, /*is_row=*/false>;
 #endif
 #ifndef LIBGAV1_Dsp10bpp_1DTransformSize4_1DTransformWht
-  dsp->inverse_transforms[k1DTransformWht][k1DTransformSize4] =
+  dsp->inverse_transforms[k1DTransformWht][k1DTransformSize4][kRow] =
       TransformLoop_C<10, int32_t, uint16_t, k1DTransformWht,
-                      Wht4DcOnly_C<10, int32_t>, Wht4_C<int32_t>>;
+                      Wht4DcOnly_C<10, int32_t>, Wht4_C<int32_t>,
+                      /*is_row=*/true>;
+  dsp->inverse_transforms[k1DTransformWht][k1DTransformSize4][kColumn] =
+      TransformLoop_C<10, int32_t, uint16_t, k1DTransformWht,
+                      Wht4DcOnly_C<10, int32_t>, Wht4_C<int32_t>,
+                      /*is_row=*/false>;
 #endif
 #endif  // LIBGAV1_ENABLE_ALL_DSP_FUNCTIONS
 }
