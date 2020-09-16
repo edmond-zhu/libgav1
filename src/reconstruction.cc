@@ -155,7 +155,7 @@ void Reconstruct(const dsp::Dsp& dsp, TransformType tx_type,
   const dsp::Transform1D row_transform =
       lossless ? dsp::k1DTransformWht : kRowTransform[tx_type];
   const dsp::InverseTransformAddFunc row_transform_func =
-      dsp.inverse_transforms[row_transform_size][row_transform];
+      dsp.inverse_transforms[row_transform][row_transform_size];
   assert(row_transform_func != nullptr);
 
   row_transform_func(tx_type, tx_size, tx_height, buffer, start_x, start_y,
@@ -167,7 +167,7 @@ void Reconstruct(const dsp::Dsp& dsp, TransformType tx_type,
   const dsp::Transform1D column_transform =
       lossless ? dsp::k1DTransformWht : kColumnTransform[tx_type];
   const dsp::InverseTransformAddFunc column_transform_func =
-      dsp.inverse_transforms[column_transform_size][column_transform];
+      dsp.inverse_transforms[column_transform][column_transform_size];
   assert(column_transform_func != nullptr);
 
   column_transform_func(tx_type, tx_size, tx_height, buffer, start_x, start_y,

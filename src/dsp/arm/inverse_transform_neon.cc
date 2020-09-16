@@ -3022,37 +3022,37 @@ void Init8bpp() {
   Dsp* const dsp = dsp_internal::GetWritableDspTable(kBitdepth8);
   assert(dsp != nullptr);
   // Maximum transform size for Dct is 64.
-  dsp->inverse_transforms[k1DTransformSize4][k1DTransformDct] =
+  dsp->inverse_transforms[k1DTransformDct][k1DTransformSize4] =
       Dct4TransformLoop_NEON;
-  dsp->inverse_transforms[k1DTransformSize8][k1DTransformDct] =
+  dsp->inverse_transforms[k1DTransformDct][k1DTransformSize8] =
       Dct8TransformLoop_NEON;
-  dsp->inverse_transforms[k1DTransformSize16][k1DTransformDct] =
+  dsp->inverse_transforms[k1DTransformDct][k1DTransformSize16] =
       Dct16TransformLoop_NEON;
-  dsp->inverse_transforms[k1DTransformSize32][k1DTransformDct] =
+  dsp->inverse_transforms[k1DTransformDct][k1DTransformSize32] =
       Dct32TransformLoop_NEON;
-  dsp->inverse_transforms[k1DTransformSize64][k1DTransformDct] =
+  dsp->inverse_transforms[k1DTransformDct][k1DTransformSize64] =
       Dct64TransformLoop_NEON;
 
   // Maximum transform size for Adst is 16.
-  dsp->inverse_transforms[k1DTransformSize4][k1DTransformAdst] =
+  dsp->inverse_transforms[k1DTransformAdst][k1DTransformSize4] =
       Adst4TransformLoop_NEON;
-  dsp->inverse_transforms[k1DTransformSize8][k1DTransformAdst] =
+  dsp->inverse_transforms[k1DTransformAdst][k1DTransformSize8] =
       Adst8TransformLoop_NEON;
-  dsp->inverse_transforms[k1DTransformSize16][k1DTransformAdst] =
+  dsp->inverse_transforms[k1DTransformAdst][k1DTransformSize16] =
       Adst16TransformLoop_NEON;
 
   // Maximum transform size for Identity transform is 32.
-  dsp->inverse_transforms[k1DTransformSize4][k1DTransformIdentity] =
+  dsp->inverse_transforms[k1DTransformIdentity][k1DTransformSize4] =
       Identity4TransformLoop_NEON;
-  dsp->inverse_transforms[k1DTransformSize8][k1DTransformIdentity] =
+  dsp->inverse_transforms[k1DTransformIdentity][k1DTransformSize8] =
       Identity8TransformLoop_NEON;
-  dsp->inverse_transforms[k1DTransformSize16][k1DTransformIdentity] =
+  dsp->inverse_transforms[k1DTransformIdentity][k1DTransformSize16] =
       Identity16TransformLoop_NEON;
-  dsp->inverse_transforms[k1DTransformSize32][k1DTransformIdentity] =
+  dsp->inverse_transforms[k1DTransformIdentity][k1DTransformSize32] =
       Identity32TransformLoop_NEON;
 
   // Maximum transform size for Wht is 4.
-  dsp->inverse_transforms[k1DTransformSize4][k1DTransformWht] =
+  dsp->inverse_transforms[k1DTransformWht][k1DTransformSize4] =
       Wht4TransformLoop_NEON;
 }
 

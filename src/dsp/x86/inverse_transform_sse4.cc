@@ -2909,37 +2909,37 @@ void Wht4TransformLoop_SSE4_1(TransformType tx_type, TransformSize tx_size,
 template <typename Residual, typename Pixel>
 void InitAll(Dsp* const dsp) {
   // Maximum transform size for Dct is 64.
-  dsp->inverse_transforms[k1DTransformSize4][k1DTransformDct] =
+  dsp->inverse_transforms[k1DTransformDct][k1DTransformSize4] =
       Dct4TransformLoop_SSE4_1;
-  dsp->inverse_transforms[k1DTransformSize8][k1DTransformDct] =
+  dsp->inverse_transforms[k1DTransformDct][k1DTransformSize8] =
       Dct8TransformLoop_SSE4_1;
-  dsp->inverse_transforms[k1DTransformSize16][k1DTransformDct] =
+  dsp->inverse_transforms[k1DTransformDct][k1DTransformSize16] =
       Dct16TransformLoop_SSE4_1;
-  dsp->inverse_transforms[k1DTransformSize32][k1DTransformDct] =
+  dsp->inverse_transforms[k1DTransformDct][k1DTransformSize32] =
       Dct32TransformLoop_SSE4_1;
-  dsp->inverse_transforms[k1DTransformSize64][k1DTransformDct] =
+  dsp->inverse_transforms[k1DTransformDct][k1DTransformSize64] =
       Dct64TransformLoop_SSE4_1;
 
   // Maximum transform size for Adst is 16.
-  dsp->inverse_transforms[k1DTransformSize4][k1DTransformAdst] =
+  dsp->inverse_transforms[k1DTransformAdst][k1DTransformSize4] =
       Adst4TransformLoop_SSE4_1;
-  dsp->inverse_transforms[k1DTransformSize8][k1DTransformAdst] =
+  dsp->inverse_transforms[k1DTransformAdst][k1DTransformSize8] =
       Adst8TransformLoop_SSE4_1;
-  dsp->inverse_transforms[k1DTransformSize16][k1DTransformAdst] =
+  dsp->inverse_transforms[k1DTransformAdst][k1DTransformSize16] =
       Adst16TransformLoop_SSE4_1;
 
   // Maximum transform size for Identity transform is 32.
-  dsp->inverse_transforms[k1DTransformSize4][k1DTransformIdentity] =
+  dsp->inverse_transforms[k1DTransformIdentity][k1DTransformSize4] =
       Identity4TransformLoop_SSE4_1;
-  dsp->inverse_transforms[k1DTransformSize8][k1DTransformIdentity] =
+  dsp->inverse_transforms[k1DTransformIdentity][k1DTransformSize8] =
       Identity8TransformLoop_SSE4_1;
-  dsp->inverse_transforms[k1DTransformSize16][k1DTransformIdentity] =
+  dsp->inverse_transforms[k1DTransformIdentity][k1DTransformSize16] =
       Identity16TransformLoop_SSE4_1;
-  dsp->inverse_transforms[k1DTransformSize32][k1DTransformIdentity] =
+  dsp->inverse_transforms[k1DTransformIdentity][k1DTransformSize32] =
       Identity32TransformLoop_SSE4_1;
 
   // Maximum transform size for Wht is 4.
-  dsp->inverse_transforms[k1DTransformSize4][k1DTransformWht] =
+  dsp->inverse_transforms[k1DTransformWht][k1DTransformSize4] =
       Wht4TransformLoop_SSE4_1;
 }
 
@@ -2950,55 +2950,55 @@ void Init8bpp() {
   InitAll<int16_t, uint8_t>(dsp);
 #else  // !LIBGAV1_ENABLE_ALL_DSP_FUNCTIONS
 #if DSP_ENABLED_8BPP_SSE4_1(1DTransformSize4_1DTransformDct)
-  dsp->inverse_transforms[k1DTransformSize4][k1DTransformDct] =
+  dsp->inverse_transforms[k1DTransformDct][k1DTransformSize4] =
       Dct4TransformLoop_SSE4_1;
 #endif
 #if DSP_ENABLED_8BPP_SSE4_1(1DTransformSize8_1DTransformDct)
-  dsp->inverse_transforms[k1DTransformSize8][k1DTransformDct] =
+  dsp->inverse_transforms[k1DTransformDct][k1DTransformSize8] =
       Dct8TransformLoop_SSE4_1;
 #endif
 #if DSP_ENABLED_8BPP_SSE4_1(1DTransformSize16_1DTransformDct)
-  dsp->inverse_transforms[k1DTransformSize16][k1DTransformDct] =
+  dsp->inverse_transforms[k1DTransformDct][k1DTransformSize16] =
       Dct16TransformLoop_SSE4_1;
 #endif
 #if DSP_ENABLED_8BPP_SSE4_1(1DTransformSize32_1DTransformDct)
-  dsp->inverse_transforms[k1DTransformSize32][k1DTransformDct] =
+  dsp->inverse_transforms[k1DTransformDct][k1DTransformSize32] =
       Dct32TransformLoop_SSE4_1;
 #endif
 #if DSP_ENABLED_8BPP_SSE4_1(1DTransformSize64_1DTransformDct)
-  dsp->inverse_transforms[k1DTransformSize64][k1DTransformDct] =
+  dsp->inverse_transforms[k1DTransformDct][k1DTransformSize64] =
       Dct64TransformLoop_SSE4_1;
 #endif
 #if DSP_ENABLED_8BPP_SSE4_1(1DTransformSize4_1DTransformAdst)
-  dsp->inverse_transforms[k1DTransformSize4][k1DTransformAdst] =
+  dsp->inverse_transforms[k1DTransformAdst][k1DTransformSize4] =
       Adst4TransformLoop_SSE4_1;
 #endif
 #if DSP_ENABLED_8BPP_SSE4_1(1DTransformSize8_1DTransformAdst)
-  dsp->inverse_transforms[k1DTransformSize8][k1DTransformAdst] =
+  dsp->inverse_transforms[k1DTransformAdst][k1DTransformSize8] =
       Adst8TransformLoop_SSE4_1;
 #endif
 #if DSP_ENABLED_8BPP_SSE4_1(1DTransformSize16_1DTransformAdst)
-  dsp->inverse_transforms[k1DTransformSize16][k1DTransformAdst] =
+  dsp->inverse_transforms[k1DTransformAdst][k1DTransformSize16] =
       Adst16TransformLoop_SSE4_1;
 #endif
 #if DSP_ENABLED_8BPP_SSE4_1(1DTransformSize4_1DTransformIdentity)
-  dsp->inverse_transforms[k1DTransformSize4][k1DTransformIdentity] =
+  dsp->inverse_transforms[k1DTransformIdentity][k1DTransformSize4] =
       Identity4TransformLoop_SSE4_1;
 #endif
 #if DSP_ENABLED_8BPP_SSE4_1(1DTransformSize8_1DTransformIdentity)
-  dsp->inverse_transforms[k1DTransformSize8][k1DTransformIdentity] =
+  dsp->inverse_transforms[k1DTransformIdentity][k1DTransformSize8] =
       Identity8TransformLoop_SSE4_1;
 #endif
 #if DSP_ENABLED_8BPP_SSE4_1(1DTransformSize16_1DTransformIdentity)
-  dsp->inverse_transforms[k1DTransformSize16][k1DTransformIdentity] =
+  dsp->inverse_transforms[k1DTransformIdentity][k1DTransformSize16] =
       Identity16TransformLoop_SSE4_1;
 #endif
 #if DSP_ENABLED_8BPP_SSE4_1(1DTransformSize32_1DTransformIdentity)
-  dsp->inverse_transforms[k1DTransformSize32][k1DTransformIdentity] =
+  dsp->inverse_transforms[k1DTransformIdentity][k1DTransformSize32] =
       Identity32TransformLoop_SSE4_1;
 #endif
 #if DSP_ENABLED_8BPP_SSE4_1(1DTransformSize4_1DTransformWht)
-  dsp->inverse_transforms[k1DTransformSize4][k1DTransformWht] =
+  dsp->inverse_transforms[k1DTransformWht][k1DTransformSize4] =
       Wht4TransformLoop_SSE4_1;
 #endif
 #endif

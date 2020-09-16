@@ -307,7 +307,7 @@ using InverseTransformAddFunc = void (*)(
     TransformType tx_type, TransformSize tx_size, int adjusted_tx_height,
     void* src_buffer, int start_x, int start_y, void* dst_frame, bool is_row);
 using InverseTransformAddFuncs =
-    InverseTransformAddFunc[kNum1DTransformSizes][kNum1DTransforms];
+    InverseTransformAddFunc[kNum1DTransforms][kNum1DTransformSizes];
 
 //------------------------------------------------------------------------------
 // Post processing.
