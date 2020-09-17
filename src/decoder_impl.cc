@@ -639,11 +639,6 @@ StatusCode DecoderImpl::Init() {
     LIBGAV1_DLOG(ERROR, "output_frame_queue_.Init() failed.");
     return kStatusOutOfMemory;
   }
-  // Initialize quantizer matrix.
-  if (!InitializeQuantizerMatrix(&quantizer_matrix_)) {
-    LIBGAV1_DLOG(ERROR, "InitializeQuantizerMatrix() failed.");
-    return kStatusOutOfMemory;
-  }
   return kStatusOk;
 }
 
@@ -858,6 +853,10 @@ StatusCode DecoderImpl::ParseAndSchedule(const uint8_t* data, size_t size,
       LIBGAV1_DLOG(ERROR, "Failed to parse OBU.");
       return status;
     }
+    if (!MaybeInitializeQuantizerMatrix(obu->frame_header())) {
+      LIBGAV1_DLOG(ERROR, "InitializeQuantizerMatrix() failed.");
+      return kStatusOutOfMemory;
+    }
     if (IsNewSequenceHeader(*obu)) {
       const ObuSequenceHeader& sequence_header = obu->sequence_header();
       const Libgav1ImageFormat image_format =
@@ -1046,6 +1045,10 @@ StatusCode DecoderImpl::DecodeTemporalUnit(const TemporalUnit& temporal_unit,
     if (status != kStatusOk) {
       LIBGAV1_DLOG(ERROR, "Failed to parse OBU.");
       return status;
+    }
+    if (!MaybeInitializeQuantizerMatrix(obu->frame_header())) {
+      LIBGAV1_DLOG(ERROR, "InitializeQuantizerMatrix() failed.");
+      return kStatusOutOfMemory;
     }
     if (IsNewSequenceHeader(*obu)) {
       const ObuSequenceHeader& sequence_header = obu->sequence_header();
@@ -1641,6 +1644,18 @@ bool DecoderImpl::IsNewSequenceHeader(const ObuParser& obu) {
   sequence_header_ = sequence_header;
   has_sequence_header_ = true;
   return sequence_header_changed;
+}
+
+bool DecoderImpl::MaybeInitializeQuantizerMatrix(
+    const ObuFrameHeader& frame_header) {
+  if (quantizer_matrix_initialized_ || !frame_header.quantizer.use_matrix) {
+    return true;
+  }
+  if (!InitializeQuantizerMatrix(&quantizer_matrix_)) {
+    return false;
+  }
+  quantizer_matrix_initialized_ = true;
+  return true;
 }
 
 }  // namespace libgav1
