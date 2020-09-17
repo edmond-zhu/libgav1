@@ -74,6 +74,7 @@ class Tile : public Allocable {
       const ObuFrameHeader& frame_header, RefCountedBuffer* const current_frame,
       const DecoderState& state, FrameScratchBuffer* const frame_scratch_buffer,
       const WedgeMaskArray& wedge_masks,
+      const QuantizerMatrix& quantizer_matrix,
       SymbolDecoderContext* const saved_symbol_decoder_context,
       const SegmentationMap* prev_segment_ids, PostFilter* const post_filter,
       const dsp::Dsp* const dsp, ThreadPool* const thread_pool,
@@ -81,9 +82,10 @@ class Tile : public Allocable {
       bool use_intra_prediction_buffer) {
     std::unique_ptr<Tile> tile(new (std::nothrow) Tile(
         tile_number, data, size, sequence_header, frame_header, current_frame,
-        state, frame_scratch_buffer, wedge_masks, saved_symbol_decoder_context,
-        prev_segment_ids, post_filter, dsp, thread_pool, pending_tiles,
-        frame_parallel, use_intra_prediction_buffer));
+        state, frame_scratch_buffer, wedge_masks, quantizer_matrix,
+        saved_symbol_decoder_context, prev_segment_ids, post_filter, dsp,
+        thread_pool, pending_tiles, frame_parallel,
+        use_intra_prediction_buffer));
     return (tile != nullptr && tile->Init()) ? std::move(tile) : nullptr;
   }
 
@@ -242,6 +244,7 @@ class Tile : public Allocable {
        const ObuFrameHeader& frame_header, RefCountedBuffer* current_frame,
        const DecoderState& state, FrameScratchBuffer* frame_scratch_buffer,
        const WedgeMaskArray& wedge_masks,
+       const QuantizerMatrix& quantizer_matrix,
        SymbolDecoderContext* saved_symbol_decoder_context,
        const SegmentationMap* prev_segment_ids, PostFilter* post_filter,
        const dsp::Dsp* dsp, ThreadPool* thread_pool,
@@ -647,6 +650,7 @@ class Tile : public Allocable {
   TemporalMotionField& motion_field_;
   const std::array<uint8_t, kNumReferenceFrameTypes>& reference_order_hint_;
   const WedgeMaskArray& wedge_masks_;
+  const QuantizerMatrix& quantizer_matrix_;
   DaalaBitReader reader_;
   SymbolDecoderContext symbol_decoder_context_;
   SymbolDecoderContext* const saved_symbol_decoder_context_;

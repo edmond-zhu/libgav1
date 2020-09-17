@@ -44,6 +44,8 @@ enum {
   kMinQuantizer = 0,
   kMinLossyQuantizer = 1,
   kMaxQuantizer = 255,
+  // Quantizer matrix is used only when level < 15.
+  kNumQuantizerLevelsForQuantizerMatrix = 15,
   kFrameLfCount = 4,
   kMaxLoopFilterValue = 63,
   kNum4x4In64x64 = 256,

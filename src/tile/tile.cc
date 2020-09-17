@@ -40,7 +40,6 @@ namespace libgav1 {
 namespace {
 
 // Import all the constants in the anonymous namespace.
-#include "src/quantizer_tables.inc"
 #include "src/scan_tables.inc"
 
 // Range above kNumQuantizerBaseLevels which the exponential golomb coding
@@ -420,6 +419,7 @@ Tile::Tile(int tile_number, const uint8_t* const data, size_t size,
            RefCountedBuffer* const current_frame, const DecoderState& state,
            FrameScratchBuffer* const frame_scratch_buffer,
            const WedgeMaskArray& wedge_masks,
+           const QuantizerMatrix& quantizer_matrix,
            SymbolDecoderContext* const saved_symbol_decoder_context,
            const SegmentationMap* prev_segment_ids,
            PostFilter* const post_filter, const dsp::Dsp* const dsp,
@@ -444,6 +444,7 @@ Tile::Tile(int tile_number, const uint8_t* const data, size_t size,
       motion_field_(frame_scratch_buffer->motion_field),
       reference_order_hint_(state.reference_order_hint),
       wedge_masks_(wedge_masks),
+      quantizer_matrix_(quantizer_matrix),
       reader_(data_, size_, frame_header_.enable_cdf_update),
       symbol_decoder_context_(frame_scratch_buffer->symbol_decoder_context),
       saved_symbol_decoder_context_(saved_symbol_decoder_context),
@@ -1512,8 +1513,9 @@ int Tile::ReadTransformCoefficients(const Block& block, Plane plane,
        *tx_type < kTransformTypeIdentityIdentity &&
        !frame_header_.segmentation.lossless[bp.segment_id] &&
        frame_header_.quantizer.matrix_level[plane] < 15)
-          ? &kQuantizerMatrix[frame_header_.quantizer.matrix_level[plane]]
-                             [plane_type][kQuantizerMatrixOffset[tx_size]]
+          ? quantizer_matrix_[frame_header_.quantizer.matrix_level[plane]]
+                             [plane_type][adjusted_tx_size]
+                                 .get()
           : nullptr;
   int coefficient_level = 0;
   int8_t dc_category = 0;

@@ -32,6 +32,7 @@
 #include "src/gav1/decoder_settings.h"
 #include "src/gav1/status_code.h"
 #include "src/obu_parser.h"
+#include "src/quantizer.h"
 #include "src/residual_buffer_pool.h"
 #include "src/symbol_decoder_context.h"
 #include "src/tile.h"
@@ -228,6 +229,7 @@ class DecoderImpl : public Allocable {
 
   BufferPool buffer_pool_;
   WedgeMaskArray wedge_masks_;
+  QuantizerMatrix quantizer_matrix_;
   FrameScratchBufferPool frame_scratch_buffer_pool_;
 
   // Used to synchronize the accesses into |temporal_units_| in order to update

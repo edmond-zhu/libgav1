@@ -31,7 +31,6 @@
 #include "src/obu_parser.h"
 #include "src/post_filter.h"
 #include "src/prediction_mask.h"
-#include "src/quantizer.h"
 #include "src/threading_strategy.h"
 #include "src/utils/blocking_counter.h"
 #include "src/utils/common.h"
@@ -638,6 +637,11 @@ StatusCode DecoderImpl::Init() {
   }
   if (!output_frame_queue_.Init(kMaxLayers)) {
     LIBGAV1_DLOG(ERROR, "output_frame_queue_.Init() failed.");
+    return kStatusOutOfMemory;
+  }
+  // Initialize quantizer matrix.
+  if (!InitializeQuantizerMatrix(&quantizer_matrix_)) {
+    LIBGAV1_DLOG(ERROR, "InitializeQuantizerMatrix() failed.");
     return kStatusOutOfMemory;
   }
   return kStatusOk;
@@ -1475,9 +1479,9 @@ StatusCode DecoderImpl::DecodeTiles(
         tile_number, tile_buffers[tile_number].data,
         tile_buffers[tile_number].size, sequence_header, frame_header,
         current_frame, state, frame_scratch_buffer, wedge_masks_,
-        &saved_symbol_decoder_context, prev_segment_ids, &post_filter, dsp,
-        threading_strategy.row_thread_pool(tile_number), &pending_tiles,
-        is_frame_parallel_, use_intra_prediction_buffer);
+        quantizer_matrix_, &saved_symbol_decoder_context, prev_segment_ids,
+        &post_filter, dsp, threading_strategy.row_thread_pool(tile_number),
+        &pending_tiles, is_frame_parallel_, use_intra_prediction_buffer);
     if (tile == nullptr) {
       LIBGAV1_DLOG(ERROR, "Failed to create tile.");
       return kStatusOutOfMemory;
