@@ -31,8 +31,15 @@ void CdefInit_SSE4_1();
 }  // namespace libgav1
 
 #if LIBGAV1_TARGETING_SSE4_1
+
+#ifndef LIBGAV1_Dsp8bpp_CdefDirection
 #define LIBGAV1_Dsp8bpp_CdefDirection LIBGAV1_CPU_SSE4_1
+#endif
+
+#ifndef LIBGAV1_Dsp8bpp_CdefFilters
 #define LIBGAV1_Dsp8bpp_CdefFilters LIBGAV1_CPU_SSE4_1
+#endif
+
 #endif  // LIBGAV1_TARGETING_SSE4_1
 
 #endif  // LIBGAV1_SRC_DSP_X86_CDEF_SSE4_H_
