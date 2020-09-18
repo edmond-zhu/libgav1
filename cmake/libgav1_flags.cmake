@@ -118,6 +118,11 @@ macro(libgav1_test_cxx_flag)
     if(cxx_flags)
       message("--- Testing flags from $cxx_flags: " "${cxx_flags}")
       foreach(cxx_flag ${cxx_flags})
+        # Since 3.17.0 check_cxx_compiler_flag() sets a normal variable at
+        # parent scope while check_cxx_source_compiles() continues to set an
+        # internal cache variable, so we unset both to avoid the failure /
+        # success state persisting between checks.
+        unset(cxx_flag_test_passed)
         unset(cxx_flag_test_passed CACHE)
         message("--- Testing flag: ${cxx_flag}")
         check_cxx_compiler_flag("${cxx_flag}" cxx_flag_test_passed)
