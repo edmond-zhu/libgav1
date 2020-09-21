@@ -2244,47 +2244,48 @@ LIBGAV1_ALWAYS_INLINE void RowShift(int16_t* source, int num_rows,
   }
 }
 
-template <bool is_row>
-void Dct4TransformLoop_SSE4_1(TransformType tx_type, TransformSize tx_size,
-                              int adjusted_tx_height, void* src_buffer,
-                              int start_x, int start_y, void* dst_frame) {
-  auto& frame = *static_cast<Array2DView<uint8_t>*>(dst_frame);
+void Dct4TransformLoopRow_SSE4_1(TransformType /*tx_type*/,
+                                 TransformSize tx_size, int adjusted_tx_height,
+                                 void* src_buffer, int /*start_x*/,
+                                 int /*start_y*/, void* /*dst_frame*/) {
   auto* src = static_cast<int16_t*>(src_buffer);
-  const int tx_width = kTransformWidth[tx_size];
   const int tx_height = kTransformHeight[tx_size];
+  const bool should_round = (tx_height == 8);
+  const int row_shift = static_cast<int>(tx_height == 16);
 
-  if (is_row) {
-    const bool should_round = (tx_height == 8);
-    const int row_shift = static_cast<int>(tx_height == 16);
-
-    if (DctDcOnly<4>(src, adjusted_tx_height, should_round, row_shift)) {
-      return;
-    }
-
-    if (should_round) {
-      ApplyRounding<4>(src, adjusted_tx_height);
-    }
-
-    if (adjusted_tx_height <= 4) {
-      // Process 4 1d dct4 rows in parallel.
-      Dct4_SSE4_1<ButterflyRotation_4, false>(src, /*step=*/4,
-                                              /*transpose=*/true);
-    } else {
-      // Process 8 1d dct4 rows in parallel per iteration.
-      int i = 0;
-      do {
-        Dct4_SSE4_1<ButterflyRotation_8, true>(&src[i * 4], /*step=*/4,
-                                               /*transpose=*/true);
-        i += 8;
-      } while (i < adjusted_tx_height);
-    }
-    if (tx_height == 16) {
-      RowShift<4>(src, adjusted_tx_height, 1);
-    }
+  if (DctDcOnly<4>(src, adjusted_tx_height, should_round, row_shift)) {
     return;
   }
 
-  assert(!is_row);
+  if (should_round) {
+    ApplyRounding<4>(src, adjusted_tx_height);
+  }
+
+  if (adjusted_tx_height <= 4) {
+    // Process 4 1d dct4 rows in parallel.
+    Dct4_SSE4_1<ButterflyRotation_4, false>(src, /*step=*/4,
+                                            /*transpose=*/true);
+  } else {
+    // Process 8 1d dct4 rows in parallel per iteration.
+    int i = 0;
+    do {
+      Dct4_SSE4_1<ButterflyRotation_8, true>(&src[i * 4], /*step=*/4,
+                                             /*transpose=*/true);
+      i += 8;
+    } while (i < adjusted_tx_height);
+  }
+  if (tx_height == 16) {
+    RowShift<4>(src, adjusted_tx_height, 1);
+  }
+}
+
+void Dct4TransformLoopColumn_SSE4_1(TransformType tx_type,
+                                    TransformSize tx_size,
+                                    int adjusted_tx_height, void* src_buffer,
+                                    int start_x, int start_y, void* dst_frame) {
+  auto* src = static_cast<int16_t*>(src_buffer);
+  const int tx_width = kTransformWidth[tx_size];
+
   if (kTransformFlipColumnsMask.Contains(tx_type)) {
     FlipColumns<4>(src, tx_width);
   }
@@ -2304,49 +2305,51 @@ void Dct4TransformLoop_SSE4_1(TransformType tx_type, TransformSize tx_size,
       } while (i < tx_width);
     }
   }
+  auto& frame = *static_cast<Array2DView<uint8_t>*>(dst_frame);
   StoreToFrameWithRound(frame, start_x, start_y, tx_width, 4, src, tx_type);
 }
 
-template <bool is_row>
-void Dct8TransformLoop_SSE4_1(TransformType tx_type, TransformSize tx_size,
-                              int adjusted_tx_height, void* src_buffer,
-                              int start_x, int start_y, void* dst_frame) {
-  auto& frame = *static_cast<Array2DView<uint8_t>*>(dst_frame);
+void Dct8TransformLoopRow_SSE4_1(TransformType /*tx_type*/,
+                                 TransformSize tx_size, int adjusted_tx_height,
+                                 void* src_buffer, int /*start_x*/,
+                                 int /*start_y*/, void* /*dst_frame*/) {
   auto* src = static_cast<int16_t*>(src_buffer);
-  const int tx_width = kTransformWidth[tx_size];
+  const bool should_round = kShouldRound[tx_size];
+  const uint8_t row_shift = kTransformRowShift[tx_size];
 
-  if (is_row) {
-    const bool should_round = kShouldRound[tx_size];
-    const uint8_t row_shift = kTransformRowShift[tx_size];
-
-    if (DctDcOnly<8>(src, adjusted_tx_height, should_round, row_shift)) {
-      return;
-    }
-
-    if (should_round) {
-      ApplyRounding<8>(src, adjusted_tx_height);
-    }
-
-    if (adjusted_tx_height <= 4) {
-      // Process 4 1d dct8 rows in parallel.
-      Dct8_SSE4_1<ButterflyRotation_4, true>(src, /*step=*/8,
-                                             /*transpose=*/true);
-    } else {
-      // Process 8 1d dct8 rows in parallel per iteration.
-      int i = 0;
-      do {
-        Dct8_SSE4_1<ButterflyRotation_8, false>(&src[i * 8], /*step=*/8,
-                                                /*transpose=*/true);
-        i += 8;
-      } while (i < adjusted_tx_height);
-    }
-    if (row_shift > 0) {
-      RowShift<8>(src, adjusted_tx_height, row_shift);
-    }
+  if (DctDcOnly<8>(src, adjusted_tx_height, should_round, row_shift)) {
     return;
   }
 
-  assert(!is_row);
+  if (should_round) {
+    ApplyRounding<8>(src, adjusted_tx_height);
+  }
+
+  if (adjusted_tx_height <= 4) {
+    // Process 4 1d dct8 rows in parallel.
+    Dct8_SSE4_1<ButterflyRotation_4, true>(src, /*step=*/8,
+                                           /*transpose=*/true);
+  } else {
+    // Process 8 1d dct8 rows in parallel per iteration.
+    int i = 0;
+    do {
+      Dct8_SSE4_1<ButterflyRotation_8, false>(&src[i * 8], /*step=*/8,
+                                              /*transpose=*/true);
+      i += 8;
+    } while (i < adjusted_tx_height);
+  }
+  if (row_shift > 0) {
+    RowShift<8>(src, adjusted_tx_height, row_shift);
+  }
+}
+
+void Dct8TransformLoopColumn_SSE4_1(TransformType tx_type,
+                                    TransformSize tx_size,
+                                    int adjusted_tx_height, void* src_buffer,
+                                    int start_x, int start_y, void* dst_frame) {
+  auto* src = static_cast<int16_t*>(src_buffer);
+  const int tx_width = kTransformWidth[tx_size];
+
   if (kTransformFlipColumnsMask.Contains(tx_type)) {
     FlipColumns<8>(src, tx_width);
   }
@@ -2365,48 +2368,50 @@ void Dct8TransformLoop_SSE4_1(TransformType tx_type, TransformSize tx_size,
       } while (i < tx_width);
     }
   }
+  auto& frame = *static_cast<Array2DView<uint8_t>*>(dst_frame);
   StoreToFrameWithRound(frame, start_x, start_y, tx_width, 8, src, tx_type);
 }
 
-template <bool is_row>
-void Dct16TransformLoop_SSE4_1(TransformType tx_type, TransformSize tx_size,
-                               int adjusted_tx_height, void* src_buffer,
-                               int start_x, int start_y, void* dst_frame) {
-  auto& frame = *static_cast<Array2DView<uint8_t>*>(dst_frame);
+void Dct16TransformLoopRow_SSE4_1(TransformType /*tx_type*/,
+                                  TransformSize tx_size, int adjusted_tx_height,
+                                  void* src_buffer, int /*start_x*/,
+                                  int /*start_y*/, void* /*dst_frame*/) {
   auto* src = static_cast<int16_t*>(src_buffer);
-  const int tx_width = kTransformWidth[tx_size];
+  const bool should_round = kShouldRound[tx_size];
+  const uint8_t row_shift = kTransformRowShift[tx_size];
 
-  if (is_row) {
-    const bool should_round = kShouldRound[tx_size];
-    const uint8_t row_shift = kTransformRowShift[tx_size];
-
-    if (DctDcOnly<16>(src, adjusted_tx_height, should_round, row_shift)) {
-      return;
-    }
-
-    if (should_round) {
-      ApplyRounding<16>(src, adjusted_tx_height);
-    }
-
-    if (adjusted_tx_height <= 4) {
-      // Process 4 1d dct16 rows in parallel.
-      Dct16_SSE4_1<ButterflyRotation_4, true>(src, 16, /*transpose=*/true);
-    } else {
-      int i = 0;
-      do {
-        // Process 8 1d dct16 rows in parallel per iteration.
-        Dct16_SSE4_1<ButterflyRotation_8, false>(&src[i * 16], 16,
-                                                 /*transpose=*/true);
-        i += 8;
-      } while (i < adjusted_tx_height);
-    }
-    // row_shift is always non zero here.
-    RowShift<16>(src, adjusted_tx_height, row_shift);
-
+  if (DctDcOnly<16>(src, adjusted_tx_height, should_round, row_shift)) {
     return;
   }
 
-  assert(!is_row);
+  if (should_round) {
+    ApplyRounding<16>(src, adjusted_tx_height);
+  }
+
+  if (adjusted_tx_height <= 4) {
+    // Process 4 1d dct16 rows in parallel.
+    Dct16_SSE4_1<ButterflyRotation_4, true>(src, 16, /*transpose=*/true);
+  } else {
+    int i = 0;
+    do {
+      // Process 8 1d dct16 rows in parallel per iteration.
+      Dct16_SSE4_1<ButterflyRotation_8, false>(&src[i * 16], 16,
+                                               /*transpose=*/true);
+      i += 8;
+    } while (i < adjusted_tx_height);
+  }
+  // row_shift is always non zero here.
+  RowShift<16>(src, adjusted_tx_height, row_shift);
+}
+
+void Dct16TransformLoopColumn_SSE4_1(TransformType tx_type,
+                                     TransformSize tx_size,
+                                     int adjusted_tx_height, void* src_buffer,
+                                     int start_x, int start_y,
+                                     void* dst_frame) {
+  auto* src = static_cast<int16_t*>(src_buffer);
+  const int tx_width = kTransformWidth[tx_size];
+
   if (kTransformFlipColumnsMask.Contains(tx_type)) {
     FlipColumns<16>(src, tx_width);
   }
@@ -2425,41 +2430,43 @@ void Dct16TransformLoop_SSE4_1(TransformType tx_type, TransformSize tx_size,
       } while (i < tx_width);
     }
   }
+  auto& frame = *static_cast<Array2DView<uint8_t>*>(dst_frame);
   StoreToFrameWithRound(frame, start_x, start_y, tx_width, 16, src, tx_type);
 }
 
-template <bool is_row>
-void Dct32TransformLoop_SSE4_1(TransformType tx_type, TransformSize tx_size,
-                               int adjusted_tx_height, void* src_buffer,
-                               int start_x, int start_y, void* dst_frame) {
-  auto& frame = *static_cast<Array2DView<uint8_t>*>(dst_frame);
+void Dct32TransformLoopRow_SSE4_1(TransformType /*tx_type*/,
+                                  TransformSize tx_size, int adjusted_tx_height,
+                                  void* src_buffer, int /*start_x*/,
+                                  int /*start_y*/, void* /*dst_frame*/) {
   auto* src = static_cast<int16_t*>(src_buffer);
-  const int tx_width = kTransformWidth[tx_size];
+  const bool should_round = kShouldRound[tx_size];
+  const uint8_t row_shift = kTransformRowShift[tx_size];
 
-  if (is_row) {
-    const bool should_round = kShouldRound[tx_size];
-    const uint8_t row_shift = kTransformRowShift[tx_size];
-
-    if (DctDcOnly<32>(src, adjusted_tx_height, should_round, row_shift)) {
-      return;
-    }
-
-    if (should_round) {
-      ApplyRounding<32>(src, adjusted_tx_height);
-    }
-    // Process 8 1d dct32 rows in parallel per iteration.
-    int i = 0;
-    do {
-      Dct32_SSE4_1(&src[i * 32], 32, /*transpose=*/true);
-      i += 8;
-    } while (i < adjusted_tx_height);
-    // row_shift is always non zero here.
-    RowShift<32>(src, adjusted_tx_height, row_shift);
-
+  if (DctDcOnly<32>(src, adjusted_tx_height, should_round, row_shift)) {
     return;
   }
 
-  assert(!is_row);
+  if (should_round) {
+    ApplyRounding<32>(src, adjusted_tx_height);
+  }
+  // Process 8 1d dct32 rows in parallel per iteration.
+  int i = 0;
+  do {
+    Dct32_SSE4_1(&src[i * 32], 32, /*transpose=*/true);
+    i += 8;
+  } while (i < adjusted_tx_height);
+  // row_shift is always non zero here.
+  RowShift<32>(src, adjusted_tx_height, row_shift);
+}
+
+void Dct32TransformLoopColumn_SSE4_1(TransformType tx_type,
+                                     TransformSize tx_size,
+                                     int adjusted_tx_height, void* src_buffer,
+                                     int start_x, int start_y,
+                                     void* dst_frame) {
+  auto* src = static_cast<int16_t*>(src_buffer);
+  const int tx_width = kTransformWidth[tx_size];
+
   if (!DctDcOnlyColumn<32>(src, adjusted_tx_height, tx_width)) {
     // Process 8 1d dct32 columns in parallel per iteration.
     int i = 0;
@@ -2468,41 +2475,43 @@ void Dct32TransformLoop_SSE4_1(TransformType tx_type, TransformSize tx_size,
       i += 8;
     } while (i < tx_width);
   }
+  auto& frame = *static_cast<Array2DView<uint8_t>*>(dst_frame);
   StoreToFrameWithRound(frame, start_x, start_y, tx_width, 32, src, tx_type);
 }
 
-template <bool is_row>
-void Dct64TransformLoop_SSE4_1(TransformType tx_type, TransformSize tx_size,
-                               int adjusted_tx_height, void* src_buffer,
-                               int start_x, int start_y, void* dst_frame) {
-  auto& frame = *static_cast<Array2DView<uint8_t>*>(dst_frame);
+void Dct64TransformLoopRow_SSE4_1(TransformType /*tx_type*/,
+                                  TransformSize tx_size, int adjusted_tx_height,
+                                  void* src_buffer, int /*start_x*/,
+                                  int /*start_y*/, void* /*dst_frame*/) {
   auto* src = static_cast<int16_t*>(src_buffer);
-  const int tx_width = kTransformWidth[tx_size];
+  const bool should_round = kShouldRound[tx_size];
+  const uint8_t row_shift = kTransformRowShift[tx_size];
 
-  if (is_row) {
-    const bool should_round = kShouldRound[tx_size];
-    const uint8_t row_shift = kTransformRowShift[tx_size];
-
-    if (DctDcOnly<64>(src, adjusted_tx_height, should_round, row_shift)) {
-      return;
-    }
-
-    if (should_round) {
-      ApplyRounding<64>(src, adjusted_tx_height);
-    }
-    // Process 8 1d dct64 rows in parallel per iteration.
-    int i = 0;
-    do {
-      Dct64_SSE4_1(&src[i * 64], 64, /*transpose=*/true);
-      i += 8;
-    } while (i < adjusted_tx_height);
-    // row_shift is always non zero here.
-    RowShift<64>(src, adjusted_tx_height, row_shift);
-
+  if (DctDcOnly<64>(src, adjusted_tx_height, should_round, row_shift)) {
     return;
   }
 
-  assert(!is_row);
+  if (should_round) {
+    ApplyRounding<64>(src, adjusted_tx_height);
+  }
+  // Process 8 1d dct64 rows in parallel per iteration.
+  int i = 0;
+  do {
+    Dct64_SSE4_1(&src[i * 64], 64, /*transpose=*/true);
+    i += 8;
+  } while (i < adjusted_tx_height);
+  // row_shift is always non zero here.
+  RowShift<64>(src, adjusted_tx_height, row_shift);
+}
+
+void Dct64TransformLoopColumn_SSE4_1(TransformType tx_type,
+                                     TransformSize tx_size,
+                                     int adjusted_tx_height, void* src_buffer,
+                                     int start_x, int start_y,
+                                     void* dst_frame) {
+  auto* src = static_cast<int16_t*>(src_buffer);
+  const int tx_width = kTransformWidth[tx_size];
+
   if (!DctDcOnlyColumn<64>(src, adjusted_tx_height, tx_width)) {
     // Process 8 1d dct64 columns in parallel per iteration.
     int i = 0;
@@ -2511,45 +2520,48 @@ void Dct64TransformLoop_SSE4_1(TransformType tx_type, TransformSize tx_size,
       i += 8;
     } while (i < tx_width);
   }
+  auto& frame = *static_cast<Array2DView<uint8_t>*>(dst_frame);
   StoreToFrameWithRound(frame, start_x, start_y, tx_width, 64, src, tx_type);
 }
 
-template <bool is_row>
-void Adst4TransformLoop_SSE4_1(TransformType tx_type, TransformSize tx_size,
-                               int adjusted_tx_height, void* src_buffer,
-                               int start_x, int start_y, void* dst_frame) {
-  auto& frame = *static_cast<Array2DView<uint8_t>*>(dst_frame);
+void Adst4TransformLoopRow_SSE4_1(TransformType /*tx_type*/,
+                                  TransformSize tx_size, int adjusted_tx_height,
+                                  void* src_buffer, int /*start_x*/,
+                                  int /*start_y*/, void* /*dst_frame*/) {
   auto* src = static_cast<int16_t*>(src_buffer);
-  const int tx_width = kTransformWidth[tx_size];
   const int tx_height = kTransformHeight[tx_size];
+  const int row_shift = static_cast<int>(tx_height == 16);
+  const bool should_round = (tx_height == 8);
 
-  if (is_row) {
-    const uint8_t row_shift = static_cast<uint8_t>(tx_height == 16);
-    const bool should_round = (tx_height == 8);
-
-    if (Adst4DcOnly(src, adjusted_tx_height, should_round, row_shift)) {
-      return;
-    }
-
-    if (should_round) {
-      ApplyRounding<4>(src, adjusted_tx_height);
-    }
-
-    // Process 4 1d adst4 rows in parallel per iteration.
-    int i = 0;
-    do {
-      Adst4_SSE4_1<false>(&src[i * 4], /*step=*/4,
-                          /*transpose=*/true);
-      i += 4;
-    } while (i < adjusted_tx_height);
-
-    if (row_shift != 0u) {
-      RowShift<4>(src, adjusted_tx_height, 1);
-    }
+  if (Adst4DcOnly(src, adjusted_tx_height, should_round, row_shift)) {
     return;
   }
 
-  assert(!is_row);
+  if (should_round) {
+    ApplyRounding<4>(src, adjusted_tx_height);
+  }
+
+  // Process 4 1d adst4 rows in parallel per iteration.
+  int i = 0;
+  do {
+    Adst4_SSE4_1<false>(&src[i * 4], /*step=*/4,
+                        /*transpose=*/true);
+    i += 4;
+  } while (i < adjusted_tx_height);
+
+  if (row_shift != 0) {
+    RowShift<4>(src, adjusted_tx_height, 1);
+  }
+}
+
+void Adst4TransformLoopColumn_SSE4_1(TransformType tx_type,
+                                     TransformSize tx_size,
+                                     int adjusted_tx_height, void* src_buffer,
+                                     int start_x, int start_y,
+                                     void* dst_frame) {
+  auto* src = static_cast<int16_t*>(src_buffer);
+  const int tx_width = kTransformWidth[tx_size];
+
   if (kTransformFlipColumnsMask.Contains(tx_type)) {
     FlipColumns<4>(src, tx_width);
   }
@@ -2562,50 +2574,53 @@ void Adst4TransformLoop_SSE4_1(TransformType tx_type, TransformSize tx_size,
       i += 4;
     } while (i < tx_width);
   }
+  auto& frame = *static_cast<Array2DView<uint8_t>*>(dst_frame);
   StoreToFrameWithRound</*enable_flip_rows=*/true>(frame, start_x, start_y,
                                                    tx_width, 4, src, tx_type);
 }
 
-template <bool is_row>
-void Adst8TransformLoop_SSE4_1(TransformType tx_type, TransformSize tx_size,
-                               int adjusted_tx_height, void* src_buffer,
-                               int start_x, int start_y, void* dst_frame) {
-  auto& frame = *static_cast<Array2DView<uint8_t>*>(dst_frame);
+void Adst8TransformLoopRow_SSE4_1(TransformType /*tx_type*/,
+                                  TransformSize tx_size, int adjusted_tx_height,
+                                  void* src_buffer, int /*start_x*/,
+                                  int /*start_y*/, void* /*dst_frame*/) {
   auto* src = static_cast<int16_t*>(src_buffer);
-  const int tx_width = kTransformWidth[tx_size];
+  const bool should_round = kShouldRound[tx_size];
+  const uint8_t row_shift = kTransformRowShift[tx_size];
 
-  if (is_row) {
-    const bool should_round = kShouldRound[tx_size];
-    const uint8_t row_shift = kTransformRowShift[tx_size];
-
-    if (Adst8DcOnly(src, adjusted_tx_height, should_round, row_shift)) {
-      return;
-    }
-
-    if (should_round) {
-      ApplyRounding<8>(src, adjusted_tx_height);
-    }
-
-    if (adjusted_tx_height <= 4) {
-      // Process 4 1d adst8 rows in parallel.
-      Adst8_SSE4_1<ButterflyRotation_4, true>(src, /*step=*/8,
-                                              /*transpose=*/true);
-    } else {
-      // Process 8 1d adst8 rows in parallel per iteration.
-      int i = 0;
-      do {
-        Adst8_SSE4_1<ButterflyRotation_8, false>(&src[i * 8], /*step=*/8,
-                                                 /*transpose=*/true);
-        i += 8;
-      } while (i < adjusted_tx_height);
-    }
-    if (row_shift > 0) {
-      RowShift<8>(src, adjusted_tx_height, row_shift);
-    }
+  if (Adst8DcOnly(src, adjusted_tx_height, should_round, row_shift)) {
     return;
   }
 
-  assert(!is_row);
+  if (should_round) {
+    ApplyRounding<8>(src, adjusted_tx_height);
+  }
+
+  if (adjusted_tx_height <= 4) {
+    // Process 4 1d adst8 rows in parallel.
+    Adst8_SSE4_1<ButterflyRotation_4, true>(src, /*step=*/8,
+                                            /*transpose=*/true);
+  } else {
+    // Process 8 1d adst8 rows in parallel per iteration.
+    int i = 0;
+    do {
+      Adst8_SSE4_1<ButterflyRotation_8, false>(&src[i * 8], /*step=*/8,
+                                               /*transpose=*/true);
+      i += 8;
+    } while (i < adjusted_tx_height);
+  }
+  if (row_shift > 0) {
+    RowShift<8>(src, adjusted_tx_height, row_shift);
+  }
+}
+
+void Adst8TransformLoopColumn_SSE4_1(TransformType tx_type,
+                                     TransformSize tx_size,
+                                     int adjusted_tx_height, void* src_buffer,
+                                     int start_x, int start_y,
+                                     void* dst_frame) {
+  auto* src = static_cast<int16_t*>(src_buffer);
+  const int tx_width = kTransformWidth[tx_size];
+
   if (kTransformFlipColumnsMask.Contains(tx_type)) {
     FlipColumns<8>(src, tx_width);
   }
@@ -2624,49 +2639,53 @@ void Adst8TransformLoop_SSE4_1(TransformType tx_type, TransformSize tx_size,
       } while (i < tx_width);
     }
   }
+  auto& frame = *static_cast<Array2DView<uint8_t>*>(dst_frame);
   StoreToFrameWithRound</*enable_flip_rows=*/true>(frame, start_x, start_y,
                                                    tx_width, 8, src, tx_type);
 }
 
-template <bool is_row>
-void Adst16TransformLoop_SSE4_1(TransformType tx_type, TransformSize tx_size,
-                                int adjusted_tx_height, void* src_buffer,
-                                int start_x, int start_y, void* dst_frame) {
+void Adst16TransformLoopRow_SSE4_1(TransformType /*tx_type*/,
+                                   TransformSize tx_size,
+                                   int adjusted_tx_height, void* src_buffer,
+                                   int /*start_x*/, int /*start_y*/,
+                                   void* /*dst_frame*/) {
+  auto* src = static_cast<int16_t*>(src_buffer);
+  const bool should_round = kShouldRound[tx_size];
+  const uint8_t row_shift = kTransformRowShift[tx_size];
+
+  if (Adst16DcOnly(src, adjusted_tx_height, should_round, row_shift)) {
+    return;
+  }
+
+  if (should_round) {
+    ApplyRounding<16>(src, adjusted_tx_height);
+  }
+
+  if (adjusted_tx_height <= 4) {
+    // Process 4 1d adst16 rows in parallel.
+    Adst16_SSE4_1<ButterflyRotation_4, true>(src, 16, /*transpose=*/true);
+  } else {
+    int i = 0;
+    do {
+      // Process 8 1d adst16 rows in parallel per iteration.
+      Adst16_SSE4_1<ButterflyRotation_8, false>(&src[i * 16], 16,
+                                                /*transpose=*/true);
+      i += 8;
+    } while (i < adjusted_tx_height);
+  }
+  // row_shift is always non zero here.
+  RowShift<16>(src, adjusted_tx_height, row_shift);
+}
+
+void Adst16TransformLoopColumn_SSE4_1(TransformType tx_type,
+                                      TransformSize tx_size,
+                                      int adjusted_tx_height, void* src_buffer,
+                                      int start_x, int start_y,
+                                      void* dst_frame) {
   auto& frame = *static_cast<Array2DView<uint8_t>*>(dst_frame);
   auto* src = static_cast<int16_t*>(src_buffer);
   const int tx_width = kTransformWidth[tx_size];
 
-  if (is_row) {
-    const bool should_round = kShouldRound[tx_size];
-    const uint8_t row_shift = kTransformRowShift[tx_size];
-
-    if (Adst16DcOnly(src, adjusted_tx_height, should_round, row_shift)) {
-      return;
-    }
-
-    if (should_round) {
-      ApplyRounding<16>(src, adjusted_tx_height);
-    }
-
-    if (adjusted_tx_height <= 4) {
-      // Process 4 1d adst16 rows in parallel.
-      Adst16_SSE4_1<ButterflyRotation_4, true>(src, 16, /*transpose=*/true);
-    } else {
-      int i = 0;
-      do {
-        // Process 8 1d adst16 rows in parallel per iteration.
-        Adst16_SSE4_1<ButterflyRotation_8, false>(&src[i * 16], 16,
-                                                  /*transpose=*/true);
-        i += 8;
-      } while (i < adjusted_tx_height);
-    }
-    // row_shift is always non zero here.
-    RowShift<16>(src, adjusted_tx_height, row_shift);
-
-    return;
-  }
-
-  assert(!is_row);
   if (kTransformFlipColumnsMask.Contains(tx_type)) {
     FlipColumns<16>(src, tx_width);
   }
@@ -2689,47 +2708,52 @@ void Adst16TransformLoop_SSE4_1(TransformType tx_type, TransformSize tx_size,
                                                    tx_width, 16, src, tx_type);
 }
 
-template <bool is_row>
-void Identity4TransformLoop_SSE4_1(TransformType tx_type, TransformSize tx_size,
-                                   int adjusted_tx_height, void* src_buffer,
-                                   int start_x, int start_y, void* dst_frame) {
+void Identity4TransformLoopRow_SSE4_1(TransformType tx_type,
+                                      TransformSize tx_size,
+                                      int adjusted_tx_height, void* src_buffer,
+                                      int /*start_x*/, int /*start_y*/,
+                                      void* /*dst_frame*/) {
+  // Special case: Process row calculations during column transform call.
+  // Improves performance.
+  if (tx_type == kTransformTypeIdentityIdentity &&
+      tx_size == kTransformSize4x4) {
+    return;
+  }
+
+  auto* src = static_cast<int16_t*>(src_buffer);
+  const int tx_height = kTransformHeight[tx_size];
+  const bool should_round = (tx_height == 8);
+  if (Identity4DcOnly(src, adjusted_tx_height, should_round, tx_height)) {
+    return;
+  }
+
+  if (should_round) {
+    ApplyRounding<4>(src, adjusted_tx_height);
+  }
+  if (tx_height < 16) {
+    int i = 0;
+    do {
+      Identity4_SSE4_1<false>(&src[i * 4], /*step=*/4);
+      i += 4;
+    } while (i < adjusted_tx_height);
+  } else {
+    int i = 0;
+    do {
+      Identity4_SSE4_1<true>(&src[i * 4], /*step=*/4);
+      i += 4;
+    } while (i < adjusted_tx_height);
+  }
+}
+
+void Identity4TransformLoopColumn_SSE4_1(TransformType tx_type,
+                                         TransformSize tx_size,
+                                         int adjusted_tx_height,
+                                         void* src_buffer, int start_x,
+                                         int start_y, void* dst_frame) {
   auto& frame = *static_cast<Array2DView<uint8_t>*>(dst_frame);
   auto* src = static_cast<int16_t*>(src_buffer);
   const int tx_width = kTransformWidth[tx_size];
-  const int tx_height = kTransformHeight[tx_size];
 
-  if (is_row) {
-    // Special case: Process row calculations during column transform call.
-    // Improves performance.
-    if (tx_type == kTransformTypeIdentityIdentity &&
-        tx_size == kTransformSize4x4) {
-      return;
-    }
-
-    const bool should_round = (tx_height == 8);
-    if (Identity4DcOnly(src, adjusted_tx_height, should_round, tx_height)) {
-      return;
-    }
-
-    if (should_round) {
-      ApplyRounding<4>(src, adjusted_tx_height);
-    }
-    if (tx_height < 16) {
-      int i = 0;
-      do {
-        Identity4_SSE4_1<false>(&src[i * 4], /*step=*/4);
-        i += 4;
-      } while (i < adjusted_tx_height);
-    } else {
-      int i = 0;
-      do {
-        Identity4_SSE4_1<true>(&src[i * 4], /*step=*/4);
-        i += 4;
-      } while (i < adjusted_tx_height);
-    }
-    return;
-  }
-  assert(!is_row);
   // Special case: Process row calculations during column transform call.
   if (tx_type == kTransformTypeIdentityIdentity &&
       (tx_size == kTransformSize4x4 || tx_size == kTransformSize8x4)) {
@@ -2746,158 +2770,172 @@ void Identity4TransformLoop_SSE4_1(TransformType tx_type, TransformSize tx_size,
                               adjusted_tx_height, src);
 }
 
-template <bool is_row>
-void Identity8TransformLoop_SSE4_1(TransformType tx_type, TransformSize tx_size,
-                                   int adjusted_tx_height, void* src_buffer,
-                                   int start_x, int start_y, void* dst_frame) {
-  auto& frame = *static_cast<Array2DView<uint8_t>*>(dst_frame);
+void Identity8TransformLoopRow_SSE4_1(TransformType tx_type,
+                                      TransformSize tx_size,
+                                      int adjusted_tx_height, void* src_buffer,
+                                      int /*start_x*/, int /*start_y*/,
+                                      void* /*dst_frame*/) {
+  // Special case: Process row calculations during column transform call.
+  // Improves performance.
+  if (tx_type == kTransformTypeIdentityIdentity &&
+      tx_size == kTransformSize8x4) {
+    return;
+  }
+
   auto* src = static_cast<int16_t*>(src_buffer);
-  const int tx_width = kTransformWidth[tx_size];
   const int tx_height = kTransformHeight[tx_size];
+  const bool should_round = kShouldRound[tx_size];
+  const uint8_t row_shift = kTransformRowShift[tx_size];
+  if (Identity8DcOnly(src, adjusted_tx_height, should_round, row_shift)) {
+    return;
+  }
 
-  if (is_row) {
-    // Special case: Process row calculations during column transform call.
-    // Improves performance.
-    if (tx_type == kTransformTypeIdentityIdentity &&
-        tx_size == kTransformSize8x4) {
-      return;
-    }
+  if (should_round) {
+    ApplyRounding<8>(src, adjusted_tx_height);
+  }
 
-    const bool should_round = kShouldRound[tx_size];
-    const uint8_t row_shift = kTransformRowShift[tx_size];
-    if (Identity8DcOnly(src, adjusted_tx_height, should_round, row_shift)) {
-      return;
-    }
-
-    if (should_round) {
-      ApplyRounding<8>(src, adjusted_tx_height);
-    }
-
-    // When combining the identity8 multiplier with the row shift, the
-    // calculations for tx_height == 8 and tx_height == 16 can be simplified
-    // from ((A * 2) + 1) >> 1) to A.
-    if ((tx_height & 0x18) != 0) {
-      return;
-    }
-    if (tx_height == 32) {
-      int i = 0;
-      do {
-        Identity8Row32_SSE4_1(&src[i * 8], /*step=*/8);
-        i += 4;
-      } while (i < adjusted_tx_height);
-      return;
-    }
-
-    // Process kTransformSize8x4
-    assert(tx_size == kTransformSize8x4);
+  // When combining the identity8 multiplier with the row shift, the
+  // calculations for tx_height == 8 and tx_height == 16 can be simplified
+  // from ((A * 2) + 1) >> 1) to A.
+  if ((tx_height & 0x18) != 0) {
+    return;
+  }
+  if (tx_height == 32) {
     int i = 0;
     do {
-      Identity8Row4_SSE4_1(&src[i * 8], /*step=*/8);
+      Identity8Row32_SSE4_1(&src[i * 8], /*step=*/8);
       i += 4;
     } while (i < adjusted_tx_height);
     return;
   }
 
-  assert(!is_row);
+  assert(tx_size == kTransformSize8x4);
+  int i = 0;
+  do {
+    Identity8Row4_SSE4_1(&src[i * 8], /*step=*/8);
+    i += 4;
+  } while (i < adjusted_tx_height);
+}
+
+void Identity8TransformLoopColumn_SSE4_1(TransformType tx_type,
+                                         TransformSize tx_size,
+                                         int adjusted_tx_height,
+                                         void* src_buffer, int start_x,
+                                         int start_y, void* dst_frame) {
+  auto* src = static_cast<int16_t*>(src_buffer);
+  const int tx_width = kTransformWidth[tx_size];
+
   if (kTransformFlipColumnsMask.Contains(tx_type)) {
     FlipColumns<8>(src, tx_width);
   }
 
+  auto& frame = *static_cast<Array2DView<uint8_t>*>(dst_frame);
   Identity8ColumnStoreToFrame_SSE4_1(frame, start_x, start_y, tx_width,
                                      adjusted_tx_height, src);
 }
 
-template <bool is_row>
-void Identity16TransformLoop_SSE4_1(TransformType tx_type,
-                                    TransformSize tx_size,
-                                    int adjusted_tx_height, void* src_buffer,
-                                    int start_x, int start_y, void* dst_frame) {
-  auto& frame = *static_cast<Array2DView<uint8_t>*>(dst_frame);
+void Identity16TransformLoopRow_SSE4_1(TransformType /*tx_type*/,
+                                       TransformSize tx_size,
+                                       int adjusted_tx_height, void* src_buffer,
+                                       int /*start_x*/, int /*start_y*/,
+                                       void* /*dst_frame*/) {
   auto* src = static_cast<int16_t*>(src_buffer);
-  const int tx_width = kTransformWidth[tx_size];
-
-  if (is_row) {
-    const bool should_round = kShouldRound[tx_size];
-    const uint8_t row_shift = kTransformRowShift[tx_size];
-    if (Identity16DcOnly(src, adjusted_tx_height, should_round, row_shift)) {
-      return;
-    }
-
-    if (should_round) {
-      ApplyRounding<16>(src, adjusted_tx_height);
-    }
-    int i = 0;
-    do {
-      Identity16Row_SSE4_1(&src[i * 16], /*step=*/16,
-                           kTransformRowShift[tx_size]);
-      i += 4;
-    } while (i < adjusted_tx_height);
+  const bool should_round = kShouldRound[tx_size];
+  const uint8_t row_shift = kTransformRowShift[tx_size];
+  if (Identity16DcOnly(src, adjusted_tx_height, should_round, row_shift)) {
     return;
   }
 
-  assert(!is_row);
+  if (should_round) {
+    ApplyRounding<16>(src, adjusted_tx_height);
+  }
+  int i = 0;
+  do {
+    Identity16Row_SSE4_1(&src[i * 16], /*step=*/16,
+                         kTransformRowShift[tx_size]);
+    i += 4;
+  } while (i < adjusted_tx_height);
+}
+
+void Identity16TransformLoopColumn_SSE4_1(TransformType tx_type,
+                                          TransformSize tx_size,
+                                          int adjusted_tx_height,
+                                          void* src_buffer, int start_x,
+                                          int start_y, void* dst_frame) {
+  auto* src = static_cast<int16_t*>(src_buffer);
+  const int tx_width = kTransformWidth[tx_size];
+
   if (kTransformFlipColumnsMask.Contains(tx_type)) {
     FlipColumns<16>(src, tx_width);
   }
+  auto& frame = *static_cast<Array2DView<uint8_t>*>(dst_frame);
   Identity16ColumnStoreToFrame_SSE4_1(frame, start_x, start_y, tx_width,
                                       adjusted_tx_height, src);
 }
 
-template <bool is_row>
-void Identity32TransformLoop_SSE4_1(TransformType /*tx_type*/,
-                                    TransformSize tx_size,
-                                    int adjusted_tx_height, void* src_buffer,
-                                    int start_x, int start_y, void* dst_frame) {
-  auto& frame = *static_cast<Array2DView<uint8_t>*>(dst_frame);
-  auto* src = static_cast<int16_t*>(src_buffer);
-  const int tx_width = kTransformWidth[tx_size];
+void Identity32TransformLoopRow_SSE4_1(TransformType /*tx_type*/,
+                                       TransformSize tx_size,
+                                       int adjusted_tx_height, void* src_buffer,
+                                       int /*start_x*/, int /*start_y*/,
+                                       void* /*dst_frame*/) {
   const int tx_height = kTransformHeight[tx_size];
-
-  if (is_row) {
-    // When combining the identity32 multiplier with the row shift, the
-    // calculations for tx_height == 8 and tx_height == 32 can be simplified
-    // from ((A * 4) + 2) >> 2) to A.
-    if ((tx_height & 0x28) != 0) {
-      return;
-    }
-
-    // Process kTransformSize32x16. The src is always rounded before the
-    // identity transform and shifted by 1 afterwards.
-
-    if (Identity32DcOnly(src, adjusted_tx_height)) {
-      return;
-    }
-
-    // Process kTransformSize32x16
-    assert(tx_size == kTransformSize32x16);
-    ApplyRounding<32>(src, adjusted_tx_height);
-    int i = 0;
-    do {
-      Identity32Row16_SSE4_1(&src[i * 32], /*step=*/32);
-      i += 4;
-    } while (i < adjusted_tx_height);
+  // When combining the identity32 multiplier with the row shift, the
+  // calculations for tx_height == 8 and tx_height == 32 can be simplified
+  // from ((A * 4) + 2) >> 2) to A.
+  if ((tx_height & 0x28) != 0) {
     return;
   }
 
-  assert(!is_row);
+  // Process kTransformSize32x16. The src is always rounded before the
+  // identity transform and shifted by 1 afterwards.
+  auto* src = static_cast<int16_t*>(src_buffer);
+  if (Identity32DcOnly(src, adjusted_tx_height)) {
+    return;
+  }
+
+  assert(tx_size == kTransformSize32x16);
+  ApplyRounding<32>(src, adjusted_tx_height);
+  int i = 0;
+  do {
+    Identity32Row16_SSE4_1(&src[i * 32], /*step=*/32);
+    i += 4;
+  } while (i < adjusted_tx_height);
+}
+
+void Identity32TransformLoopColumn_SSE4_1(TransformType /*tx_type*/,
+                                          TransformSize tx_size,
+                                          int adjusted_tx_height,
+                                          void* src_buffer, int start_x,
+                                          int start_y, void* dst_frame) {
+  auto& frame = *static_cast<Array2DView<uint8_t>*>(dst_frame);
+  auto* src = static_cast<int16_t*>(src_buffer);
+  const int tx_width = kTransformWidth[tx_size];
+
   Identity32ColumnStoreToFrame(frame, start_x, start_y, tx_width,
                                adjusted_tx_height, src);
 }
 
-template <bool is_row>
-void Wht4TransformLoop_SSE4_1(TransformType tx_type, TransformSize tx_size,
-                              int adjusted_tx_height, void* src_buffer,
-                              int start_x, int start_y, void* dst_frame) {
+void Wht4TransformLoopRow_SSE4_1(TransformType tx_type, TransformSize tx_size,
+                                 int /*adjusted_tx_height*/,
+                                 void* /*src_buffer*/, int /*start_x*/,
+                                 int /*start_y*/, void* /*dst_frame*/) {
   assert(tx_type == kTransformTypeDctDct);
   assert(tx_size == kTransformSize4x4);
   static_cast<void>(tx_type);
   static_cast<void>(tx_size);
-  if (is_row) {
-    // Do both row and column transforms in the column-transform pass.
-    return;
-  }
+  // Do both row and column transforms in the column-transform pass.
+}
 
-  assert(!is_row);
+void Wht4TransformLoopColumn_SSE4_1(TransformType tx_type,
+                                    TransformSize tx_size,
+                                    int adjusted_tx_height, void* src_buffer,
+                                    int start_x, int start_y, void* dst_frame) {
+  assert(tx_type == kTransformTypeDctDct);
+  assert(tx_size == kTransformSize4x4);
+  static_cast<void>(tx_type);
+  static_cast<void>(tx_size);
+
+  // Do both row and column transforms in the column-transform pass.
   // Process 4 1d wht4 rows and columns in parallel.
   const auto* src = static_cast<int16_t*>(src_buffer);
   auto& frame = *static_cast<Array2DView<uint8_t>*>(dst_frame);
@@ -2910,63 +2948,63 @@ template <typename Residual, typename Pixel>
 void InitAll(Dsp* const dsp) {
   // Maximum transform size for Dct is 64.
   dsp->inverse_transforms[k1DTransformDct][k1DTransformSize4][kRow] =
-      Dct4TransformLoop_SSE4_1<true>;
+      Dct4TransformLoopRow_SSE4_1;
   dsp->inverse_transforms[k1DTransformDct][k1DTransformSize4][kColumn] =
-      Dct4TransformLoop_SSE4_1<false>;
+      Dct4TransformLoopColumn_SSE4_1;
   dsp->inverse_transforms[k1DTransformDct][k1DTransformSize8][kRow] =
-      Dct8TransformLoop_SSE4_1<true>;
+      Dct8TransformLoopRow_SSE4_1;
   dsp->inverse_transforms[k1DTransformDct][k1DTransformSize8][kColumn] =
-      Dct8TransformLoop_SSE4_1<false>;
+      Dct8TransformLoopColumn_SSE4_1;
   dsp->inverse_transforms[k1DTransformDct][k1DTransformSize16][kRow] =
-      Dct16TransformLoop_SSE4_1<true>;
+      Dct16TransformLoopRow_SSE4_1;
   dsp->inverse_transforms[k1DTransformDct][k1DTransformSize16][kColumn] =
-      Dct16TransformLoop_SSE4_1<false>;
+      Dct16TransformLoopColumn_SSE4_1;
   dsp->inverse_transforms[k1DTransformDct][k1DTransformSize32][kRow] =
-      Dct32TransformLoop_SSE4_1<true>;
+      Dct32TransformLoopRow_SSE4_1;
   dsp->inverse_transforms[k1DTransformDct][k1DTransformSize32][kColumn] =
-      Dct32TransformLoop_SSE4_1<false>;
+      Dct32TransformLoopColumn_SSE4_1;
   dsp->inverse_transforms[k1DTransformDct][k1DTransformSize64][kRow] =
-      Dct64TransformLoop_SSE4_1<true>;
+      Dct64TransformLoopRow_SSE4_1;
   dsp->inverse_transforms[k1DTransformDct][k1DTransformSize64][kColumn] =
-      Dct64TransformLoop_SSE4_1<false>;
+      Dct64TransformLoopColumn_SSE4_1;
 
   // Maximum transform size for Adst is 16.
   dsp->inverse_transforms[k1DTransformAdst][k1DTransformSize4][kRow] =
-      Adst4TransformLoop_SSE4_1<true>;
+      Adst4TransformLoopRow_SSE4_1;
   dsp->inverse_transforms[k1DTransformAdst][k1DTransformSize4][kColumn] =
-      Adst4TransformLoop_SSE4_1<false>;
+      Adst4TransformLoopColumn_SSE4_1;
   dsp->inverse_transforms[k1DTransformAdst][k1DTransformSize8][kRow] =
-      Adst8TransformLoop_SSE4_1<true>;
+      Adst8TransformLoopRow_SSE4_1;
   dsp->inverse_transforms[k1DTransformAdst][k1DTransformSize8][kColumn] =
-      Adst8TransformLoop_SSE4_1<false>;
+      Adst8TransformLoopColumn_SSE4_1;
   dsp->inverse_transforms[k1DTransformAdst][k1DTransformSize16][kRow] =
-      Adst16TransformLoop_SSE4_1<true>;
+      Adst16TransformLoopRow_SSE4_1;
   dsp->inverse_transforms[k1DTransformAdst][k1DTransformSize16][kColumn] =
-      Adst16TransformLoop_SSE4_1<false>;
+      Adst16TransformLoopColumn_SSE4_1;
 
   // Maximum transform size for Identity transform is 32.
   dsp->inverse_transforms[k1DTransformIdentity][k1DTransformSize4][kRow] =
-      Identity4TransformLoop_SSE4_1<true>;
+      Identity4TransformLoopRow_SSE4_1;
   dsp->inverse_transforms[k1DTransformIdentity][k1DTransformSize4][kColumn] =
-      Identity4TransformLoop_SSE4_1<false>;
+      Identity4TransformLoopColumn_SSE4_1;
   dsp->inverse_transforms[k1DTransformIdentity][k1DTransformSize8][kRow] =
-      Identity8TransformLoop_SSE4_1<true>;
+      Identity8TransformLoopRow_SSE4_1;
   dsp->inverse_transforms[k1DTransformIdentity][k1DTransformSize8][kColumn] =
-      Identity8TransformLoop_SSE4_1<false>;
+      Identity8TransformLoopColumn_SSE4_1;
   dsp->inverse_transforms[k1DTransformIdentity][k1DTransformSize16][kRow] =
-      Identity16TransformLoop_SSE4_1<true>;
+      Identity16TransformLoopRow_SSE4_1;
   dsp->inverse_transforms[k1DTransformIdentity][k1DTransformSize16][kColumn] =
-      Identity16TransformLoop_SSE4_1<false>;
+      Identity16TransformLoopColumn_SSE4_1;
   dsp->inverse_transforms[k1DTransformIdentity][k1DTransformSize32][kRow] =
-      Identity32TransformLoop_SSE4_1<true>;
+      Identity32TransformLoopRow_SSE4_1;
   dsp->inverse_transforms[k1DTransformIdentity][k1DTransformSize32][kColumn] =
-      Identity32TransformLoop_SSE4_1<false>;
+      Identity32TransformLoopColumn_SSE4_1;
 
   // Maximum transform size for Wht is 4.
   dsp->inverse_transforms[k1DTransformWht][k1DTransformSize4][kRow] =
-      Wht4TransformLoop_SSE4_1<true>;
+      Wht4TransformLoopRow_SSE4_1;
   dsp->inverse_transforms[k1DTransformWht][k1DTransformSize4][kColumn] =
-      Wht4TransformLoop_SSE4_1<false>;
+      Wht4TransformLoopColumn_SSE4_1;
 }
 
 void Init8bpp() {
@@ -2977,81 +3015,81 @@ void Init8bpp() {
 #else  // !LIBGAV1_ENABLE_ALL_DSP_FUNCTIONS
 #if DSP_ENABLED_8BPP_SSE4_1(1DTransformSize4_1DTransformDct)
   dsp->inverse_transforms[k1DTransformDct][k1DTransformSize4][kRow] =
-      Dct4TransformLoop_SSE4_1<true>;
+      Dct4TransformLoopRow_SSE4_1;
   dsp->inverse_transforms[k1DTransformDct][k1DTransformSize4][kColumn] =
-      Dct4TransformLoop_SSE4_1<false>;
+      Dct4TransformLoopColumn_SSE4_1;
 #endif
 #if DSP_ENABLED_8BPP_SSE4_1(1DTransformSize8_1DTransformDct)
   dsp->inverse_transforms[k1DTransformDct][k1DTransformSize8][kRow] =
-      Dct8TransformLoop_SSE4_1<true>;
+      Dct8TransformLoopRow_SSE4_1;
   dsp->inverse_transforms[k1DTransformDct][k1DTransformSize8][kColumn] =
-      Dct8TransformLoop_SSE4_1<false>;
+      Dct8TransformLoopColumn_SSE4_1;
 #endif
 #if DSP_ENABLED_8BPP_SSE4_1(1DTransformSize16_1DTransformDct)
   dsp->inverse_transforms[k1DTransformDct][k1DTransformSize16][kRow] =
-      Dct16TransformLoop_SSE4_1<true>;
+      Dct16TransformLoopRow_SSE4_1;
   dsp->inverse_transforms[k1DTransformDct][k1DTransformSize16][kColumn] =
-      Dct16TransformLoop_SSE4_1<false>;
+      Dct16TransformLoopColumn_SSE4_1;
 #endif
 #if DSP_ENABLED_8BPP_SSE4_1(1DTransformSize32_1DTransformDct)
   dsp->inverse_transforms[k1DTransformDct][k1DTransformSize32][kRow] =
-      Dct32TransformLoop_SSE4_1<true>;
+      Dct32TransformLoopRow_SSE4_1;
   dsp->inverse_transforms[k1DTransformDct][k1DTransformSize32][kColumn] =
-      Dct32TransformLoop_SSE4_1<false>;
+      Dct32TransformLoopColumn_SSE4_1;
 #endif
 #if DSP_ENABLED_8BPP_SSE4_1(1DTransformSize64_1DTransformDct)
   dsp->inverse_transforms[k1DTransformDct][k1DTransformSize64][kRow] =
-      Dct64TransformLoop_SSE4_1<true>;
+      Dct64TransformLoopRow_SSE4_1;
   dsp->inverse_transforms[k1DTransformDct][k1DTransformSize64][kColumn] =
-      Dct64TransformLoop_SSE4_1<false>;
+      Dct64TransformLoopColumn_SSE4_1;
 #endif
 #if DSP_ENABLED_8BPP_SSE4_1(1DTransformSize4_1DTransformAdst)
   dsp->inverse_transforms[k1DTransformAdst][k1DTransformSize4][kRow] =
-      Adst4TransformLoop_SSE4_1<true>;
+      Adst4TransformLoopRow_SSE4_1;
   dsp->inverse_transforms[k1DTransformAdst][k1DTransformSize4][kColumn] =
-      Adst4TransformLoop_SSE4_1<false>;
+      Adst4TransformLoopColumn_SSE4_1;
 #endif
 #if DSP_ENABLED_8BPP_SSE4_1(1DTransformSize8_1DTransformAdst)
   dsp->inverse_transforms[k1DTransformAdst][k1DTransformSize8][kRow] =
-      Adst8TransformLoop_SSE4_1<true>;
+      Adst8TransformLoopRow_SSE4_1;
   dsp->inverse_transforms[k1DTransformAdst][k1DTransformSize8][kColumn] =
-      Adst8TransformLoop_SSE4_1<false>;
+      Adst8TransformLoopColumn_SSE4_1;
 #endif
 #if DSP_ENABLED_8BPP_SSE4_1(1DTransformSize16_1DTransformAdst)
   dsp->inverse_transforms[k1DTransformAdst][k1DTransformSize16][kRow] =
-      Adst16TransformLoop_SSE4_1<true>;
+      Adst16TransformLoopRow_SSE4_1;
   dsp->inverse_transforms[k1DTransformAdst][k1DTransformSize16][kColumn] =
-      Adst16TransformLoop_SSE4_1<false>;
+      Adst16TransformLoopColumn_SSE4_1;
 #endif
 #if DSP_ENABLED_8BPP_SSE4_1(1DTransformSize4_1DTransformIdentity)
   dsp->inverse_transforms[k1DTransformIdentity][k1DTransformSize4][kRow] =
-      Identity4TransformLoop_SSE4_1<true>;
+      Identity4TransformLoopRow_SSE4_1;
   dsp->inverse_transforms[k1DTransformIdentity][k1DTransformSize4][kColumn] =
-      Identity4TransformLoop_SSE4_1<false>;
+      Identity4TransformLoopColumn_SSE4_1;
 #endif
 #if DSP_ENABLED_8BPP_SSE4_1(1DTransformSize8_1DTransformIdentity)
   dsp->inverse_transforms[k1DTransformIdentity][k1DTransformSize8][kRow] =
-      Identity8TransformLoop_SSE4_1<true>;
+      Identity8TransformLoopRow_SSE4_1;
   dsp->inverse_transforms[k1DTransformIdentity][k1DTransformSize8][kColumn] =
-      Identity8TransformLoop_SSE4_1<false>;
+      Identity8TransformLoopColumn_SSE4_1;
 #endif
 #if DSP_ENABLED_8BPP_SSE4_1(1DTransformSize16_1DTransformIdentity)
   dsp->inverse_transforms[k1DTransformIdentity][k1DTransformSize16][kRow] =
-      Identity16TransformLoop_SSE4_1<true>;
+      Identity16TransformLoopRow_SSE4_1;
   dsp->inverse_transforms[k1DTransformIdentity][k1DTransformSize16][kColumn] =
-      Identity16TransformLoop_SSE4_1<false>;
+      Identity16TransformLoopColumn_SSE4_1;
 #endif
 #if DSP_ENABLED_8BPP_SSE4_1(1DTransformSize32_1DTransformIdentity)
   dsp->inverse_transforms[k1DTransformIdentity][k1DTransformSize32][kRow] =
-      Identity32TransformLoop_SSE4_1<true>;
+      Identity32TransformLoopRow_SSE4_1;
   dsp->inverse_transforms[k1DTransformIdentity][k1DTransformSize32][kColumn] =
-      Identity32TransformLoop_SSE4_1<false>;
+      Identity32TransformLoopColumn_SSE4_1;
 #endif
 #if DSP_ENABLED_8BPP_SSE4_1(1DTransformSize4_1DTransformWht)
   dsp->inverse_transforms[k1DTransformWht][k1DTransformSize4][kRow] =
-      Wht4TransformLoop_SSE4_1<true>;
+      Wht4TransformLoopRow_SSE4_1;
   dsp->inverse_transforms[k1DTransformWht][k1DTransformSize4][kColumn] =
-      Wht4TransformLoop_SSE4_1<false>;
+      Wht4TransformLoopColumn_SSE4_1;
 #endif
 #endif
 }
