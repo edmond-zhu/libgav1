@@ -2289,6 +2289,127 @@ void ConvolveScale2D_SSE4_1(const void* const reference,
   }
 }
 
+inline void HalfAddHorizontal(const uint8_t* src, uint8_t* dst) {
+  const __m128i left = LoadUnaligned16(src);
+  const __m128i right = LoadUnaligned16(src + 1);
+  StoreUnaligned16(dst, _mm_avg_epu8(left, right));
+}
+
+template <int width>
+inline void IntraBlockCopyHorizontal(const uint8_t* src,
+                                     const ptrdiff_t src_stride,
+                                     const int height, uint8_t* dst,
+                                     const ptrdiff_t dst_stride) {
+  const ptrdiff_t src_remainder_stride = src_stride - (width - 16);
+  const ptrdiff_t dst_remainder_stride = dst_stride - (width - 16);
+
+  int y = height;
+  do {
+    HalfAddHorizontal(src, dst);
+    if (width >= 32) {
+      src += 16;
+      dst += 16;
+      HalfAddHorizontal(src, dst);
+      if (width >= 64) {
+        src += 16;
+        dst += 16;
+        HalfAddHorizontal(src, dst);
+        src += 16;
+        dst += 16;
+        HalfAddHorizontal(src, dst);
+        if (width == 128) {
+          src += 16;
+          dst += 16;
+          HalfAddHorizontal(src, dst);
+          src += 16;
+          dst += 16;
+          HalfAddHorizontal(src, dst);
+          src += 16;
+          dst += 16;
+          HalfAddHorizontal(src, dst);
+          src += 16;
+          dst += 16;
+          HalfAddHorizontal(src, dst);
+        }
+      }
+    }
+    src += src_remainder_stride;
+    dst += dst_remainder_stride;
+  } while (--y != 0);
+}
+
+void ConvolveIntraBlockCopyHorizontal_SSE4_1(
+    const void* const reference, const ptrdiff_t reference_stride,
+    const int /*horizontal_filter_index*/, const int /*vertical_filter_index*/,
+    const int /*subpixel_x*/, const int /*subpixel_y*/, const int width,
+    const int height, void* const prediction, const ptrdiff_t pred_stride) {
+  const auto* src = static_cast<const uint8_t*>(reference);
+  auto* dest = static_cast<uint8_t*>(prediction);
+
+  if (width == 128) {
+    IntraBlockCopyHorizontal<128>(src, reference_stride, height, dest,
+                                  pred_stride);
+  } else if (width == 64) {
+    IntraBlockCopyHorizontal<64>(src, reference_stride, height, dest,
+                                 pred_stride);
+  } else if (width == 32) {
+    IntraBlockCopyHorizontal<32>(src, reference_stride, height, dest,
+                                 pred_stride);
+  } else if (width == 16) {
+    IntraBlockCopyHorizontal<16>(src, reference_stride, height, dest,
+                                 pred_stride);
+  } else if (width == 8) {
+    int y = height;
+    do {
+      const __m128i left = LoadLo8(src);
+      const __m128i right = LoadLo8(src + 1);
+      StoreLo8(dest, _mm_avg_epu8(left, right));
+
+      src += reference_stride;
+      dest += pred_stride;
+    } while (--y != 0);
+  } else if (width == 4) {
+    int y = height;
+    do {
+      __m128i left = Load4(src);
+      __m128i right = Load4(src + 1);
+      src += reference_stride;
+      left = _mm_unpacklo_epi32(left, Load4(src));
+      right = _mm_unpacklo_epi32(right, Load4(src + 1));
+      src += reference_stride;
+
+      const __m128i result = _mm_avg_epu8(left, right);
+
+      Store4(dest, result);
+      dest += pred_stride;
+      Store4(dest, _mm_srli_si128(result, 4));
+      dest += pred_stride;
+      y -= 2;
+    } while (y != 0);
+  } else {
+    assert(width == 2);
+    __m128i left = _mm_setzero_si128();
+    __m128i right = _mm_setzero_si128();
+    int y = height;
+    do {
+      left = Load2<0>(src, left);
+      right = Load2<0>(src + 1, right);
+      src += reference_stride;
+      left = Load2<1>(src, left);
+      right = Load2<1>(src + 1, right);
+      src += reference_stride;
+
+      const __m128i result = _mm_avg_epu8(left, right);
+
+      Store2(dest, result);
+      dest += pred_stride;
+      Store2(dest, _mm_srli_si128(result, 2));
+      dest += pred_stride;
+      y -= 2;
+    } while (y != 0);
+  }
+}
+
 void Init8bpp() {
   Dsp* const dsp = dsp_internal::GetWritableDspTable(kBitdepth8);
   assert(dsp != nullptr);
@@ -2300,6 +2421,8 @@ void Init8bpp() {
   dsp->convolve[0][1][0][1] = ConvolveCompoundHorizontal_SSE4_1;
   dsp->convolve[0][1][1][0] = ConvolveCompoundVertical_SSE4_1;
   dsp->convolve[0][1][1][1] = ConvolveCompound2D_SSE4_1;
+
+  dsp->convolve[1][0][0][1] = ConvolveIntraBlockCopyHorizontal_SSE4_1;
 
   dsp->convolve_scale[0] = ConvolveScale2D_SSE4_1<false>;
   dsp->convolve_scale[1] = ConvolveScale2D_SSE4_1<true>;
