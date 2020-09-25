@@ -85,6 +85,8 @@ LIBGAV1_ALWAYS_INLINE void Transpose4x4(const int16x8_t in[4],
   out[3] = vcombine_s16(d3, d3);
 }
 
+// Note this is only used in the final stage of Dct32/64 and Adst16 as the in
+// place version causes additional stack usage with clang.
 LIBGAV1_ALWAYS_INLINE void Transpose8x8(const int16x8_t in[8],
                                         int16x8_t out[8]) {
   // Swap 16 bit elements. Goes from:
@@ -604,9 +606,8 @@ LIBGAV1_ALWAYS_INLINE void Dct8_NEON(void* dest, int32_t step, bool transpose) {
       LoadSrc<8, 8>(dst, step, 0, x);
     }
   } else if (transpose) {
-    int16x8_t input[8];
-    LoadSrc<16, 8>(dst, step, 0, input);
-    Transpose8x8(input, x);
+    LoadSrc<16, 8>(dst, step, 0, x);
+    dsp::Transpose8x8(x);
   } else {
     LoadSrc<16, 8>(dst, step, 0, x);
   }
@@ -634,9 +635,8 @@ LIBGAV1_ALWAYS_INLINE void Dct8_NEON(void* dest, int32_t step, bool transpose) {
       StoreDst<8, 8>(dst, step, 0, s);
     }
   } else if (transpose) {
-    int16x8_t output[8];
-    Transpose8x8(s, output);
-    StoreDst<16, 8>(dst, step, 0, output);
+    dsp::Transpose8x8(s);
+    StoreDst<16, 8>(dst, step, 0, s);
   } else {
     StoreDst<16, 8>(dst, step, 0, s);
   }
@@ -708,9 +708,8 @@ LIBGAV1_ALWAYS_INLINE void Dct16_NEON(void* dest, int32_t step, bool is_row,
     }
   } else if (is_row) {
     for (int idx = 0; idx < 16; idx += 8) {
-      int16x8_t input[8];
-      LoadSrc<16, 8>(dst, step, idx, input);
-      Transpose8x8(input, &x[idx]);
+      LoadSrc<16, 8>(dst, step, idx, &x[idx]);
+      dsp::Transpose8x8(&x[idx]);
     }
   } else {
     LoadSrc<16, 16>(dst, step, 0, x);
@@ -758,9 +757,8 @@ LIBGAV1_ALWAYS_INLINE void Dct16_NEON(void* dest, int32_t step, bool is_row,
     }
   } else if (is_row) {
     for (int idx = 0; idx < 16; idx += 8) {
-      int16x8_t output[8];
-      Transpose8x8(&s[idx], output);
-      StoreDst<16, 8>(dst, step, idx, output);
+      dsp::Transpose8x8(&s[idx]);
+      StoreDst<16, 8>(dst, step, idx, &s[idx]);
     }
   } else {
     StoreDst<16, 16>(dst, step, 0, s);
@@ -865,9 +863,8 @@ LIBGAV1_ALWAYS_INLINE void Dct32_NEON(void* dest, const int32_t step,
 
   if (is_row) {
     for (int idx = 0; idx < 32; idx += 8) {
-      int16x8_t input[8];
-      LoadSrc<16, 8>(dst, step, idx, input);
-      Transpose8x8(input, &x[idx]);
+      LoadSrc<16, 8>(dst, step, idx, &x[idx]);
+      dsp::Transpose8x8(&x[idx]);
     }
   } else {
     LoadSrc<16, 32>(dst, step, 0, x);
@@ -941,9 +938,8 @@ void Dct64_NEON(void* dest, int32_t step, bool is_row, int row_shift) {
     // The last 32 values of every row are always zero if the |tx_width| is
     // 64.
     for (int idx = 0; idx < 32; idx += 8) {
-      int16x8_t input[8];
-      LoadSrc<16, 8>(dst, step, idx, input);
-      Transpose8x8(input, &x[idx]);
+      LoadSrc<16, 8>(dst, step, idx, &x[idx]);
+      dsp::Transpose8x8(&x[idx]);
     }
   } else {
     // The last 32 values of every column are always zero if the |tx_height| is
@@ -1318,9 +1314,8 @@ LIBGAV1_ALWAYS_INLINE void Adst8_NEON(void* dest, int32_t step,
     }
   } else {
     if (transpose) {
-      int16x8_t input[8];
-      LoadSrc<16, 8>(dst, step, 0, input);
-      Transpose8x8(input, x);
+      LoadSrc<16, 8>(dst, step, 0, x);
+      dsp::Transpose8x8(x);
     } else {
       LoadSrc<16, 8>(dst, step, 0, x);
     }
@@ -1382,9 +1377,8 @@ LIBGAV1_ALWAYS_INLINE void Adst8_NEON(void* dest, int32_t step,
     }
   } else {
     if (transpose) {
-      int16x8_t output[8];
-      Transpose8x8(x, output);
-      StoreDst<16, 8>(dst, step, 0, output);
+      dsp::Transpose8x8(x);
+      StoreDst<16, 8>(dst, step, 0, x);
     } else {
       StoreDst<16, 8>(dst, step, 0, x);
     }
@@ -1522,9 +1516,8 @@ LIBGAV1_ALWAYS_INLINE void Adst16_NEON(void* dest, int32_t step, bool is_row,
   } else {
     if (is_row) {
       for (int idx = 0; idx < 16; idx += 8) {
-        int16x8_t input[8];
-        LoadSrc<16, 8>(dst, step, idx, input);
-        Transpose8x8(input, &x[idx]);
+        LoadSrc<16, 8>(dst, step, idx, &x[idx]);
+        dsp::Transpose8x8(&x[idx]);
       }
     } else {
       LoadSrc<16, 16>(dst, step, 0, x);
