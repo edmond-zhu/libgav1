@@ -223,9 +223,7 @@ LIBGAV1_ALWAYS_INLINE __m128i ShiftResidual(const __m128i residual,
 template <int width>
 LIBGAV1_ALWAYS_INLINE bool DctDcOnly(void* dest, int adjusted_tx_height,
                                      bool should_round, int row_shift) {
-  if (adjusted_tx_height > 1) {
-    return false;
-  }
+  if (adjusted_tx_height > 1) return false;
 
   auto* dst = static_cast<int16_t*>(dest);
   const __m128i v_src_lo = _mm_shufflelo_epi16(_mm_cvtsi32_si128(dst[0]), 0);
@@ -265,9 +263,7 @@ LIBGAV1_ALWAYS_INLINE bool DctDcOnly(void* dest, int adjusted_tx_height,
 template <int height>
 LIBGAV1_ALWAYS_INLINE bool DctDcOnlyColumn(void* dest, int adjusted_tx_height,
                                            int width) {
-  if (adjusted_tx_height > 1) {
-    return false;
-  }
+  if (adjusted_tx_height > 1) return false;
 
   auto* dst = static_cast<int16_t*>(dest);
   const int16_t cos128 = Cos128(32);
@@ -1038,9 +1034,7 @@ constexpr int16_t kAdst4DcOnlyMultiplier[8] = {1321, 0, 2482, 0,
 
 LIBGAV1_ALWAYS_INLINE bool Adst4DcOnly(void* dest, int adjusted_tx_height,
                                        bool should_round, int row_shift) {
-  if (adjusted_tx_height > 1) {
-    return false;
-  }
+  if (adjusted_tx_height > 1) return false;
 
   auto* dst = static_cast<int16_t*>(dest);
   const __m128i v_src =
@@ -1070,9 +1064,7 @@ LIBGAV1_ALWAYS_INLINE bool Adst4DcOnly(void* dest, int adjusted_tx_height,
 
 LIBGAV1_ALWAYS_INLINE bool Adst4DcOnlyColumn(void* dest, int adjusted_tx_height,
                                              int width) {
-  if (adjusted_tx_height > 1) {
-    return false;
-  }
+  if (adjusted_tx_height > 1) return false;
 
   auto* dst = static_cast<int16_t*>(dest);
   int i = 0;
@@ -1196,9 +1188,7 @@ LIBGAV1_ALWAYS_INLINE void Adst8_SSE4_1(void* dest, int32_t step,
 
 LIBGAV1_ALWAYS_INLINE bool Adst8DcOnly(void* dest, int adjusted_tx_height,
                                        bool should_round, int row_shift) {
-  if (adjusted_tx_height > 1) {
-    return false;
-  }
+  if (adjusted_tx_height > 1) return false;
 
   auto* dst = static_cast<int16_t*>(dest);
   __m128i s[8];
@@ -1264,9 +1254,7 @@ LIBGAV1_ALWAYS_INLINE bool Adst8DcOnly(void* dest, int adjusted_tx_height,
 
 LIBGAV1_ALWAYS_INLINE bool Adst8DcOnlyColumn(void* dest, int adjusted_tx_height,
                                              int width) {
-  if (adjusted_tx_height > 1) {
-    return false;
-  }
+  if (adjusted_tx_height > 1) return false;
 
   auto* dst = static_cast<int16_t*>(dest);
   __m128i s[8];
@@ -1524,9 +1512,7 @@ LIBGAV1_ALWAYS_INLINE void Adst16DcOnlyInternal(__m128i* s, __m128i* x) {
 
 LIBGAV1_ALWAYS_INLINE bool Adst16DcOnly(void* dest, int adjusted_tx_height,
                                         bool should_round, int row_shift) {
-  if (adjusted_tx_height > 1) {
-    return false;
-  }
+  if (adjusted_tx_height > 1) return false;
 
   auto* dst = static_cast<int16_t*>(dest);
   __m128i s[16];
@@ -1566,9 +1552,7 @@ LIBGAV1_ALWAYS_INLINE bool Adst16DcOnly(void* dest, int adjusted_tx_height,
 LIBGAV1_ALWAYS_INLINE bool Adst16DcOnlyColumn(void* dest,
                                               int adjusted_tx_height,
                                               int width) {
-  if (adjusted_tx_height > 1) {
-    return false;
-  }
+  if (adjusted_tx_height > 1) return false;
 
   auto* dst = static_cast<int16_t*>(dest);
   int i = 0;
@@ -1627,9 +1611,7 @@ LIBGAV1_ALWAYS_INLINE void Identity4_SSE4_1(void* dest, int32_t step) {
 
 LIBGAV1_ALWAYS_INLINE bool Identity4DcOnly(void* dest, int adjusted_tx_height,
                                            bool should_round, int tx_height) {
-  if (adjusted_tx_height > 1) {
-    return false;
-  }
+  if (adjusted_tx_height > 1) return false;
 
   auto* dst = static_cast<int16_t*>(dest);
   const __m128i v_src0 = _mm_cvtsi32_si128(dst[0]);
@@ -1781,9 +1763,7 @@ LIBGAV1_ALWAYS_INLINE void Identity8Row4_SSE4_1(void* dest, int32_t step) {
 
 LIBGAV1_ALWAYS_INLINE bool Identity8DcOnly(void* dest, int adjusted_tx_height,
                                            bool should_round, int row_shift) {
-  if (adjusted_tx_height > 1) {
-    return false;
-  }
+  if (adjusted_tx_height > 1) return false;
 
   auto* dst = static_cast<int16_t*>(dest);
   const __m128i v_src0 = _mm_cvtsi32_si128(dst[0]);
@@ -1875,9 +1855,7 @@ LIBGAV1_ALWAYS_INLINE void Identity16Row_SSE4_1(void* dest, int32_t step,
 
 LIBGAV1_ALWAYS_INLINE bool Identity16DcOnly(void* dest, int adjusted_tx_height,
                                             bool should_round, int shift) {
-  if (adjusted_tx_height > 1) {
-    return false;
-  }
+  if (adjusted_tx_height > 1) return false;
 
   auto* dst = static_cast<int16_t*>(dest);
   const __m128i v_src0 = _mm_cvtsi32_si128(dst[0]);
@@ -1965,9 +1943,7 @@ LIBGAV1_ALWAYS_INLINE void Identity32Row16_SSE4_1(void* dest,
 
 LIBGAV1_ALWAYS_INLINE bool Identity32DcOnly(void* dest,
                                             int adjusted_tx_height) {
-  if (adjusted_tx_height > 1) {
-    return false;
-  }
+  if (adjusted_tx_height > 1) return false;
 
   auto* dst = static_cast<int16_t*>(dest);
   const __m128i v_src0 = _mm_cvtsi32_si128(dst[0]);
@@ -2327,8 +2303,7 @@ void Dct8TransformLoopRow_SSE4_1(TransformType /*tx_type*/,
 
   if (adjusted_tx_height <= 4) {
     // Process 4 1d dct8 rows in parallel.
-    Dct8_SSE4_1<ButterflyRotation_4, true>(src, /*step=*/8,
-                                           /*transpose=*/true);
+    Dct8_SSE4_1<ButterflyRotation_4, true>(src, /*step=*/8, /*transpose=*/true);
   } else {
     // Process 8 1d dct8 rows in parallel per iteration.
     int i = 0;
@@ -2544,8 +2519,7 @@ void Adst4TransformLoopRow_SSE4_1(TransformType /*tx_type*/,
   // Process 4 1d adst4 rows in parallel per iteration.
   int i = 0;
   do {
-    Adst4_SSE4_1<false>(&src[i * 4], /*step=*/4,
-                        /*transpose=*/true);
+    Adst4_SSE4_1<false>(&src[i * 4], /*step=*/4, /*transpose=*/true);
     i += 4;
   } while (i < adjusted_tx_height);
 

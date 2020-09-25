@@ -445,9 +445,7 @@ using ButterflyRotationFunc = void (*)(int16x8_t* a, int16x8_t* b, int angle,
 template <int width>
 LIBGAV1_ALWAYS_INLINE bool DctDcOnly(void* dest, int adjusted_tx_height,
                                      bool should_round, int row_shift) {
-  if (adjusted_tx_height > 1) {
-    return false;
-  }
+  if (adjusted_tx_height > 1) return false;
 
   auto* dst = static_cast<int16_t*>(dest);
   const int16x8_t v_src = vdupq_n_s16(dst[0]);
@@ -474,9 +472,7 @@ LIBGAV1_ALWAYS_INLINE bool DctDcOnly(void* dest, int adjusted_tx_height,
 template <int height>
 LIBGAV1_ALWAYS_INLINE bool DctDcOnlyColumn(void* dest, int adjusted_tx_height,
                                            int width) {
-  if (adjusted_tx_height > 1) {
-    return false;
-  }
+  if (adjusted_tx_height > 1) return false;
 
   auto* dst = static_cast<int16_t*>(dest);
   const int16_t cos128 = Cos128(32);
@@ -1232,9 +1228,7 @@ alignas(8) constexpr int16_t kAdst4DcOnlyMultiplier[4] = {1321, 2482, 3344,
 
 LIBGAV1_ALWAYS_INLINE bool Adst4DcOnly(void* dest, int adjusted_tx_height,
                                        bool should_round, int row_shift) {
-  if (adjusted_tx_height > 1) {
-    return false;
-  }
+  if (adjusted_tx_height > 1) return false;
 
   auto* dst = static_cast<int16_t*>(dest);
   int32x4_t s[2];
@@ -1263,9 +1257,7 @@ LIBGAV1_ALWAYS_INLINE bool Adst4DcOnly(void* dest, int adjusted_tx_height,
 
 LIBGAV1_ALWAYS_INLINE bool Adst4DcOnlyColumn(void* dest, int adjusted_tx_height,
                                              int width) {
-  if (adjusted_tx_height > 1) {
-    return false;
-  }
+  if (adjusted_tx_height > 1) return false;
 
   auto* dst = static_cast<int16_t*>(dest);
   int32x4_t s[4];
@@ -1387,9 +1379,7 @@ LIBGAV1_ALWAYS_INLINE void Adst8_NEON(void* dest, int32_t step,
 
 LIBGAV1_ALWAYS_INLINE bool Adst8DcOnly(void* dest, int adjusted_tx_height,
                                        bool should_round, int row_shift) {
-  if (adjusted_tx_height > 1) {
-    return false;
-  }
+  if (adjusted_tx_height > 1) return false;
 
   auto* dst = static_cast<int16_t*>(dest);
   int16x8_t s[8];
@@ -1443,9 +1433,7 @@ LIBGAV1_ALWAYS_INLINE bool Adst8DcOnly(void* dest, int adjusted_tx_height,
 
 LIBGAV1_ALWAYS_INLINE bool Adst8DcOnlyColumn(void* dest, int adjusted_tx_height,
                                              int width) {
-  if (adjusted_tx_height > 1) {
-    return false;
-  }
+  if (adjusted_tx_height > 1) return false;
 
   auto* dst = static_cast<int16_t*>(dest);
   int16x8_t s[8];
@@ -1710,9 +1698,7 @@ LIBGAV1_ALWAYS_INLINE void Adst16DcOnlyInternal(int16x8_t* s, int16x8_t* x) {
 
 LIBGAV1_ALWAYS_INLINE bool Adst16DcOnly(void* dest, int adjusted_tx_height,
                                         bool should_round, int row_shift) {
-  if (adjusted_tx_height > 1) {
-    return false;
-  }
+  if (adjusted_tx_height > 1) return false;
 
   auto* dst = static_cast<int16_t*>(dest);
   int16x8_t s[16];
@@ -1739,9 +1725,7 @@ LIBGAV1_ALWAYS_INLINE bool Adst16DcOnly(void* dest, int adjusted_tx_height,
 LIBGAV1_ALWAYS_INLINE bool Adst16DcOnlyColumn(void* dest,
                                               int adjusted_tx_height,
                                               int width) {
-  if (adjusted_tx_height > 1) {
-    return false;
-  }
+  if (adjusted_tx_height > 1) return false;
 
   auto* dst = static_cast<int16_t*>(dest);
   int i = 0;
@@ -1800,9 +1784,7 @@ LIBGAV1_ALWAYS_INLINE void Identity4_NEON(void* dest, int32_t step) {
 
 LIBGAV1_ALWAYS_INLINE bool Identity4DcOnly(void* dest, int adjusted_tx_height,
                                            bool should_round, int tx_height) {
-  if (adjusted_tx_height > 1) {
-    return false;
-  }
+  if (adjusted_tx_height > 1) return false;
 
   auto* dst = static_cast<int16_t*>(dest);
   const int16x4_t v_src0 = vdup_n_s16(dst[0]);
@@ -1984,9 +1966,7 @@ LIBGAV1_ALWAYS_INLINE void Identity8Row4_NEON(void* dest, int32_t step) {
 
 LIBGAV1_ALWAYS_INLINE bool Identity8DcOnly(void* dest, int adjusted_tx_height,
                                            bool should_round, int row_shift) {
-  if (adjusted_tx_height > 1) {
-    return false;
-  }
+  if (adjusted_tx_height > 1) return false;
 
   auto* dst = static_cast<int16_t*>(dest);
   const int16x4_t v_src0 = vdup_n_s16(dst[0]);
@@ -2023,9 +2003,7 @@ LIBGAV1_ALWAYS_INLINE void Identity16Row_NEON(void* dest, int32_t step,
 
 LIBGAV1_ALWAYS_INLINE bool Identity16DcOnly(void* dest, int adjusted_tx_height,
                                             bool should_round, int shift) {
-  if (adjusted_tx_height > 1) {
-    return false;
-  }
+  if (adjusted_tx_height > 1) return false;
 
   auto* dst = static_cast<int16_t*>(dest);
   const int16x4_t v_src0 = vdup_n_s16(dst[0]);
@@ -2063,9 +2041,7 @@ LIBGAV1_ALWAYS_INLINE void Identity32Row16_NEON(void* dest,
 
 LIBGAV1_ALWAYS_INLINE bool Identity32DcOnly(void* dest,
                                             int adjusted_tx_height) {
-  if (adjusted_tx_height > 1) {
-    return false;
-  }
+  if (adjusted_tx_height > 1) return false;
 
   auto* dst = static_cast<int16_t*>(dest);
   const int16x4_t v_src0 = vdup_n_s16(dst[0]);
@@ -2374,8 +2350,7 @@ void Dct4TransformLoopRow_NEON(TransformType /*tx_type*/, TransformSize tx_size,
 
   if (adjusted_tx_height == 4) {
     // Process 4 1d dct4 rows in parallel.
-    Dct4_NEON<ButterflyRotation_4, false>(src, /*step=*/4,
-                                          /*transpose=*/true);
+    Dct4_NEON<ButterflyRotation_4, false>(src, /*step=*/4, /*transpose=*/true);
   } else {
     // Process 8 1d dct4 rows in parallel per iteration.
     int i = adjusted_tx_height;
@@ -2513,8 +2488,8 @@ void Dct16TransformLoopRow_NEON(TransformType /*tx_type*/,
     int i = adjusted_tx_height;
     do {
       // Process 8 1d dct16 rows in parallel per iteration.
-      Dct16_NEON<ButterflyRotation_8, false>(src, 16,
-                                             /*is_row=*/true, row_shift);
+      Dct16_NEON<ButterflyRotation_8, false>(src, 16, /*is_row=*/true,
+                                             row_shift);
       src += 128;
       i -= 8;
     } while (i != 0);
@@ -2713,8 +2688,7 @@ void Adst8TransformLoopRow_NEON(TransformType /*tx_type*/,
 
   if (adjusted_tx_height == 4) {
     // Process 4 1d adst8 rows in parallel.
-    Adst8_NEON<ButterflyRotation_4, true>(src, /*step=*/8,
-                                          /*transpose=*/true);
+    Adst8_NEON<ButterflyRotation_4, true>(src, /*step=*/8, /*transpose=*/true);
   } else {
     // Process 8 1d adst8 rows in parallel per iteration.
     assert(adjusted_tx_height % 8 == 0);
@@ -2787,8 +2761,8 @@ void Adst16TransformLoopRow_NEON(TransformType /*tx_type*/,
     int i = adjusted_tx_height;
     do {
       // Process 8 1d adst16 rows in parallel per iteration.
-      Adst16_NEON<ButterflyRotation_8, false>(src, 16,
-                                              /*is_row=*/true, row_shift);
+      Adst16_NEON<ButterflyRotation_8, false>(src, 16, /*is_row=*/true,
+                                              row_shift);
       src += 128;
       i -= 8;
     } while (i != 0);
