@@ -2568,6 +2568,261 @@ void ConvolveIntraBlockCopyVertical_SSE4_1(
   }
 }
 
+// Load then add two uint8_t vectors. Return the uint16_t vector result.
+inline __m128i LoadU8AndAddLong(const uint8_t* src, const uint8_t* src1) {
+  const __m128i a = _mm_cvtepu8_epi16(LoadLo8(src));
+  const __m128i b = _mm_cvtepu8_epi16(LoadLo8(src1));
+  return _mm_add_epi16(a, b);
+}
+
+inline __m128i AddU16RightShift2AndPack(__m128i v0, __m128i v1) {
+  const __m128i a = _mm_add_epi16(v0, v1);
+  const __m128i b = _mm_srli_epi16(a, 1);
+  // Use avg here to shift right by 1 with round.
+  const __m128i c = _mm_avg_epu16(b, _mm_setzero_si128());
+  return _mm_packus_epi16(c, c);
+}
+
+template <int width>
+inline void IntraBlockCopy2D(const uint8_t* src, const ptrdiff_t src_stride,
+                             const int height, uint8_t* dst,
+                             const ptrdiff_t dst_stride) {
+  const ptrdiff_t src_remainder_stride = src_stride - (width - 8);
+  const ptrdiff_t dst_remainder_stride = dst_stride - (width - 8);
+  __m128i row[16];
+  row[0] = LoadU8AndAddLong(src, src + 1);
+  if (width >= 16) {
+    src += 8;
+    row[1] = LoadU8AndAddLong(src, src + 1);
+    if (width >= 32) {
+      src += 8;
+      row[2] = LoadU8AndAddLong(src, src + 1);
+      src += 8;
+      row[3] = LoadU8AndAddLong(src, src + 1);
+      if (width >= 64) {
+        src += 8;
+        row[4] = LoadU8AndAddLong(src, src + 1);
+        src += 8;
+        row[5] = LoadU8AndAddLong(src, src + 1);
+        src += 8;
+        row[6] = LoadU8AndAddLong(src, src + 1);
+        src += 8;
+        row[7] = LoadU8AndAddLong(src, src + 1);
+        if (width == 128) {
+          src += 8;
+          row[8] = LoadU8AndAddLong(src, src + 1);
+          src += 8;
+          row[9] = LoadU8AndAddLong(src, src + 1);
+          src += 8;
+          row[10] = LoadU8AndAddLong(src, src + 1);
+          src += 8;
+          row[11] = LoadU8AndAddLong(src, src + 1);
+          src += 8;
+          row[12] = LoadU8AndAddLong(src, src + 1);
+          src += 8;
+          row[13] = LoadU8AndAddLong(src, src + 1);
+          src += 8;
+          row[14] = LoadU8AndAddLong(src, src + 1);
+          src += 8;
+          row[15] = LoadU8AndAddLong(src, src + 1);
+        }
+      }
+    }
+  }
+  src += src_remainder_stride;
+
+  int y = height;
+  do {
+    const __m128i below_0 = LoadU8AndAddLong(src, src + 1);
+    StoreLo8(dst, AddU16RightShift2AndPack(row[0], below_0));
+    row[0] = below_0;
+    if (width >= 16) {
+      src += 8;
+      dst += 8;
+
+      const __m128i below_1 = LoadU8AndAddLong(src, src + 1);
+      StoreLo8(dst, AddU16RightShift2AndPack(row[1], below_1));
+      row[1] = below_1;
+      if (width >= 32) {
+        src += 8;
+        dst += 8;
+
+        const __m128i below_2 = LoadU8AndAddLong(src, src + 1);
+        StoreLo8(dst, AddU16RightShift2AndPack(row[2], below_2));
+        row[2] = below_2;
+        src += 8;
+        dst += 8;
+
+        const __m128i below_3 = LoadU8AndAddLong(src, src + 1);
+        StoreLo8(dst, AddU16RightShift2AndPack(row[3], below_3));
+        row[3] = below_3;
+        if (width >= 64) {
+          src += 8;
+          dst += 8;
+
+          const __m128i below_4 = LoadU8AndAddLong(src, src + 1);
+          StoreLo8(dst, AddU16RightShift2AndPack(row[4], below_4));
+          row[4] = below_4;
+          src += 8;
+          dst += 8;
+
+          const __m128i below_5 = LoadU8AndAddLong(src, src + 1);
+          StoreLo8(dst, AddU16RightShift2AndPack(row[5], below_5));
+          row[5] = below_5;
+          src += 8;
+          dst += 8;
+
+          const __m128i below_6 = LoadU8AndAddLong(src, src + 1);
+          StoreLo8(dst, AddU16RightShift2AndPack(row[6], below_6));
+          row[6] = below_6;
+          src += 8;
+          dst += 8;
+
+          const __m128i below_7 = LoadU8AndAddLong(src, src + 1);
+          StoreLo8(dst, AddU16RightShift2AndPack(row[7], below_7));
+          row[7] = below_7;
+          if (width == 128) {
+            src += 8;
+            dst += 8;
+
+            const __m128i below_8 = LoadU8AndAddLong(src, src + 1);
+            StoreLo8(dst, AddU16RightShift2AndPack(row[8], below_8));
+            row[8] = below_8;
+            src += 8;
+            dst += 8;
+
+            const __m128i below_9 = LoadU8AndAddLong(src, src + 1);
+            StoreLo8(dst, AddU16RightShift2AndPack(row[9], below_9));
+            row[9] = below_9;
+            src += 8;
+            dst += 8;
+
+            const __m128i below_10 = LoadU8AndAddLong(src, src + 1);
+            StoreLo8(dst, AddU16RightShift2AndPack(row[10], below_10));
+            row[10] = below_10;
+            src += 8;
+            dst += 8;
+
+            const __m128i below_11 = LoadU8AndAddLong(src, src + 1);
+            StoreLo8(dst, AddU16RightShift2AndPack(row[11], below_11));
+            row[11] = below_11;
+            src += 8;
+            dst += 8;
+
+            const __m128i below_12 = LoadU8AndAddLong(src, src + 1);
+            StoreLo8(dst, AddU16RightShift2AndPack(row[12], below_12));
+            row[12] = below_12;
+            src += 8;
+            dst += 8;
+
+            const __m128i below_13 = LoadU8AndAddLong(src, src + 1);
+            StoreLo8(dst, AddU16RightShift2AndPack(row[13], below_13));
+            row[13] = below_13;
+            src += 8;
+            dst += 8;
+
+            const __m128i below_14 = LoadU8AndAddLong(src, src + 1);
+            StoreLo8(dst, AddU16RightShift2AndPack(row[14], below_14));
+            row[14] = below_14;
+            src += 8;
+            dst += 8;
+
+            const __m128i below_15 = LoadU8AndAddLong(src, src + 1);
+            StoreLo8(dst, AddU16RightShift2AndPack(row[15], below_15));
+            row[15] = below_15;
+          }
+        }
+      }
+    }
+    src += src_remainder_stride;
+    dst += dst_remainder_stride;
+  } while (--y != 0);
+}
+
+void ConvolveIntraBlockCopy2D_SSE4_1(
+    const void* const reference, const ptrdiff_t reference_stride,
+    const int /*horizontal_filter_index*/, const int /*vertical_filter_index*/,
+    const int /*horizontal_filter_id*/, const int /*vertical_filter_id*/,
+    const int width, const int height, void* const prediction,
+    const ptrdiff_t pred_stride) {
+  const auto* src = static_cast<const uint8_t*>(reference);
+  auto* dest = static_cast<uint8_t*>(prediction);
+  // Note: allow vertical access to height + 1. Because this function is only
+  // for u/v plane of intra block copy, such access is guaranteed to be within
+  // the prediction block.
+
+  if (width == 128) {
+    IntraBlockCopy2D<128>(src, reference_stride, height, dest, pred_stride);
+  } else if (width == 64) {
+    IntraBlockCopy2D<64>(src, reference_stride, height, dest, pred_stride);
+  } else if (width == 32) {
+    IntraBlockCopy2D<32>(src, reference_stride, height, dest, pred_stride);
+  } else if (width == 16) {
+    IntraBlockCopy2D<16>(src, reference_stride, height, dest, pred_stride);
+  } else if (width == 8) {
+    IntraBlockCopy2D<8>(src, reference_stride, height, dest, pred_stride);
+  } else if (width == 4) {
+    __m128i left = _mm_cvtepu8_epi16(Load4(src));
+    __m128i right = _mm_cvtepu8_epi16(Load4(src + 1));
+    src += reference_stride;
+
+    __m128i row = _mm_add_epi16(left, right);
+
+    int y = height;
+    do {
+      left = Load4(src);
+      right = Load4(src + 1);
+      src += reference_stride;
+      left = _mm_unpacklo_epi32(left, Load4(src));
+      right = _mm_unpacklo_epi32(right, Load4(src + 1));
+      src += reference_stride;
+
+      const __m128i below =
+          _mm_add_epi16(_mm_cvtepu8_epi16(left), _mm_cvtepu8_epi16(right));
+      const __m128i result =
+          AddU16RightShift2AndPack(_mm_unpacklo_epi64(row, below), below);
+
+      Store4(dest, result);
+      dest += pred_stride;
+      Store4(dest, _mm_srli_si128(result, 4));
+      dest += pred_stride;
+
+      row = _mm_srli_si128(below, 8);
+      y -= 2;
+    } while (y != 0);
+  } else {
+    __m128i left = Load2(src);
+    __m128i right = Load2(src + 1);
+    src += reference_stride;
+
+    __m128i row =
+        _mm_add_epi16(_mm_cvtepu8_epi16(left), _mm_cvtepu8_epi16(right));
+
+    int y = height;
+    do {
+      left = Load2<0>(src, left);
+      right = Load2<0>(src + 1, right);
+      src += reference_stride;
+      left = Load2<2>(src, left);
+      right = Load2<2>(src + 1, right);
+      src += reference_stride;
+
+      const __m128i below =
+          _mm_add_epi16(_mm_cvtepu8_epi16(left), _mm_cvtepu8_epi16(right));
+      const __m128i result =
+          AddU16RightShift2AndPack(_mm_unpacklo_epi64(row, below), below);
+
+      Store2(dest, result);
+      dest += pred_stride;
+      Store2(dest, _mm_srli_si128(result, 4));
+      dest += pred_stride;
+
+      row = _mm_srli_si128(below, 8);
+      y -= 2;
+    } while (y != 0);
+  }
+}
+
 void Init8bpp() {
   Dsp* const dsp = dsp_internal::GetWritableDspTable(kBitdepth8);
   assert(dsp != nullptr);
@@ -2582,6 +2837,7 @@ void Init8bpp() {
 
   dsp->convolve[1][0][0][1] = ConvolveIntraBlockCopyHorizontal_SSE4_1;
   dsp->convolve[1][0][1][0] = ConvolveIntraBlockCopyVertical_SSE4_1;
+  dsp->convolve[1][0][1][1] = ConvolveIntraBlockCopy2D_SSE4_1;
 
   dsp->convolve_scale[0] = ConvolveScale2D_SSE4_1<false>;
   dsp->convolve_scale[1] = ConvolveScale2D_SSE4_1<true>;
