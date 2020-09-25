@@ -220,10 +220,10 @@ inline void StoreUnaligned16(void* a, const __m128i v) {
 
 inline __m128i RightShiftWithRounding_U16(const __m128i v_val_d, int bits) {
   assert(bits <= 16);
-  const __m128i v_bias_d =
-      _mm_set1_epi16(static_cast<int16_t>((1 << bits) >> 1));
-  const __m128i v_tmp_d = _mm_add_epi16(v_val_d, v_bias_d);
-  return _mm_srli_epi16(v_tmp_d, bits);
+  // Shift out all but the last bit.
+  const __m128i v_tmp_d = _mm_srli_epi16(v_val_d, bits - 1);
+  // Avg with zero will shift by 1 and round.
+  return _mm_avg_epu16(v_tmp_d, _mm_setzero_si128());
 }
 
 inline __m128i RightShiftWithRounding_S16(const __m128i v_val_d, int bits) {
