@@ -739,14 +739,6 @@ extern const int16_t kDirectionalIntraPredictorDerivative[44];
 
 extern const uint8_t kDeblockFilterLevelIndex[kMaxPlanes][kNumLoopFilterTypes];
 
-extern const int8_t kMaskIdLookup[4][kMaxBlockSizes];
-
-extern const int8_t kVerticalBorderMaskIdLookup[kMaxBlockSizes];
-
-extern const uint64_t kTopMaskLookup[67][4];
-
-extern const uint64_t kLeftMaskLookup[67][4];
-
 }  // namespace libgav1
 
 #endif  // LIBGAV1_SRC_UTILS_CONSTANTS_H_
