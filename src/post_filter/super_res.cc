@@ -178,8 +178,8 @@ void PostFilter::ApplySuperResThreaded() {
       uint8_t* const line_buffer_start =
           superres_line_buffer_.data(plane) +
           line_buffer_row * superres_line_buffer_.stride(plane) +
-          kSuperResHorizontalBorder * pixel_size_;
-      memcpy(line_buffer_start, input, plane_width * pixel_size_);
+          (kSuperResHorizontalBorder << pixel_size_log2_);
+      memcpy(line_buffer_start, input, plane_width << pixel_size_log2_);
     } while (++plane < planes_);
     if (line_buffer_row < num_threads - 1) {
       thread_pool_->Schedule(

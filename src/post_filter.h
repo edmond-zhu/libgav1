@@ -221,7 +221,7 @@ class PostFilter {
   uint8_t* GetBufferOffset(uint8_t* base_buffer, int stride, Plane plane,
                            int row, int column) const {
     return base_buffer + (row >> subsampling_y_[plane]) * stride +
-           (column >> subsampling_x_[plane]) * pixel_size_;
+           ((column >> subsampling_x_[plane]) << pixel_size_log2_);
   }
   uint8_t* GetSourceBuffer(Plane plane, int row4x4, int column4x4) const {
     return GetBufferOffset(source_buffer_[plane], frame_buffer_.stride(plane),
@@ -475,7 +475,7 @@ class PostFilter {
   const int8_t subsampling_x_[kMaxPlanes];
   const int8_t subsampling_y_[kMaxPlanes];
   const int8_t planes_;
-  const int pixel_size_;
+  const int pixel_size_log2_;
   const uint8_t* const inner_thresh_;
   const uint8_t* const outer_thresh_;
   const bool needs_chroma_deblock_;

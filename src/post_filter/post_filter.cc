@@ -158,8 +158,9 @@ PostFilter::PostFilter(const ObuFrameHeader& frame_header,
                      sequence_header.color_config.subsampling_y},
       planes_(sequence_header.color_config.is_monochrome ? kMaxPlanesMonochrome
                                                          : kMaxPlanes),
-      pixel_size_(static_cast<int>((bitdepth_ == 8) ? sizeof(uint8_t)
-                                                    : sizeof(uint16_t))),
+      pixel_size_log2_(static_cast<int>((bitdepth_ == 8) ? sizeof(uint8_t)
+                                                         : sizeof(uint16_t)) -
+                       1),
       inner_thresh_(kInnerThresh[frame_header.loop_filter.sharpness]),
       outer_thresh_(kOuterThresh[frame_header.loop_filter.sharpness]),
       needs_chroma_deblock_(frame_header.loop_filter.level[kPlaneU + 1] != 0 ||
@@ -240,13 +241,13 @@ PostFilter::PostFilter(const ObuFrameHeader& frame_header,
         }
         superres_buffer_[plane] +=
             vertical_shift * frame_buffer_.stride(plane) +
-            horizontal_shift * pixel_size_;
+            (horizontal_shift << pixel_size_log2_);
       }
       if (DoSuperRes()) {
         vertical_shift += kSuperResVerticalBorder;
       }
       cdef_buffer_[plane] += vertical_shift * frame_buffer_.stride(plane) +
-                             horizontal_shift * pixel_size_;
+                             (horizontal_shift << pixel_size_log2_);
       if (DoCdef() && thread_pool_ == nullptr) {
         horizontal_shift += frame_buffer_.alignment();
         vertical_shift += kCdefBorder;
@@ -254,7 +255,7 @@ PostFilter::PostFilter(const ObuFrameHeader& frame_header,
       assert(horizontal_shift <= frame_buffer_.right_border(plane));
       assert(vertical_shift <= frame_buffer_.bottom_border(plane));
       source_buffer_[plane] += vertical_shift * frame_buffer_.stride(plane) +
-                               horizontal_shift * pixel_size_;
+                               (horizontal_shift << pixel_size_log2_);
     } while (++plane < planes_);
   }
 }
@@ -323,7 +324,7 @@ void PostFilter::CopyDeblockedPixels(Plane plane, int row4x4) {
       // border extension).
       row = last_valid_row;
     }
-    memcpy(dst, src + row * stride, num_pixels * pixel_size_);
+    memcpy(dst, src + row * stride, num_pixels << pixel_size_log2_);
     last_valid_row = row;
     dst += stride;
   }
@@ -406,7 +407,7 @@ void PostFilter::SetupLoopRestorationBorder(const int row4x4) {
         GetSuperResBuffer(static_cast<Plane>(plane), row4x4, 0) + row * stride;
     uint8_t* dst = loop_restoration_border_.data(plane) + row_offset * stride;
     for (int i = 0; i < 4; ++i) {
-      memcpy(dst, src, num_pixels * pixel_size_);
+      memcpy(dst, src, num_pixels << pixel_size_log2_);
 #if LIBGAV1_MAX_BITDEPTH >= 10
       if (bitdepth_ >= 10) {
         ExtendLine<uint16_t>(dst, num_pixels, kRestorationHorizontalBorder,
@@ -469,7 +470,7 @@ void PostFilter::SetupLoopRestorationBorder(int row4x4_start, int sb4x4) {
         const uint8_t* const src_line = dst_line - stride;
         const int upscaled_width = super_res_info_[plane].upscaled_width;
         for (int i = rows[plane]; i < 4; ++i) {
-          memcpy(dst_line, src_line, upscaled_width * pixel_size_);
+          memcpy(dst_line, src_line, upscaled_width << pixel_size_log2_);
           dst_line += stride;
         }
       } while (++plane < planes_);

@@ -107,7 +107,7 @@ void PostFilter::SetupCdefBorder(int row4x4) {
           GetSourceBuffer(static_cast<Plane>(plane), row4x4, 0) +
           row * src_stride;
       uint8_t* dst = cdef_border_.data(plane) + dst_stride * (row_offset + i);
-      memcpy(dst, src, num_pixels * pixel_size_);
+      memcpy(dst, src, num_pixels << pixel_size_log2_);
     }
   } while (++plane < planes_);
 }
