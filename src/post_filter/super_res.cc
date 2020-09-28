@@ -159,6 +159,7 @@ void PostFilter::ApplySuperResThreaded() {
     std::array<uint8_t*, kMaxPlanes> dst;
     std::array<int, kMaxPlanes> rows;
     int plane = kPlaneY;
+    const int pixel_size_log2 = pixel_size_log2_;
     do {
       src[plane] =
           GetBufferOffset(cdef_buffer_[plane], frame_buffer_.stride(plane),
@@ -178,8 +179,8 @@ void PostFilter::ApplySuperResThreaded() {
       uint8_t* const line_buffer_start =
           superres_line_buffer_.data(plane) +
           line_buffer_row * superres_line_buffer_.stride(plane) +
-          (kSuperResHorizontalBorder << pixel_size_log2_);
-      memcpy(line_buffer_start, input, plane_width << pixel_size_log2_);
+          (kSuperResHorizontalBorder << pixel_size_log2);
+      memcpy(line_buffer_start, input, plane_width << pixel_size_log2);
     } while (++plane < planes_);
     if (line_buffer_row < num_threads - 1) {
       thread_pool_->Schedule(
