@@ -414,8 +414,8 @@ void CdefDirection_SSE4_1(const void* const source, ptrdiff_t stride,
   cost[4] = Cost0Or4(partial_lo[4], partial_hi[4], division_table);
 
   const __m128i division_table_odd[2] = {
-      LoadUnaligned16(kCdefDivisionTableOddPadded),
-      LoadUnaligned16(kCdefDivisionTableOddPadded + 4)};
+      LoadAligned16(kCdefDivisionTableOddPadded),
+      LoadAligned16(kCdefDivisionTableOddPadded + 4)};
 
   cost[1] = CostOdd(partial_lo[1], partial_hi[1], division_table_odd);
   cost[3] = CostOdd(partial_lo[3], partial_hi[3], division_table_odd);
