@@ -424,7 +424,7 @@ void PostFilter::VerticalDeblockFilter(int row4x4_start, int column4x4_start) {
     BlockParameters* const* bp_row_base = block_parameters_.Address(
         GetDeblockPosition(row4x4_start, subsampling_y),
         GetDeblockPosition(column4x4_start, subsampling_x));
-    const int bp_stride = block_parameters_.columns4x4() * row_step;
+    const int bp_stride = block_parameters_.columns4x4() << subsampling_y;
     for (int row4x4 = 0; row4x4 < kNum4x4InLoopFilterUnit &&
                          MultiplyBy4(row4x4_start + row4x4) < height_;
          row4x4 += row_step, src_u += row_stride_u, src_v += row_stride_v,
