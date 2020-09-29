@@ -499,16 +499,16 @@ LIBGAV1_ALWAYS_INLINE bool DctDcOnlyColumn(void* dest, int adjusted_tx_height,
   return true;
 }
 
-template <ButterflyRotationFunc bufferfly_rotation,
-          bool is_fast_bufferfly = false>
+template <ButterflyRotationFunc butterfly_rotation,
+          bool is_fast_butterfly = false>
 LIBGAV1_ALWAYS_INLINE void Dct4Stages(int16x8_t* s) {
   // stage 12.
-  if (is_fast_bufferfly) {
+  if (is_fast_butterfly) {
     ButterflyRotation_SecondIsZero(&s[0], &s[1], 32, true);
     ButterflyRotation_SecondIsZero(&s[2], &s[3], 48, false);
   } else {
-    bufferfly_rotation(&s[0], &s[1], 32, true);
-    bufferfly_rotation(&s[2], &s[3], 48, false);
+    butterfly_rotation(&s[0], &s[1], 32, true);
+    butterfly_rotation(&s[2], &s[3], 48, false);
   }
 
   // stage 17.
@@ -516,7 +516,7 @@ LIBGAV1_ALWAYS_INLINE void Dct4Stages(int16x8_t* s) {
   HadamardRotation(&s[1], &s[2], false);
 }
 
-template <ButterflyRotationFunc bufferfly_rotation, bool stage_is_rectangular>
+template <ButterflyRotationFunc butterfly_rotation, bool stage_is_rectangular>
 LIBGAV1_ALWAYS_INLINE void Dct4_NEON(void* dest, int32_t step, bool transpose) {
   auto* const dst = static_cast<int16_t*>(dest);
   int16x8_t s[4], x[4];
@@ -543,7 +543,7 @@ LIBGAV1_ALWAYS_INLINE void Dct4_NEON(void* dest, int32_t step, bool transpose) {
   s[2] = x[1];
   s[3] = x[3];
 
-  Dct4Stages<bufferfly_rotation>(s);
+  Dct4Stages<butterfly_rotation>(s);
 
   if (stage_is_rectangular) {
     if (transpose) {
@@ -561,16 +561,16 @@ LIBGAV1_ALWAYS_INLINE void Dct4_NEON(void* dest, int32_t step, bool transpose) {
   }
 }
 
-template <ButterflyRotationFunc bufferfly_rotation,
-          bool is_fast_bufferfly = false>
+template <ButterflyRotationFunc butterfly_rotation,
+          bool is_fast_butterfly = false>
 LIBGAV1_ALWAYS_INLINE void Dct8Stages(int16x8_t* s) {
   // stage 8.
-  if (is_fast_bufferfly) {
+  if (is_fast_butterfly) {
     ButterflyRotation_SecondIsZero(&s[4], &s[7], 56, false);
     ButterflyRotation_FirstIsZero(&s[5], &s[6], 24, false);
   } else {
-    bufferfly_rotation(&s[4], &s[7], 56, false);
-    bufferfly_rotation(&s[5], &s[6], 24, false);
+    butterfly_rotation(&s[4], &s[7], 56, false);
+    butterfly_rotation(&s[5], &s[6], 24, false);
   }
 
   // stage 13.
@@ -578,7 +578,7 @@ LIBGAV1_ALWAYS_INLINE void Dct8Stages(int16x8_t* s) {
   HadamardRotation(&s[6], &s[7], true);
 
   // stage 18.
-  bufferfly_rotation(&s[6], &s[5], 32, true);
+  butterfly_rotation(&s[6], &s[5], 32, true);
 
   // stage 22.
   HadamardRotation(&s[0], &s[7], false);
@@ -588,7 +588,7 @@ LIBGAV1_ALWAYS_INLINE void Dct8Stages(int16x8_t* s) {
 }
 
 // Process dct8 rows or columns, depending on the transpose flag.
-template <ButterflyRotationFunc bufferfly_rotation, bool stage_is_rectangular>
+template <ButterflyRotationFunc butterfly_rotation, bool stage_is_rectangular>
 LIBGAV1_ALWAYS_INLINE void Dct8_NEON(void* dest, int32_t step, bool transpose) {
   auto* const dst = static_cast<int16_t*>(dest);
   int16x8_t s[8], x[8];
@@ -619,8 +619,8 @@ LIBGAV1_ALWAYS_INLINE void Dct8_NEON(void* dest, int32_t step, bool transpose) {
   s[6] = x[3];
   s[7] = x[7];
 
-  Dct4Stages<bufferfly_rotation>(s);
-  Dct8Stages<bufferfly_rotation>(s);
+  Dct4Stages<butterfly_rotation>(s);
+  Dct8Stages<butterfly_rotation>(s);
 
   if (stage_is_rectangular) {
     if (transpose) {
@@ -638,20 +638,20 @@ LIBGAV1_ALWAYS_INLINE void Dct8_NEON(void* dest, int32_t step, bool transpose) {
   }
 }
 
-template <ButterflyRotationFunc bufferfly_rotation,
-          bool is_fast_bufferfly = false>
+template <ButterflyRotationFunc butterfly_rotation,
+          bool is_fast_butterfly = false>
 LIBGAV1_ALWAYS_INLINE void Dct16Stages(int16x8_t* s) {
   // stage 5.
-  if (is_fast_bufferfly) {
+  if (is_fast_butterfly) {
     ButterflyRotation_SecondIsZero(&s[8], &s[15], 60, false);
     ButterflyRotation_FirstIsZero(&s[9], &s[14], 28, false);
     ButterflyRotation_SecondIsZero(&s[10], &s[13], 44, false);
     ButterflyRotation_FirstIsZero(&s[11], &s[12], 12, false);
   } else {
-    bufferfly_rotation(&s[8], &s[15], 60, false);
-    bufferfly_rotation(&s[9], &s[14], 28, false);
-    bufferfly_rotation(&s[10], &s[13], 44, false);
-    bufferfly_rotation(&s[11], &s[12], 12, false);
+    butterfly_rotation(&s[8], &s[15], 60, false);
+    butterfly_rotation(&s[9], &s[14], 28, false);
+    butterfly_rotation(&s[10], &s[13], 44, false);
+    butterfly_rotation(&s[11], &s[12], 12, false);
   }
 
   // stage 9.
@@ -661,8 +661,8 @@ LIBGAV1_ALWAYS_INLINE void Dct16Stages(int16x8_t* s) {
   HadamardRotation(&s[14], &s[15], true);
 
   // stage 14.
-  bufferfly_rotation(&s[14], &s[9], 48, true);
-  bufferfly_rotation(&s[13], &s[10], 112, true);
+  butterfly_rotation(&s[14], &s[9], 48, true);
+  butterfly_rotation(&s[13], &s[10], 112, true);
 
   // stage 19.
   HadamardRotation(&s[8], &s[11], false);
@@ -671,8 +671,8 @@ LIBGAV1_ALWAYS_INLINE void Dct16Stages(int16x8_t* s) {
   HadamardRotation(&s[13], &s[14], true);
 
   // stage 23.
-  bufferfly_rotation(&s[13], &s[10], 32, true);
-  bufferfly_rotation(&s[12], &s[11], 32, true);
+  butterfly_rotation(&s[13], &s[10], 32, true);
+  butterfly_rotation(&s[12], &s[11], 32, true);
 
   // stage 26.
   HadamardRotation(&s[0], &s[15], false);
@@ -686,7 +686,7 @@ LIBGAV1_ALWAYS_INLINE void Dct16Stages(int16x8_t* s) {
 }
 
 // Process dct16 rows or columns, depending on the transpose flag.
-template <ButterflyRotationFunc bufferfly_rotation, bool stage_is_rectangular>
+template <ButterflyRotationFunc butterfly_rotation, bool stage_is_rectangular>
 LIBGAV1_ALWAYS_INLINE void Dct16_NEON(void* dest, int32_t step, bool is_row,
                                       int row_shift) {
   auto* const dst = static_cast<int16_t*>(dest);
@@ -730,9 +730,9 @@ LIBGAV1_ALWAYS_INLINE void Dct16_NEON(void* dest, int32_t step, bool is_row,
   s[14] = x[7];
   s[15] = x[15];
 
-  Dct4Stages<bufferfly_rotation>(s);
-  Dct8Stages<bufferfly_rotation>(s);
-  Dct16Stages<bufferfly_rotation>(s);
+  Dct4Stages<butterfly_rotation>(s);
+  Dct8Stages<butterfly_rotation>(s);
+  Dct16Stages<butterfly_rotation>(s);
 
   if (is_row) {
     const int16x8_t v_row_shift = vdupq_n_s16(-row_shift);
@@ -761,7 +761,7 @@ LIBGAV1_ALWAYS_INLINE void Dct16_NEON(void* dest, int32_t step, bool is_row,
   }
 }
 
-template <ButterflyRotationFunc bufferfly_rotation,
+template <ButterflyRotationFunc butterfly_rotation,
           bool is_fast_butterfly = false>
 LIBGAV1_ALWAYS_INLINE void Dct32Stages(int16x8_t* s) {
   // stage 3
@@ -775,14 +775,14 @@ LIBGAV1_ALWAYS_INLINE void Dct32Stages(int16x8_t* s) {
     ButterflyRotation_SecondIsZero(&s[22], &s[25], 38, false);
     ButterflyRotation_FirstIsZero(&s[23], &s[24], 6, false);
   } else {
-    bufferfly_rotation(&s[16], &s[31], 62, false);
-    bufferfly_rotation(&s[17], &s[30], 30, false);
-    bufferfly_rotation(&s[18], &s[29], 46, false);
-    bufferfly_rotation(&s[19], &s[28], 14, false);
-    bufferfly_rotation(&s[20], &s[27], 54, false);
-    bufferfly_rotation(&s[21], &s[26], 22, false);
-    bufferfly_rotation(&s[22], &s[25], 38, false);
-    bufferfly_rotation(&s[23], &s[24], 6, false);
+    butterfly_rotation(&s[16], &s[31], 62, false);
+    butterfly_rotation(&s[17], &s[30], 30, false);
+    butterfly_rotation(&s[18], &s[29], 46, false);
+    butterfly_rotation(&s[19], &s[28], 14, false);
+    butterfly_rotation(&s[20], &s[27], 54, false);
+    butterfly_rotation(&s[21], &s[26], 22, false);
+    butterfly_rotation(&s[22], &s[25], 38, false);
+    butterfly_rotation(&s[23], &s[24], 6, false);
   }
   // stage 6.
   HadamardRotation(&s[16], &s[17], false);
@@ -795,10 +795,10 @@ LIBGAV1_ALWAYS_INLINE void Dct32Stages(int16x8_t* s) {
   HadamardRotation(&s[30], &s[31], true);
 
   // stage 10.
-  bufferfly_rotation(&s[30], &s[17], 24 + 32, true);
-  bufferfly_rotation(&s[29], &s[18], 24 + 64 + 32, true);
-  bufferfly_rotation(&s[26], &s[21], 24, true);
-  bufferfly_rotation(&s[25], &s[22], 24 + 64, true);
+  butterfly_rotation(&s[30], &s[17], 24 + 32, true);
+  butterfly_rotation(&s[29], &s[18], 24 + 64 + 32, true);
+  butterfly_rotation(&s[26], &s[21], 24, true);
+  butterfly_rotation(&s[25], &s[22], 24 + 64, true);
 
   // stage 15.
   HadamardRotation(&s[16], &s[19], false);
@@ -811,10 +811,10 @@ LIBGAV1_ALWAYS_INLINE void Dct32Stages(int16x8_t* s) {
   HadamardRotation(&s[29], &s[30], true);
 
   // stage 20.
-  bufferfly_rotation(&s[29], &s[18], 48, true);
-  bufferfly_rotation(&s[28], &s[19], 48, true);
-  bufferfly_rotation(&s[27], &s[20], 48 + 64, true);
-  bufferfly_rotation(&s[26], &s[21], 48 + 64, true);
+  butterfly_rotation(&s[29], &s[18], 48, true);
+  butterfly_rotation(&s[28], &s[19], 48, true);
+  butterfly_rotation(&s[27], &s[20], 48 + 64, true);
+  butterfly_rotation(&s[26], &s[21], 48 + 64, true);
 
   // stage 24.
   HadamardRotation(&s[16], &s[23], false);
@@ -827,10 +827,10 @@ LIBGAV1_ALWAYS_INLINE void Dct32Stages(int16x8_t* s) {
   HadamardRotation(&s[27], &s[28], true);
 
   // stage 27.
-  bufferfly_rotation(&s[27], &s[20], 32, true);
-  bufferfly_rotation(&s[26], &s[21], 32, true);
-  bufferfly_rotation(&s[25], &s[22], 32, true);
-  bufferfly_rotation(&s[24], &s[23], 32, true);
+  butterfly_rotation(&s[27], &s[20], 32, true);
+  butterfly_rotation(&s[26], &s[21], 32, true);
+  butterfly_rotation(&s[25], &s[22], 32, true);
+  butterfly_rotation(&s[24], &s[23], 32, true);
 
   // stage 29.
   HadamardRotation(&s[0], &s[31], false);
@@ -1290,7 +1290,7 @@ LIBGAV1_ALWAYS_INLINE bool Adst4DcOnlyColumn(void* dest, int adjusted_tx_height,
   return true;
 }
 
-template <ButterflyRotationFunc bufferfly_rotation, bool stage_is_rectangular>
+template <ButterflyRotationFunc butterfly_rotation, bool stage_is_rectangular>
 LIBGAV1_ALWAYS_INLINE void Adst8_NEON(void* dest, int32_t step,
                                       bool transpose) {
   auto* const dst = static_cast<int16_t*>(dest);
@@ -1324,10 +1324,10 @@ LIBGAV1_ALWAYS_INLINE void Adst8_NEON(void* dest, int32_t step,
   s[7] = x[6];
 
   // stage 2.
-  bufferfly_rotation(&s[0], &s[1], 60 - 0, true);
-  bufferfly_rotation(&s[2], &s[3], 60 - 16, true);
-  bufferfly_rotation(&s[4], &s[5], 60 - 32, true);
-  bufferfly_rotation(&s[6], &s[7], 60 - 48, true);
+  butterfly_rotation(&s[0], &s[1], 60 - 0, true);
+  butterfly_rotation(&s[2], &s[3], 60 - 16, true);
+  butterfly_rotation(&s[4], &s[5], 60 - 32, true);
+  butterfly_rotation(&s[6], &s[7], 60 - 48, true);
 
   // stage 3.
   HadamardRotation(&s[0], &s[4], false);
@@ -1336,8 +1336,8 @@ LIBGAV1_ALWAYS_INLINE void Adst8_NEON(void* dest, int32_t step,
   HadamardRotation(&s[3], &s[7], false);
 
   // stage 4.
-  bufferfly_rotation(&s[4], &s[5], 48 - 0, true);
-  bufferfly_rotation(&s[7], &s[6], 48 - 32, true);
+  butterfly_rotation(&s[4], &s[5], 48 - 0, true);
+  butterfly_rotation(&s[7], &s[6], 48 - 32, true);
 
   // stage 5.
   HadamardRotation(&s[0], &s[2], false);
@@ -1346,8 +1346,8 @@ LIBGAV1_ALWAYS_INLINE void Adst8_NEON(void* dest, int32_t step,
   HadamardRotation(&s[5], &s[7], false);
 
   // stage 6.
-  bufferfly_rotation(&s[2], &s[3], 32, true);
-  bufferfly_rotation(&s[6], &s[7], 32, true);
+  butterfly_rotation(&s[2], &s[3], 32, true);
+  butterfly_rotation(&s[6], &s[7], 32, true);
 
   // stage 7.
   x[0] = s[0];
@@ -1485,7 +1485,7 @@ LIBGAV1_ALWAYS_INLINE bool Adst8DcOnlyColumn(void* dest, int adjusted_tx_height,
   return true;
 }
 
-template <ButterflyRotationFunc bufferfly_rotation, bool stage_is_rectangular>
+template <ButterflyRotationFunc butterfly_rotation, bool stage_is_rectangular>
 LIBGAV1_ALWAYS_INLINE void Adst16_NEON(void* dest, int32_t step, bool is_row,
                                        int row_shift) {
   auto* const dst = static_cast<int16_t*>(dest);
@@ -1531,14 +1531,14 @@ LIBGAV1_ALWAYS_INLINE void Adst16_NEON(void* dest, int32_t step, bool is_row,
   s[15] = x[14];
 
   // stage 2.
-  bufferfly_rotation(&s[0], &s[1], 62 - 0, true);
-  bufferfly_rotation(&s[2], &s[3], 62 - 8, true);
-  bufferfly_rotation(&s[4], &s[5], 62 - 16, true);
-  bufferfly_rotation(&s[6], &s[7], 62 - 24, true);
-  bufferfly_rotation(&s[8], &s[9], 62 - 32, true);
-  bufferfly_rotation(&s[10], &s[11], 62 - 40, true);
-  bufferfly_rotation(&s[12], &s[13], 62 - 48, true);
-  bufferfly_rotation(&s[14], &s[15], 62 - 56, true);
+  butterfly_rotation(&s[0], &s[1], 62 - 0, true);
+  butterfly_rotation(&s[2], &s[3], 62 - 8, true);
+  butterfly_rotation(&s[4], &s[5], 62 - 16, true);
+  butterfly_rotation(&s[6], &s[7], 62 - 24, true);
+  butterfly_rotation(&s[8], &s[9], 62 - 32, true);
+  butterfly_rotation(&s[10], &s[11], 62 - 40, true);
+  butterfly_rotation(&s[12], &s[13], 62 - 48, true);
+  butterfly_rotation(&s[14], &s[15], 62 - 56, true);
 
   // stage 3.
   HadamardRotation(&s[0], &s[8], false);
@@ -1551,10 +1551,10 @@ LIBGAV1_ALWAYS_INLINE void Adst16_NEON(void* dest, int32_t step, bool is_row,
   HadamardRotation(&s[7], &s[15], false);
 
   // stage 4.
-  bufferfly_rotation(&s[8], &s[9], 56 - 0, true);
-  bufferfly_rotation(&s[13], &s[12], 8 + 0, true);
-  bufferfly_rotation(&s[10], &s[11], 56 - 32, true);
-  bufferfly_rotation(&s[15], &s[14], 8 + 32, true);
+  butterfly_rotation(&s[8], &s[9], 56 - 0, true);
+  butterfly_rotation(&s[13], &s[12], 8 + 0, true);
+  butterfly_rotation(&s[10], &s[11], 56 - 32, true);
+  butterfly_rotation(&s[15], &s[14], 8 + 32, true);
 
   // stage 5.
   HadamardRotation(&s[0], &s[4], false);
@@ -1567,10 +1567,10 @@ LIBGAV1_ALWAYS_INLINE void Adst16_NEON(void* dest, int32_t step, bool is_row,
   HadamardRotation(&s[11], &s[15], false);
 
   // stage 6.
-  bufferfly_rotation(&s[4], &s[5], 48 - 0, true);
-  bufferfly_rotation(&s[12], &s[13], 48 - 0, true);
-  bufferfly_rotation(&s[7], &s[6], 48 - 32, true);
-  bufferfly_rotation(&s[15], &s[14], 48 - 32, true);
+  butterfly_rotation(&s[4], &s[5], 48 - 0, true);
+  butterfly_rotation(&s[12], &s[13], 48 - 0, true);
+  butterfly_rotation(&s[7], &s[6], 48 - 32, true);
+  butterfly_rotation(&s[15], &s[14], 48 - 32, true);
 
   // stage 7.
   HadamardRotation(&s[0], &s[2], false);
@@ -1583,10 +1583,10 @@ LIBGAV1_ALWAYS_INLINE void Adst16_NEON(void* dest, int32_t step, bool is_row,
   HadamardRotation(&s[13], &s[15], false);
 
   // stage 8.
-  bufferfly_rotation(&s[2], &s[3], 32, true);
-  bufferfly_rotation(&s[6], &s[7], 32, true);
-  bufferfly_rotation(&s[10], &s[11], 32, true);
-  bufferfly_rotation(&s[14], &s[15], 32, true);
+  butterfly_rotation(&s[2], &s[3], 32, true);
+  butterfly_rotation(&s[6], &s[7], 32, true);
+  butterfly_rotation(&s[10], &s[11], 32, true);
+  butterfly_rotation(&s[14], &s[15], 32, true);
 
   // stage 9.
   x[0] = s[0];
