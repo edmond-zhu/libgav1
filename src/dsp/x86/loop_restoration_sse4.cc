@@ -724,12 +724,6 @@ inline __m128i VaddwHi16(const __m128i src0, const __m128i src1) {
   return _mm_add_epi32(src0, s1);
 }
 
-// Using VgetLane16() can save a sign extension instruction.
-template <int n>
-inline int VgetLane16(const __m128i src) {
-  return _mm_extract_epi16(src, n);
-}
-
 inline __m128i VmullNLo8(const __m128i src0, const int src1) {
   const __m128i s0 = _mm_unpacklo_epi16(src0, _mm_setzero_si128());
   return _mm_madd_epi16(s0, _mm_set1_epi32(src1));
@@ -1165,15 +1159,19 @@ inline void CalculateIntermediate(const __m128i sum, const __m128i sum_sq[2],
   const __m128i z0 = CalculateMa<n>(sum_lo, sum_sq[0], scale);
   const __m128i z1 = CalculateMa<n>(sum_hi, sum_sq[1], scale);
   const __m128i z01 = _mm_packus_epi32(z0, z1);
-  const __m128i z = _mm_min_epu16(z01, _mm_set1_epi16(255));
-  *ma = _mm_insert_epi8(*ma, kSgrMaLookup[VgetLane16<0>(z)], offset + 0);
-  *ma = _mm_insert_epi8(*ma, kSgrMaLookup[VgetLane16<1>(z)], offset + 1);
-  *ma = _mm_insert_epi8(*ma, kSgrMaLookup[VgetLane16<2>(z)], offset + 2);
-  *ma = _mm_insert_epi8(*ma, kSgrMaLookup[VgetLane16<3>(z)], offset + 3);
-  *ma = _mm_insert_epi8(*ma, kSgrMaLookup[VgetLane16<4>(z)], offset + 4);
-  *ma = _mm_insert_epi8(*ma, kSgrMaLookup[VgetLane16<5>(z)], offset + 5);
-  *ma = _mm_insert_epi8(*ma, kSgrMaLookup[VgetLane16<6>(z)], offset + 6);
-  *ma = _mm_insert_epi8(*ma, kSgrMaLookup[VgetLane16<7>(z)], offset + 7);
+  const __m128i z = _mm_packus_epi16(z01, z01);
+  // Actually it's not stored and loaded. The compiler will use a 64-bit
+  // general-purpose register to process. Faster than using _mm_extract_epi8().
+  uint8_t temp[8];
+  StoreLo8(temp, z);
+  *ma = _mm_insert_epi8(*ma, kSgrMaLookup[temp[0]], offset + 0);
+  *ma = _mm_insert_epi8(*ma, kSgrMaLookup[temp[1]], offset + 1);
+  *ma = _mm_insert_epi8(*ma, kSgrMaLookup[temp[2]], offset + 2);
+  *ma = _mm_insert_epi8(*ma, kSgrMaLookup[temp[3]], offset + 3);
+  *ma = _mm_insert_epi8(*ma, kSgrMaLookup[temp[4]], offset + 4);
+  *ma = _mm_insert_epi8(*ma, kSgrMaLookup[temp[5]], offset + 5);
+  *ma = _mm_insert_epi8(*ma, kSgrMaLookup[temp[6]], offset + 6);
+  *ma = _mm_insert_epi8(*ma, kSgrMaLookup[temp[7]], offset + 7);
   // b = ma * b * one_over_n
   // |ma| = [0, 255]
   // |sum| is a box sum with radius 1 or 2.
