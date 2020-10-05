@@ -34,39 +34,7 @@ namespace dsp {
 namespace low_bitdepth {
 namespace {
 
-// TODO(slavarnway): Move to common neon/sse4 file.
-int GetNumTapsInFilter(const int filter_index) {
-  if (filter_index < 2) {
-    // Despite the names these only use 6 taps.
-    // kInterpolationFilterEightTap
-    // kInterpolationFilterEightTapSmooth
-    return 6;
-  }
-
-  if (filter_index == 2) {
-    // kInterpolationFilterEightTapSharp
-    return 8;
-  }
-
-  if (filter_index == 3) {
-    // kInterpolationFilterBilinear
-    return 2;
-  }
-
-  assert(filter_index > 3);
-  // For small sizes (width/height <= 4) the large filters are replaced with 4
-  // tap options.
-  // If the original filters were |kInterpolationFilterEightTap| or
-  // |kInterpolationFilterEightTapSharp| then it becomes
-  // |kInterpolationFilterSwitchable|.
-  // If it was |kInterpolationFilterEightTapSmooth| then it becomes an unnamed 4
-  // tap filter.
-  return 4;
-}
-
-constexpr int kIntermediateStride = kMaxSuperBlockSizeInPixels;
-constexpr int kHorizontalOffset = 3;
-constexpr int kFilterIndexShift = 6;
+#include "src/dsp/convolve.inc"
 
 // Multiply every entry in |src[]| by the corresponding entry in |taps[]| and
 // sum. The filters in |taps[]| are pre-shifted by 1. This prevents the final

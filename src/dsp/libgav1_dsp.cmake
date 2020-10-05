@@ -30,6 +30,7 @@ list(APPEND libgav1_dsp_sources
             "${libgav1_source}/dsp/constants.h"
             "${libgav1_source}/dsp/convolve.cc"
             "${libgav1_source}/dsp/convolve.h"
+            "${libgav1_source}/dsp/convolve.inc"
             "${libgav1_source}/dsp/distance_weighted_blend.cc"
             "${libgav1_source}/dsp/distance_weighted_blend.h"
             "${libgav1_source}/dsp/dsp.cc"

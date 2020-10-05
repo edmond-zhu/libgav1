@@ -35,9 +35,8 @@ namespace dsp {
 namespace low_bitdepth {
 namespace {
 
-constexpr int kIntermediateStride = kMaxSuperBlockSizeInPixels;
-constexpr int kHorizontalOffset = 3;
-constexpr int kFilterIndexShift = 6;
+// Include the constants and utility functions inside the anonymous namespace.
+#include "src/dsp/convolve.inc"
 
 // Multiply every entry in |src[]| by the corresponding entry in |taps[]| and
 // sum. The filters in |taps[]| are pre-shifted by 1. This prevents the final
@@ -697,35 +696,6 @@ LIBGAV1_ALWAYS_INLINE void DoHorizontalPass(
     FilterHorizontal<2, 8, 3, true, is_2d, is_compound>(
         src, src_stride, dst, dst_stride, width, height, v_tap);
   }
-}
-
-int GetNumTapsInFilter(const int filter_index) {
-  if (filter_index < 2) {
-    // Despite the names these only use 6 taps.
-    // kInterpolationFilterEightTap
-    // kInterpolationFilterEightTapSmooth
-    return 6;
-  }
-
-  if (filter_index == 2) {
-    // kInterpolationFilterEightTapSharp
-    return 8;
-  }
-
-  if (filter_index == 3) {
-    // kInterpolationFilterBilinear
-    return 2;
-  }
-
-  assert(filter_index > 3);
-  // For small sizes (width/height <= 4) the large filters are replaced with 4
-  // tap options.
-  // If the original filters were |kInterpolationFilterEightTap| or
-  // |kInterpolationFilterEightTapSharp| then it becomes
-  // |kInterpolationFilterSwitchable|.
-  // If it was |kInterpolationFilterEightTapSmooth| then it becomes an unnamed 4
-  // tap filter.
-  return 4;
 }
 
 void Convolve2D_NEON(const void* const reference,
