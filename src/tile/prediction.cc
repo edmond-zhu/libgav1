@@ -406,20 +406,13 @@ int Tile::GetIntraEdgeFilterType(const Block& block, Plane plane) const {
   const int subsampling_x = subsampling_x_[plane];
   const int subsampling_y = subsampling_y_[plane];
   if (block.top_available[plane]) {
-    const int row =
-        block.row4x4 - 1 -
-        static_cast<int>(subsampling_y != 0 && (block.row4x4 & 1) != 0);
-    const int column =
-        block.column4x4 +
-        static_cast<int>(subsampling_x != 0 && (block.column4x4 & 1) == 0);
+    const int row = block.row4x4 - 1 - (block.row4x4 & subsampling_y);
+    const int column = block.column4x4 + (~block.column4x4 & subsampling_x);
     if (IsSmoothPrediction(row, column, plane)) return 1;
   }
   if (block.left_available[plane]) {
-    const int row = block.row4x4 + static_cast<int>(subsampling_y != 0 &&
-                                                    (block.row4x4 & 1) == 0);
-    const int column =
-        block.column4x4 - 1 -
-        static_cast<int>(subsampling_x != 0 && (block.column4x4 & 1) != 0);
+    const int row = block.row4x4 + (~block.row4x4 & subsampling_y);
+    const int column = block.column4x4 - 1 - (block.column4x4 & subsampling_x);
     if (IsSmoothPrediction(row, column, plane)) return 1;
   }
   return 0;
